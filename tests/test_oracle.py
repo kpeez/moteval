@@ -41,9 +41,9 @@ def test_oracle_evaluates_perfect_mot_sequence(tmp_path):
     assert res["CLEAR"]["MOTA"] == pytest.approx(1.0)
     assert res["CLEAR"]["MOTP"] == pytest.approx(1.0)
     assert res["CLEAR"]["IDSW"] == 0
-    assert np.mean(res["HOTA"]["HOTA"]) == pytest.approx(1.0)
-    assert np.mean(res["HOTA"]["DetA"]) == pytest.approx(1.0)
-    assert np.mean(res["HOTA"]["AssA"]) == pytest.approx(1.0)
+    assert np.allclose(res["HOTA"]["HOTA"], 1.0)
+    assert np.allclose(res["HOTA"]["DetA"], 1.0)
+    assert np.allclose(res["HOTA"]["AssA"], 1.0)
     assert res["Identity"]["IDF1"] == pytest.approx(1.0)
     assert res["Count"] == {"Dets": 4, "GT_Dets": 4, "IDs": 2, "GT_IDs": 2}
 
