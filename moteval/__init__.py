@@ -37,21 +37,27 @@ def evaluate(
     metrics: Sequence[Metric],
 ) -> EvaluationResult:
     pred_dir = Path(predictions)
+    names = [type(metric).__name__ for metric in metrics]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(f"duplicate metric classes in metrics: {', '.join(duplicates)}")
+
     per_sequence: dict[str, dict[str, dict[str, float]]] = {}
-    by_metric: dict[Metric, dict[str, dict[str, float]]] = {m: {} for m in metrics}
+    by_metric: dict[str, dict[str, dict[str, float]]] = {name: {} for name in names}
 
     for seq in dataset.sequences:
         pred_file = pred_dir / f"{seq.name}.txt"
         pred_tracks = tuple(read_mot(pred_file)) if pred_file.is_file() else ()
         data = build_sequence_data(seq, pred_tracks, dataset.frame_convention)
         seq_scores: dict[str, dict[str, float]] = {}
-        for metric in metrics:
+        for name, metric in zip(names, metrics, strict=True):
             scores = metric.eval_sequence(data)
-            seq_scores[type(metric).__name__] = scores
-            by_metric[metric][seq.name] = scores
+            seq_scores[name] = scores
+            by_metric[name][seq.name] = scores
         per_sequence[seq.name] = seq_scores
 
     combined = {
-        type(metric).__name__: metric.combine_sequences(by_metric[metric]) for metric in metrics
+        name: metric.combine_sequences(by_metric[name])
+        for name, metric in zip(names, metrics, strict=True)
     }
     return EvaluationResult(per_sequence=per_sequence, combined=combined)
