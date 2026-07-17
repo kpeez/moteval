@@ -30,16 +30,16 @@ class Track:
 def read_mot(path: Path) -> list[Track]:
     """Parse a MOTChallenge txt file into `Track` rows."""
     tracks: list[Track] = []
-    for line in path.read_text().splitlines():
+    for lineno, line in enumerate(path.read_text().splitlines(), start=1):
         line = line.strip()
         if not line:
             continue
         fields = line.split(",")
         if len(fields) < 6:
-            raise ValueError(f"malformed MOT row in {path}: {line!r}")
-        conf = float(fields[6]) if len(fields) > 6 else 1.0
-        tracks.append(
-            Track(
+            raise ValueError(f"malformed MOT row in {path}:{lineno}: {line!r}")
+        try:
+            conf = float(fields[6]) if len(fields) > 6 else 1.0
+            track = Track(
                 frame=int(fields[0]),
                 track_id=int(fields[1]),
                 x=float(fields[2]),
@@ -48,7 +48,9 @@ def read_mot(path: Path) -> list[Track]:
                 h=float(fields[5]),
                 conf=conf,
             )
-        )
+        except ValueError as err:
+            raise ValueError(f"malformed MOT row in {path}:{lineno}: {line!r}") from err
+        tracks.append(track)
     return tracks
 
 

@@ -1,3 +1,5 @@
+import pytest
+
 from moteval.formats.mot_txt import Track, read_mot, write_mot
 
 
@@ -20,3 +22,13 @@ def test_read_mot_defaults_conf_when_absent(tmp_path):
     path.write_text("1,1,10,10,20,20\n")
     (row,) = read_mot(path)
     assert row.conf == 1.0
+
+
+def test_read_mot_malformed_numeric_row_names_file_and_line(tmp_path):
+    path = tmp_path / "seq.txt"
+    path.write_text("1,1,10,10,20,20\n2,2,x,10,20,20\n")
+    with pytest.raises(ValueError) as exc:
+        read_mot(path)
+    message = str(exc.value)
+    assert str(path) in message
+    assert ":2" in message
