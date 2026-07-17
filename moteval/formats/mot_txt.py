@@ -16,8 +16,9 @@ class Track:
     For ground-truth rows read from a ``gt.txt`` file, ``conf`` carries the file's
     7th column (the "consider" flag). For predictions it is the detection
     confidence. The frame number is interpreted under a declared `FrameConvention`.
-    ``class_id`` defaults to pedestrian (1); GT loaders set it from the class column
-    while MOTChallenge prediction rows carry no class and keep the default.
+    ``class_id`` defaults to pedestrian (1). `read_mot` parses no class column, so
+    every row it returns keeps that default — multi-class GT loaders must construct
+    `Track` rows with an explicit ``class_id`` themselves rather than reuse `read_mot`.
     """
 
     frame: int
