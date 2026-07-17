@@ -16,6 +16,8 @@ class Track:
     For ground-truth rows read from a ``gt.txt`` file, ``conf`` carries the file's
     7th column (the "consider" flag). For predictions it is the detection
     confidence. The frame number is interpreted under a declared `FrameConvention`.
+    ``class_id`` defaults to pedestrian (1); GT loaders set it from the class column
+    while MOTChallenge prediction rows carry no class and keep the default.
     """
 
     frame: int
@@ -25,6 +27,7 @@ class Track:
     w: float
     h: float
     conf: float
+    class_id: int = 1
 
 
 def read_mot(path: Path) -> list[Track]:
