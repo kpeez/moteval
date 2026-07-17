@@ -1,3 +1,5 @@
+import pytest
+
 from moteval import evaluate, load_dataset
 from moteval.formats.mot_txt import write_mot
 from moteval.metrics.count import Count
@@ -33,3 +35,10 @@ def test_evaluate_with_missing_prediction_file_reports_zero_preds(tmp_path):
     result = evaluate(dataset, tmp_path, [Count()])
     assert result.combined["Count"]["Dets"] == 0.0
     assert result.combined["Count"]["GT_Dets"] == 20.0
+
+
+def test_evaluate_rejects_duplicate_metric_classes(tmp_path):
+    dataset = load_dataset("toy")
+    with pytest.raises(ValueError) as exc:
+        evaluate(dataset, tmp_path, [Count(), Count()])
+    assert "Count" in str(exc.value)
