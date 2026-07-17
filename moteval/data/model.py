@@ -6,10 +6,14 @@ per-frame box-IoU similarity matrices.
 """
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from moteval.formats.mot_txt import Track
+
+if TYPE_CHECKING:
+    from moteval.data.protocol import Protocol
 
 
 @dataclass(frozen=True)
@@ -38,21 +42,31 @@ class FrameConvention:
 
 @dataclass(frozen=True)
 class GtSequence:
-    """Ground truth for one sequence, before predictions are merged in."""
+    """Ground truth for one sequence, before predictions are merged in.
+
+    ``ignore_regions`` are per-frame crowd-ignore boxes (as `Track` rows, whose id,
+    conf and class are irrelevant); predictions falling inside them are dropped by
+    the preprocessing engine per the sequence's `Protocol`.
+    """
 
     name: str
     num_timesteps: int
     tracks: tuple[Track, ...]
+    ignore_regions: tuple[Track, ...] = ()
 
 
 @dataclass(frozen=True)
 class MOTDataset:
-    """A named, split-scoped collection of ground-truth sequences."""
+    """A named, split-scoped collection of ground-truth sequences.
+
+    ``protocol`` declares the benchmark's preprocessing (classes, distractors,
+    ignore-region IoA threshold, conf-zero semantics) and its frame convention.
+    """
 
     name: str
     split: str
     sequences: tuple[GtSequence, ...]
-    frame_convention: FrameConvention
+    protocol: "Protocol"
 
 
 @dataclass(frozen=True)

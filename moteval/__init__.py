@@ -12,6 +12,7 @@ from moteval.benchmarks import toy as _toy  # noqa: F401  (registers the toy dat
 from moteval.benchmarks.base import load_dataset, register_dataset
 from moteval.data.convert import build_sequence_data
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset, SequenceData
+from moteval.data.protocol import Protocol
 from moteval.formats.mot_txt import read_mot
 from moteval.metrics.base import Metric
 from moteval.metrics.count import Count
@@ -24,6 +25,7 @@ __all__ = [
     "GtSequence",
     "MOTDataset",
     "Metric",
+    "Protocol",
     "SequenceData",
     "evaluate",
     "load_dataset",
@@ -42,13 +44,18 @@ def evaluate(
     if duplicates:
         raise ValueError(f"duplicate metric classes in metrics: {', '.join(duplicates)}")
 
+    protocol = dataset.protocol
+    if len(protocol.eval_classes) != 1:
+        raise ValueError("evaluate() supports single-class protocols; multi-class is a later slice")
+    (cls_id,) = protocol.eval_classes
+
     per_sequence: dict[str, dict[str, dict[str, float]]] = {}
     by_metric: dict[str, dict[str, dict[str, float]]] = {name: {} for name in names}
 
     for seq in dataset.sequences:
         pred_file = pred_dir / f"{seq.name}.txt"
         pred_tracks = tuple(read_mot(pred_file)) if pred_file.is_file() else ()
-        data = build_sequence_data(seq, pred_tracks, dataset.frame_convention)
+        data = build_sequence_data(seq, pred_tracks, protocol, cls_id)
         seq_scores: dict[str, dict[str, float]] = {}
         for name, metric in zip(names, metrics, strict=True):
             scores = metric.eval_sequence(data)
