@@ -57,8 +57,9 @@ MOTS-txt) · `moteval/metrics/` (base ABC + hota/clear/identity/count/jf/track_m
 
 ## Gotchas
 
-- `data/` is a symlink to `/data/downloads`; parity tests needing real data skip loudly when
-  absent (DanceTrack val is required for the final parity gate, issue #20).
+- `data/benchmarks` is a symlink to external storage holding one dir per dataset; `moteval
+  data download` targets `data/benchmarks/<dataset>` by default. Parity tests needing real
+  data skip loudly when absent (DanceTrack val is required for the final parity gate, issue #20).
 - Golden fixture oracles come from track-zoo git history: `git show f48f449:<path>` in
   <https://github.com/kpeez/track-zoo>.
 - GMOT-40 and ChimpACT are natively 0-indexed (loaders shift); ChimpACT GT is COCO keyframes
