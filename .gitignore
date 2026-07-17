@@ -1,6 +1,7 @@
-data/
+/data/
 docs/agents
 private
+tests/temp/
 
 # IDE temp files #
 .vscode/
