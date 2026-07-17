@@ -27,7 +27,7 @@ def run_mot_challenge(
     tracker: str = "oracle",
     benchmark: str = "MOT17",
     split: str = "train",
-    do_preproc: bool = True,
+    do_preproc: bool = True,  # TrackEval's own default; moteval preprocessing must stay in lockstep
     metrics: tuple[str, ...] = ("HOTA", "CLEAR", "Identity", "Count"),
 ) -> dict[str, dict]:
     """Evaluate a MOTChallenge-format sequence pair through the TrackEval oracle.
