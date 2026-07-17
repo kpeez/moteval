@@ -119,6 +119,27 @@ def test_class_filtering_yields_per_class_views():
         assert view.num_pred_dets == 2
 
 
+def test_ignore_regions_wired_through_conversion():
+    # end-to-end: GtSequence.ignore_regions -> _bin_frames -> box_ioa -> engine.
+    gt_tracks = tuple(Track(frame=f, track_id=1, x=0, y=0, w=10, h=10, conf=1.0) for f in (1, 2))
+    ignore = tuple(Track(frame=f, track_id=0, x=100, y=100, w=20, h=20, conf=0.0) for f in (1, 2))
+    gt = GtSequence(name="s", num_timesteps=2, tracks=gt_tracks, ignore_regions=ignore)
+    preds = tuple(
+        Track(frame=f, track_id=tid, x=x, y=x, w=10, h=10, conf=1.0)
+        for tid, x in [(100, 0.0), (200, 105.0), (300, 500.0)]
+        for f in (1, 2)
+    )
+    protocol = Protocol("p", CONVENTION, eval_classes=(1,))
+
+    data = build_sequence_data(gt, preds, protocol, 1)
+
+    # pred 200 sits fully inside the ignore region (IoA 1.0 > 0.5) while unmatched
+    # and is dropped; matched pred 100 and far-away pred 300 survive.
+    assert data.num_pred_ids == 2
+    assert data.num_pred_dets == 4
+    assert data.num_gt_ids == 1
+
+
 def test_toy_protocol_passes_through_engine_unchanged():
     from moteval.benchmarks.toy import TOY_PROTOCOL, load_toy
 

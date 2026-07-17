@@ -42,3 +42,12 @@ def test_evaluate_rejects_duplicate_metric_classes(tmp_path):
     with pytest.raises(ValueError) as exc:
         evaluate(dataset, tmp_path, [Count(), Count()])
     assert "Count" in str(exc.value)
+
+
+def test_evaluate_rejects_multi_class_protocol(tmp_path):
+    from dataclasses import replace
+
+    toy = load_dataset("toy")
+    multi = replace(toy, protocol=replace(toy.protocol, eval_classes=(1, 2)))
+    with pytest.raises(ValueError, match="single-class"):
+        evaluate(multi, tmp_path, [Count()])

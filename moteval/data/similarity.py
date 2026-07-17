@@ -60,4 +60,4 @@ def box_ioa(boxes_a: np.ndarray, boxes_b: np.ndarray) -> np.ndarray:
     inter = np.maximum(ix2 - ix1, 0.0) * np.maximum(iy2 - iy1, 0.0)
 
     area_a = (aw * ah)[:, None]
-    return np.where(area_a > 0.0, inter / area_a, 0.0)
+    return np.divide(inter, area_a, out=np.zeros_like(inter), where=area_a > 0.0)
