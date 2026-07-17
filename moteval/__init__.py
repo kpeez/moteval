@@ -8,6 +8,8 @@ and combined results.
 from collections.abc import Sequence
 from pathlib import Path
 
+from moteval.benchmarks import dancetrack as _dancetrack  # noqa: F401  (registers dancetrack)
+from moteval.benchmarks import sportsmot as _sportsmot  # noqa: F401  (registers sportsmot)
 from moteval.benchmarks import toy as _toy  # noqa: F401  (registers the toy dataset)
 from moteval.benchmarks.base import load_dataset, register_dataset
 from moteval.data.convert import build_sequence_data
