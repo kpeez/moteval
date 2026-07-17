@@ -3,6 +3,7 @@ import pytest
 from moteval import evaluate, load_dataset
 from moteval.data.convert import build_sequence_data
 from moteval.data.model import FrameConvention, GtSequence
+from moteval.data.protocol import Protocol
 from moteval.formats.mot_txt import Track, write_mot
 from moteval.metrics.count import Count
 
@@ -10,8 +11,11 @@ from moteval.metrics.count import Count
 def test_out_of_range_pred_frame_raises_naming_frame_and_convention():
     gt = GtSequence(name="s", num_timesteps=5, tracks=())
     pred = (Track(frame=6, track_id=1, x=0, y=0, w=10, h=10, conf=1.0),)
+    protocol = Protocol(
+        name="t", frame_convention=FrameConvention("1-indexed", 1), eval_classes=(1,)
+    )
     with pytest.raises(ValueError) as exc:
-        build_sequence_data(gt, pred, FrameConvention("1-indexed", 1))
+        build_sequence_data(gt, pred, protocol, 1)
     message = str(exc.value)
     assert "6" in message
     assert "1-indexed" in message
