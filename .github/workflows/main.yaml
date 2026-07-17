@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python/uv + deps
+        uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.14"
+          install-args: "--frozen"
+
+      - name: Run checks
+        run: uv run prek run --all-files
+
+  test:
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.14"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v4
+      - name: Setup Python/uv + deps
+        uses: ./.github/actions/setup-python
+        with:
+          python-version: ${{ matrix.python-version }}
+          install-args: "--frozen"
+
+      - name: Run tests
+        run: .venv/bin/python -m pytest -q
