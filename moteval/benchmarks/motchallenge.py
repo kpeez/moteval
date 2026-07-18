@@ -17,8 +17,10 @@ Some benchmarks (BFT, AnimalTrack, GMOT-40) keep MOTChallenge-style GT rows but
 deviate from that default layout -- no ``seqinfo.ini``, GT living in a flat
 per-split directory instead of nested under each sequence, or split membership
 coming from an external list file. `MOTChallengeConfig.seq_names`, ``gt_path``,
-and ``seq_length`` are the minimal hooks that let those benchmarks reuse this
-adapter instead of forking it; each defaults to the standard-layout behavior.
+``seq_length``, and ``ignore_path`` are the minimal hooks that let those
+benchmarks reuse this adapter instead of forking it; each defaults to the
+standard-layout behavior (``ignore_path`` defaults to no ignore file, i.e. an
+empty ``GtSequence.ignore_regions``).
 """
 
 import configparser
@@ -36,6 +38,7 @@ _SEQLENGTH_KEY = "seqLength"
 SeqNamesFn = Callable[[Path, str], list[str]]
 GtPathFn = Callable[[Path, str, str], Path]
 SeqLengthFn = Callable[[Path, str, str, tuple[Track, ...]], int]
+IgnorePathFn = Callable[[Path, str, str], Path | None]
 
 
 def _default_seq_names(base: Path, split: str) -> list[str]:
@@ -51,6 +54,10 @@ def _default_gt_path(base: Path, split: str, seq_name: str) -> Path:
 
 def _seqinfo_seq_length(base: Path, split: str, seq_name: str, tracks: tuple[Track, ...]) -> int:
     return _read_seq_length(base / split / seq_name)
+
+
+def _default_ignore_path(base: Path, split: str, seq_name: str) -> Path | None:
+    return None
 
 
 def max_frame_seq_length(seq_name: str, tracks: tuple[Track, ...], offset: int = 0) -> int:
@@ -74,6 +81,9 @@ class MOTChallengeConfig:
     pedestrian default (1). ``seq_names``, ``gt_path``, and ``seq_length`` default
     to the standard ``<root>/<split>/<seq>/gt/gt.txt`` + ``seqinfo.ini`` layout;
     override them for benchmarks whose real distribution deviates from it.
+    ``ignore_path`` returns the crowd-ignore-region file for a sequence, or
+    ``None`` when a benchmark has no such file; it defaults to always returning
+    ``None`` so benchmarks without ignore regions are unaffected.
     """
 
     name: str
@@ -83,6 +93,7 @@ class MOTChallengeConfig:
     seq_names: SeqNamesFn = _default_seq_names
     gt_path: GtPathFn = _default_gt_path
     seq_length: SeqLengthFn = _seqinfo_seq_length
+    ignore_path: IgnorePathFn = _default_ignore_path
 
 
 def _read_seq_length(seq_dir: Path) -> int:
@@ -116,7 +127,13 @@ def _load_sequence(base: Path, split: str, seq_name: str, config: MOTChallengeCo
         raise ValueError(f"missing gt.txt for sequence {seq_name!r} at {gt_path}")
     tracks = tuple(replace(t, class_id=config.class_id) for t in read_mot(gt_path))
     num_timesteps = config.seq_length(base, split, seq_name, tracks)
-    return GtSequence(name=seq_name, num_timesteps=num_timesteps, tracks=tracks)
+    ignore_path = config.ignore_path(base, split, seq_name)
+    ignore_regions = (
+        tuple(read_mot(ignore_path)) if ignore_path is not None and ignore_path.is_file() else ()
+    )
+    return GtSequence(
+        name=seq_name, num_timesteps=num_timesteps, tracks=tracks, ignore_regions=ignore_regions
+    )
 
 
 def load_motchallenge(
