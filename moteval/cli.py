@@ -4,6 +4,7 @@ import argparse
 import csv
 import inspect
 import json
+import os
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import cast
@@ -12,6 +13,12 @@ import numpy as np
 
 from moteval import CLEAR, HOTA, Count, Identity, JAndF, Metric, MOTDataset, TrackMAP, evaluate
 from moteval.benchmarks.base import DATASETS
+from moteval.download import (
+    DEFAULT_DATA_ROOT,
+    benchmark_status,
+    download_benchmark,
+    list_benchmarks,
+)
 from moteval.results import EvaluationResult, iter_csv_rows, to_json_dict
 
 _DEFAULT_METRICS = "hota,clear,identity,count"
@@ -52,7 +59,73 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--out-csv", type=Path, help="write long-form CSV results")
     run.add_argument("--out-json", type=Path, help="write JSON results")
     run.set_defaults(handler=_run)
+
+    data = subcommands.add_parser("data", help="manage benchmark ground truth")
+    data.add_argument("--root", dest="data_root", type=Path, help="managed benchmark root")
+    data_commands = data.add_subparsers(dest="data_command", required=True)
+
+    data_list = data_commands.add_parser("list", help="list managed benchmarks")
+    _add_data_root_override(data_list)
+    data_list.set_defaults(handler=_data_list)
+
+    data_status = data_commands.add_parser("status", help="check benchmark data layouts")
+    _add_data_root_override(data_status)
+    data_status.set_defaults(handler=_data_status)
+
+    data_download = data_commands.add_parser("download", help="download benchmark data")
+    data_download.add_argument("benchmark", help="benchmark name")
+    _add_data_root_override(data_download)
+    data_download.set_defaults(handler=_data_download)
     return parser
+
+
+def _add_data_root_override(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--root",
+        dest="subcommand_data_root",
+        type=Path,
+        help="managed benchmark root",
+    )
+
+
+def _data_root(args: argparse.Namespace) -> Path:
+    if args.subcommand_data_root is not None:
+        return args.subcommand_data_root
+    if args.data_root is not None:
+        return args.data_root
+    if "MOTEVAL_DATA_ROOT" not in os.environ:
+        return DEFAULT_DATA_ROOT
+    raw_root = os.environ["MOTEVAL_DATA_ROOT"]
+    if not raw_root.strip():
+        raise ValueError("MOTEVAL_DATA_ROOT must not be empty")
+    return Path(raw_root)
+
+
+def _data_list(args: argparse.Namespace) -> int:
+    _data_root(args)
+    print("benchmark     availability")
+    for benchmark in list_benchmarks():
+        print(f"{benchmark.name:<13} {benchmark.availability}")
+    return 0
+
+
+def _data_status(args: argparse.Namespace) -> int:
+    root = _data_root(args)
+    print("benchmark     status    path")
+    for benchmark in benchmark_status(root):
+        path = "-" if benchmark.path is None else str(benchmark.path)
+        print(f"{benchmark.name:<13} {benchmark.state:<9} {path}")
+    return 0
+
+
+def _data_download(args: argparse.Namespace) -> int:
+    root = _data_root(args)
+    destination = download_benchmark(args.benchmark, root)
+    if args.benchmark == "toy":
+        print("toy is bundled; no download required")
+    else:
+        print(f"downloaded {args.benchmark} to {destination}")
+    return 0
 
 
 def _resolve_metrics(raw_names: str) -> list[Metric]:
