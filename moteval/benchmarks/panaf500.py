@@ -52,7 +52,9 @@ def _load_sequence(ann_path: Path) -> GtSequence:
                     class_id=_CLASS_ID,
                 )
             )
-    num_timesteps = max((a["frame_id"] for a in data["annotations"]), default=0)
+    if not data["annotations"]:
+        raise ValueError(f"cannot derive sequence length for empty gt: {ann_path.stem!r}")
+    num_timesteps = max(a["frame_id"] for a in data["annotations"])
     return GtSequence(name=ann_path.stem, num_timesteps=num_timesteps, tracks=tuple(tracks))
 
 

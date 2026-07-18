@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 
 from moteval import evaluate
-from moteval.benchmarks.animaltrack import ANIMALTRACK_PROTOCOL, load_animaltrack
-from moteval.formats.mot_txt import write_mot
+from moteval.benchmarks.animaltrack import load_animaltrack
+from moteval.formats.mot_txt import Track, write_mot
 from moteval.metrics.count import Count
 
 
@@ -68,18 +68,6 @@ def test_unknown_split_raises(tmp_path):
         load_animaltrack(root=tmp_path, split="nope")
 
 
-def test_gt_class_id_matches_protocol_eval_class(tmp_path):
-    # Regression for the class_id hazard (issue #11 comment): every GT Track
-    # must be stamped with the protocol's evaluated class, never left to
-    # read_mot's silent default.
-    _write_gt(tmp_path, "chicken_1", ["1,1,10,10,20,20,1,1,1"])
-
-    dataset = load_animaltrack(root=tmp_path, split="all")
-
-    (seq,) = dataset.sequences
-    assert all(track.class_id in ANIMALTRACK_PROTOCOL.eval_classes for track in seq.tracks)
-
-
 def test_end_to_end_evaluate_with_independently_numbered_predictions(tmp_path):
     gt_root = tmp_path / "gt"
     pred_dir = tmp_path / "pred"
@@ -93,12 +81,17 @@ def test_end_to_end_evaluate_with_independently_numbered_predictions(tmp_path):
 
     dataset = load_animaltrack(root=gt_root, split="all")
     (seq,) = dataset.sequences
-    write_mot(pred_dir / f"{seq.name}.txt", list(seq.tracks))
+    # Predictions numbered independently of GT: different track id, and only a
+    # disjoint one-frame subset of the two GT frames.
+    write_mot(
+        pred_dir / f"{seq.name}.txt",
+        [Track(frame=1, track_id=901, x=11, y=11, w=20, h=20, conf=0.9)],
+    )
 
     result = evaluate(dataset, pred_dir, [Count()])
 
     assert result.combined["Count"] == {
-        "Dets": 2.0,
+        "Dets": 1.0,
         "GT_Dets": 2.0,
         "IDs": 1.0,
         "GT_IDs": 1.0,

@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 
 from moteval import evaluate
-from moteval.benchmarks.panaf500 import PANAF500_PROTOCOL, _xyxy_to_xywh, load_panaf500
-from moteval.formats.mot_txt import write_mot
+from moteval.benchmarks.panaf500 import _CLASS_ID, _xyxy_to_xywh, load_panaf500
+from moteval.formats.mot_txt import Track, write_mot
 from moteval.metrics.count import Count
 
 
@@ -55,7 +55,7 @@ def test_gt_boxes_converted_from_xyxy_to_xywh(tmp_path):
 
 def test_sequence_discovery_sorted_by_video_id(tmp_path):
     for video_id in ("vid2", "vid0", "vid1"):
-        _write_ann(tmp_path, "train", video_id, [])
+        _write_ann(tmp_path, "train", video_id, [{"frame_id": 1, "detections": []}])
 
     dataset = load_panaf500(root=tmp_path, split="train")
 
@@ -67,9 +67,20 @@ def test_missing_split_dir_raises(tmp_path):
         load_panaf500(root=tmp_path, split="validation")
 
 
-def test_gt_class_id_matches_protocol_eval_class(tmp_path):
+def test_empty_annotations_raises_on_seq_length_derivation(tmp_path):
+    # Consistent with BFT/AnimalTrack/GMOT-40: no frame-count source other than
+    # the annotations themselves, so an empty video raises loudly rather than
+    # silently defaulting to num_timesteps=0.
+    _write_ann(tmp_path, "validation", "vid1", [])
+
+    with pytest.raises(ValueError, match="empty gt"):
+        load_panaf500(root=tmp_path, split="validation")
+
+
+def test_gt_class_id_matches_module_declared_constant(tmp_path):
     # Regression for the class_id hazard (issue #11 comment): this loader
-    # never touches read_mot, so every Track must be stamped explicitly.
+    # never touches read_mot, so every Track must be stamped explicitly with
+    # the module's declared class rather than left to the dataclass default.
     _write_ann(
         tmp_path,
         "validation",
@@ -80,7 +91,7 @@ def test_gt_class_id_matches_protocol_eval_class(tmp_path):
     dataset = load_panaf500(root=tmp_path, split="validation")
 
     (seq,) = dataset.sequences
-    assert all(track.class_id in PANAF500_PROTOCOL.eval_classes for track in seq.tracks)
+    assert all(track.class_id == _CLASS_ID for track in seq.tracks)
 
 
 def test_end_to_end_evaluate_with_independently_numbered_predictions(tmp_path):
@@ -100,12 +111,17 @@ def test_end_to_end_evaluate_with_independently_numbered_predictions(tmp_path):
 
     dataset = load_panaf500(root=gt_root, split="validation")
     (seq,) = dataset.sequences
-    write_mot(pred_dir / f"{seq.name}.txt", list(seq.tracks))
+    # Predictions numbered independently of GT: different track id, and only a
+    # disjoint one-frame subset of the two GT frames.
+    write_mot(
+        pred_dir / f"{seq.name}.txt",
+        [Track(frame=1, track_id=900, x=11, y=21, w=50, h=100, conf=0.9)],
+    )
 
     result = evaluate(dataset, pred_dir, [Count()])
 
     assert result.combined["Count"] == {
-        "Dets": 2.0,
+        "Dets": 1.0,
         "GT_Dets": 2.0,
         "IDs": 1.0,
         "GT_IDs": 1.0,

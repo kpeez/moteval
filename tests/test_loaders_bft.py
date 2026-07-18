@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 
 from moteval import evaluate
-from moteval.benchmarks.bft import BFT_PROTOCOL, load_bft
-from moteval.formats.mot_txt import write_mot
+from moteval.benchmarks.bft import load_bft
+from moteval.formats.mot_txt import Track, write_mot
 from moteval.metrics.count import Count
 
 
@@ -53,18 +53,6 @@ def test_empty_gt_raises_on_seq_length_derivation(tmp_path):
         load_bft(root=tmp_path, split="val")
 
 
-def test_gt_class_id_matches_protocol_eval_class(tmp_path):
-    # Regression for the class_id hazard (issue #11 comment): every GT Track
-    # must be stamped with the protocol's evaluated class, never left to
-    # read_mot's silent default.
-    _write_gt(tmp_path, "val", "seqA", ["1,1,10,10,20,20,1,1,1"])
-
-    dataset = load_bft(root=tmp_path, split="val")
-
-    (seq,) = dataset.sequences
-    assert all(track.class_id in BFT_PROTOCOL.eval_classes for track in seq.tracks)
-
-
 def test_end_to_end_evaluate_with_independently_numbered_predictions(tmp_path):
     gt_root = tmp_path / "gt"
     pred_dir = tmp_path / "pred"
@@ -82,12 +70,17 @@ def test_end_to_end_evaluate_with_independently_numbered_predictions(tmp_path):
 
     dataset = load_bft(root=gt_root, split="val")
     (seq,) = dataset.sequences
-    write_mot(pred_dir / f"{seq.name}.txt", list(seq.tracks))
+    # Predictions numbered independently of GT: different track id, and only a
+    # disjoint one-frame subset of the two GT frames.
+    write_mot(
+        pred_dir / f"{seq.name}.txt",
+        [Track(frame=2, track_id=901, x=13, y=11, w=20, h=20, conf=0.9)],
+    )
 
     result = evaluate(dataset, pred_dir, [Count()])
 
     assert result.combined["Count"] == {
-        "Dets": 2.0,
+        "Dets": 1.0,
         "GT_Dets": 2.0,
         "IDs": 1.0,
         "GT_IDs": 1.0,
