@@ -47,6 +47,56 @@ detection-weighted average).
   class-averaged combiner still matches the oracle exactly; only det-averaged diverges. See
   `moteval/metrics/track_map.py`'s `combine_classes_det_averaged` for the exact formula.
 
+## Custom datasets
+
+Register a zero-argument loader that converts any source format into the public data model.
+The protocol declares preprocessing such as evaluated and distractor classes; predictions
+remain MOTChallenge `<sequence>.txt` files.
+
+```python
+import json
+from pathlib import Path
+
+import moteval
+
+annotations = Path("ground_truth.json")
+convention = moteval.FrameConvention(name="1-indexed", first_frame=1)
+protocol = moteval.Protocol(
+    name="my-json",
+    frame_convention=convention,
+    eval_classes=(1,),
+    distractor_classes=(2,),
+)
+
+
+@moteval.register_dataset("my-json")
+def load_my_json() -> moteval.MOTDataset:
+    rows = json.loads(annotations.read_text())
+    tracks = tuple(
+        moteval.Track(
+            frame=row["frame"],
+            track_id=row["id"],
+            x=row["box"][0],
+            y=row["box"][1],
+            w=row["box"][2],
+            h=row["box"][3],
+            conf=1.0,
+            class_id=row["class_id"],
+        )
+        for row in rows
+    )
+    sequence = moteval.GtSequence(name="video-1", num_timesteps=100, tracks=tracks)
+    return moteval.MOTDataset("my-json", "validation", (sequence,), protocol)
+
+
+dataset = moteval.load_dataset("my-json")
+result = moteval.evaluate(
+    dataset,
+    "predictions/",
+    [moteval.HOTA(), moteval.CLEAR(), moteval.Identity(), moteval.Count()],
+)
+```
+
 ## Install & develop
 
 Requires Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/).

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from moteval.benchmarks.base import register_dataset
 from moteval.benchmarks.motchallenge import MOTChallengeConfig, load_motchallenge
-from moteval.data.model import FrameConvention, MOTDataset
+from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
 
 DANCETRACK_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
@@ -20,7 +20,7 @@ DANCETRACK_CONFIG = MOTChallengeConfig(
 )
 
 
-def load_dancetrack(root: str | Path | None = None, split: str = "val") -> MOTDataset:
+def load_dancetrack(root: str | Path | None = None, split: str = "val") -> MOTDataset[GtSequence]:
     return load_motchallenge(DANCETRACK_CONFIG, root=root, split=split)
 
 

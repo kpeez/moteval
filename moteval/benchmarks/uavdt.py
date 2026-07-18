@@ -37,7 +37,7 @@ from moteval.benchmarks.motchallenge import (
     load_motchallenge,
     max_frame_seq_length,
 )
-from moteval.data.model import FrameConvention, MOTDataset
+from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
 from moteval.formats.mot_txt import Track
 
@@ -85,7 +85,7 @@ UAVDT_CONFIG = MOTChallengeConfig(
 )
 
 
-def load_uavdt(root: str | Path | None = None, split: str = "all") -> MOTDataset:
+def load_uavdt(root: str | Path | None = None, split: str = "all") -> MOTDataset[GtSequence]:
     return load_motchallenge(UAVDT_CONFIG, root=root, split=split)
 
 
