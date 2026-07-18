@@ -114,6 +114,8 @@ class CLEAR(Metric):
         res["Frag"] = float(np.sum(gt_frag_count[gt_frag_count > 0] - 1))
         res["CLR_Frames"] = float(data.num_timesteps)
 
+        # Upstream also assigns MOTP here before _compute_final_fields recomputes it;
+        # that first assignment is redundant, so it is deliberately omitted.
         return self._compute_final_fields(res)
 
     def combine_sequences(self, all_res: dict[str, Scores]) -> Scores:
@@ -124,7 +126,8 @@ class CLEAR(Metric):
         return self.combine_sequences(all_res)
 
     def combine_classes_class_averaged(self, all_res: dict[str, Scores]) -> Scores:
-        # Upstream's `ignore_empty_classes` parameter is deliberately unsupported here;
+        # Upstream's `ignore_empty_classes` parameter is deliberately unsupported here
+        # (safe: upstream's evaluator only ever calls this with its default False);
         # this always averages over every class in `all_res`. Note float fields (which
         # includes MOTP_sum) are averaged here, not recomputed from summed counts.
         res: Scores = {}
