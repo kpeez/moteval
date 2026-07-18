@@ -32,14 +32,17 @@ def _write_clip(root: Path, clip: str, labels: dict) -> None:
 
 
 def test_interpolation_matches_hand_derived_fixture(tmp_path):
-    # Two keyframes 10 frames apart (blocks 0 and 1), one track moving by
-    # (100, 50) in x/y; w/h held constant. Values hand-computed: at frame
-    # `f` (0 <= f <= 10), x = 100 * f/10, y = 50 * f/10.
+    # Three keyframes (blocks 0, 1, 2); block 2 exists only so block 1 is not
+    # the clip's terminal keyframe, keeping frames 0-10 pure interpolation,
+    # untouched by the trailing hold-tail (tested separately below). Track
+    # moves by (100, 50) in x/y between blocks 0 and 1; values hand-computed:
+    # at frame f (0 <= f <= 10), x = 100 * f/10, y = 50 * f/10.
     labels = {
-        "images": [_coco_image(0, 0), _coco_image(1, 1)],
+        "images": [_coco_image(0, 0), _coco_image(1, 1), _coco_image(2, 2)],
         "annotations": [
             _coco_ann(0, 0, 5, [0.0, 0.0, 20.0, 30.0]),
             _coco_ann(1, 1, 5, [100.0, 50.0, 20.0, 30.0]),
+            _coco_ann(2, 2, 5, [100.0, 50.0, 20.0, 30.0]),
         ],
     }
     _write_clip(tmp_path, "clip-a", labels)
@@ -47,7 +50,7 @@ def test_interpolation_matches_hand_derived_fixture(tmp_path):
     dataset = load_chimpact(root=tmp_path, split="train")
     (seq,) = dataset.sequences
 
-    by_frame = {t.frame: t for t in seq.tracks}
+    by_frame = {t.frame: t for t in seq.tracks if t.frame <= 10}
     assert set(by_frame) == set(range(11))
     for frame in range(11):
         t = frame / 10
@@ -60,7 +63,7 @@ def test_interpolation_matches_hand_derived_fixture(tmp_path):
     # Fractional intermediate frames are the interesting hand-checked cases.
     assert (by_frame[3].x, by_frame[3].y) == pytest.approx((30.0, 15.0))
     assert (by_frame[7].x, by_frame[7].y) == pytest.approx((70.0, 35.0))
-    assert seq.num_timesteps == 11
+    assert seq.num_timesteps == 30
 
 
 def test_bbox_id_23_is_dropped(tmp_path):
@@ -89,20 +92,46 @@ def test_frame_zero_contributes(tmp_path):
     dataset = load_chimpact(root=tmp_path, split="train")
     (seq,) = dataset.sequences
 
-    assert seq.num_timesteps == 1
-    assert [t.frame for t in seq.tracks] == [0]
+    assert 0 in {t.frame for t in seq.tracks}
+    frame_zero = next(t for t in seq.tracks if t.frame == 0)
+    assert (frame_zero.x, frame_zero.y, frame_zero.w, frame_zero.h) == (1.0, 2.0, 3.0, 4.0)
 
     data = build_sequence_data(seq, seq.tracks, dataset.protocol, _CLASS_ID)
-    # Frame 0 is the first (and only) timestep here -- the silent-drop bug
-    # this rewrite exists to kill would have discarded it.
+    # Frame 0 is the first timestep -- the silent-drop bug this rewrite
+    # exists to kill would have discarded it.
     assert data.gt_ids[0].shape[0] == 1
-    assert data.num_gt_dets == 1
 
 
-def test_birth_death_boundaries_no_extrapolation(tmp_path):
-    # Track 5 lives in blocks 0 and 1 (dies before block 2); track 7 is born
-    # at block 1 and lives through block 2. Neither gets interior rows
-    # outside the interval where it is present in *both* endpoints.
+def test_hold_last_box_when_track_has_no_match_in_next_keyframe(tmp_path):
+    # Ported from legacy track-zoo's test_missing_next_keyframe_holds_last_box
+    # (issue #12 decision: replicate legacy hold semantics exactly, for
+    # comparability with published baselines). A single keyframe block for
+    # the whole clip holds its box constant through all 9 interior frames
+    # that follow it -- there is no next block to interpolate toward.
+    labels = {
+        "images": [_coco_image(0, 0)],
+        "annotations": [_coco_ann(0, 0, 0, [5.0, 5.0, 10.0, 10.0])],
+    }
+    _write_clip(tmp_path, "clip-hold", labels)
+
+    dataset = load_chimpact(root=tmp_path, split="train")
+    (seq,) = dataset.sequences
+
+    assert seq.num_timesteps == 10
+    assert {t.frame for t in seq.tracks} == set(range(10))
+    assert all((t.x, t.y, t.w, t.h) == (5.0, 5.0, 10.0, 10.0) for t in seq.tracks)
+    assert all(t.track_id == 0 for t in seq.tracks)
+
+
+def test_birth_death_boundaries(tmp_path):
+    # Track 5 lives at blocks 0 and 1, then dies (absent from block 2, which
+    # exists with a different track). Legacy holds a dead track's box for
+    # exactly the one block of interior frames following its last keyframe,
+    # then emits nothing further -- it does not retroactively reappear once
+    # an unrelated later block exists. Track 7 is born at block 1 (no rows
+    # before its first keyframe), survives into block 2 (interpolates), and
+    # -- block 2 being the clip's terminal keyframe -- holds through the
+    # clip's derived tail too.
     labels = {
         "images": [_coco_image(0, 0), _coco_image(1, 1), _coco_image(2, 2)],
         "annotations": [
@@ -117,15 +146,24 @@ def test_birth_death_boundaries_no_extrapolation(tmp_path):
     dataset = load_chimpact(root=tmp_path, split="train")
     (seq,) = dataset.sequences
 
+    assert seq.num_timesteps == 30
+
     track5_frames = sorted(t.frame for t in seq.tracks if t.track_id == 5)
     # Present at both block 0 (frame 0) and block 1 (frame 10): interior
-    # frames 1-9 interpolate. Dies at block 1->2 boundary: no rows 11-19.
-    assert track5_frames == list(range(0, 11))
+    # frames 1-9 interpolate. Absent from block 2: holds through block 1's
+    # own interior (frames 11-19, using block 1's box unchanged), then
+    # nothing from frame 20 onward.
+    assert track5_frames == list(range(0, 20))
+    held = [t for t in seq.tracks if t.track_id == 5 and 11 <= t.frame <= 19]
+    assert all((t.x, t.y, t.w, t.h) == (10.0, 10.0, 10.0, 10.0) for t in held)
 
     track7_frames = sorted(t.frame for t in seq.tracks if t.track_id == 7)
-    # Born at block 1 (frame 10): no rows before it. Present at block 2
-    # (frame 20) too, so interior frames 11-19 interpolate.
-    assert track7_frames == list(range(10, 21))
+    # Born at block 1 (frame 10): no rows before it. Interpolates into block
+    # 2 (frames 11-19), then holds through the clip's tail (frames 21-29)
+    # since block 2 has no successor.
+    assert track7_frames == list(range(10, 30))
+    tail = [t for t in seq.tracks if t.track_id == 7 and 21 <= t.frame <= 29]
+    assert all((t.x, t.y, t.w, t.h) == (10.0, 10.0, 5.0, 5.0) for t in tail)
 
 
 def test_gt_class_id_matches_declared_constant_not_raw_coco_category(tmp_path):
@@ -169,8 +207,9 @@ def test_end_to_end_evaluate_with_independently_numbered_predictions(tmp_path):
     dataset = load_chimpact(root=gt_root, split="train")
     (seq,) = dataset.sequences
     # Predictions numbered independently of GT: different track id, and only
-    # a disjoint one-frame subset of the eleven GT frames (frame 0, not the
-    # rest of the interpolated span).
+    # a disjoint one-frame subset of the twenty GT frames (frame 0, not the
+    # rest of the interpolated/held span -- block 1 is this clip's terminal
+    # keyframe, so it holds through frames 11-19 too).
     write_mot(
         pred_dir / f"{seq.name}.txt",
         [Track(frame=0, track_id=900, x=11, y=21, w=60, h=120, conf=0.9, class_id=_CLASS_ID)],
@@ -180,7 +219,7 @@ def test_end_to_end_evaluate_with_independently_numbered_predictions(tmp_path):
 
     assert result.combined["Count"] == {
         "Dets": 1.0,
-        "GT_Dets": 11.0,
+        "GT_Dets": 20.0,
         "IDs": 1.0,
         "GT_IDs": 1.0,
     }
