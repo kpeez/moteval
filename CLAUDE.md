@@ -62,15 +62,21 @@ MOTS-txt) · `moteval/metrics/` (base ABC + hota/clear/identity/count/jf/track_m
   data skip loudly when absent (DanceTrack val is required for the final parity gate, issue #20).
 - Golden fixture oracles come from track-zoo git history: `git show f48f449:<path>` in
   <https://github.com/kpeez/track-zoo>.
-- GMOT-40 and ChimpACT are natively 0-indexed. GMOT-40's loader keeps raw 0-indexed frame
-  numbers and declares `FrameConvention(first_frame=0)` (ADR-0002: frame-indexing is a
+- GMOT-40 and ChimpACT are natively 0-indexed. Both loaders keep raw 0-indexed frame
+  numbers and declare `FrameConvention(first_frame=0)` (ADR-0002: frame-indexing is a
   declared loader parameter, not a load-time rewrite) rather than shifting like the legacy
-  loader did; ChimpACT (#12) still needs to decide whether to declare or shift.
+  loader did.
 - BFT, AnimalTrack, and GMOT-40 have no `seqinfo.ini` source, so their loaders derive
   `num_timesteps` from the last annotated frame instead. This undercounts a sequence with no
   GT in its final frames — harmless for metrics (empty trailing frames contribute nothing)
   but predictions past the last annotated frame raise the frame-out-of-range error.
 - UAVDT ignore regions (`<seq>_gt_ignore.txt`) must be honored — the legacy loader ignored
   them; that was a protocol gap, not a decision.
+- Never spawn `uv run …` from inside a test that is itself running under `uv run pytest`:
+  the nested invocation deadlocks on uv's project lock. CLI tests call the installed
+  `.venv/bin/moteval` entry point directly.
+- Upstream fills below-threshold Hungarian scores with 0 on the box path but -10000 on the
+  MOTS path (tie-break-relevant); this is the declared `Protocol.matching_fill` (ADR-0004).
+  J&F's decay bins cast to uint8 and wrap past 255 frames — replicated, don't fix (ADR-0005).
 - Out of scope (ADR-0003): tracker orchestration, SAM3 prompts, VEval/SA-FARI, plots, VACE,
   ID-Euclidean. Don't add them.
