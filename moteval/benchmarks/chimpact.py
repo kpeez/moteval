@@ -14,19 +14,30 @@ directory, so ``_VAL_CLIPS``/``_TEST_CLIPS`` (copied verbatim from the official
 ``tools/create_coco_format.py``, ShirleyMaxx/ChimpACT@master) are the split
 partition; anything else falls into ``train``.
 
-Interpolation reproduces the official create_coco_format.py pipeline: for a
-track present in both of two consecutive keyframe blocks, the 9 interior
-frames are linearly interpolated between its two keyframe boxes. Unlike the
-legacy track-zoo loader, a track missing from the next keyframe (a birth/death
-boundary) gets no interior rows beyond its own directly-annotated keyframe
-frame, rather than holding its last box constant into frames that were never
-observed. ``bbox_id == 23`` is the official MOT converter's unnamed catch-all
-track and is dropped wherever it appears.
+Interpolation/hold semantics replicate legacy track-zoo exactly (issue #12
+decision, logged on the issue): the spec's Goal requires ChimpACT numbers to
+stay comparable to arXiv:2511.02591's published baselines, which were
+computed with the legacy loader, so where a "cleaner" rule would diverge from
+legacy output, legacy wins. Reproducing the official create_coco_format.py /
+create_mot_reid_dataset.py pipeline: for a track present in both of two
+consecutive keyframe blocks, the 9 interior frames are linearly interpolated
+between its two keyframe boxes; for a track with no match in the next
+keyframe block (dies mid-clip, or the next block doesn't exist at all), its
+last keyframe box is held constant through that one block's 9 interior
+frames -- it does not extrapolate further than that, and does not
+retroactively reappear if a later, unrelated block exists. ``bbox_id == 23``
+is the official MOT converter's unnamed catch-all track and is dropped
+wherever it appears.
 
 The JSON carries no explicit video-length field -- its keys are ``info``,
 ``licenses``, ``categories``, ``images``, ``annotations``, with no ``videos``
 entry -- so, consistent with BFT/AnimalTrack/GMOT-40, ``num_timesteps`` is
-derived from the last keyframe block: ``max_block * 10 + 1``.
+derived from the last keyframe block. Unlike those loaders' `+1` (stopping
+exactly at the last annotated frame), this is `(max_block + 1) * 10`: room
+for the last keyframe's own 9-frame hold-tail is required for the hold
+behavior above to ever produce output there, and it matches every
+round-length real clip exactly (e.g. `clip_9000_10000`'s 100 keyframe blocks
+derive `num_timesteps=1000`, its true length).
 """
 
 import json
@@ -144,12 +155,16 @@ def _clip_tracks(labels: dict) -> tuple[Track, ...]:
         next_by_id = {o["bbox_id"]: o for o in blocks.get(block + 1, ())}
         for obj in objs:
             match = next_by_id.get(obj["bbox_id"])
-            if match is None:
-                continue  # track dies at this keyframe: no interior rows past it
             for offset in range(1, _KEYFRAME_STRIDE):
-                x, y, w, h = _interpolated_box(
-                    obj["bbox"], match["bbox"], offset / _KEYFRAME_STRIDE
-                )
+                if match is not None:
+                    x, y, w, h = _interpolated_box(
+                        obj["bbox"], match["bbox"], offset / _KEYFRAME_STRIDE
+                    )
+                else:
+                    # No match in the next block (track dies here, or there is
+                    # no next block at all): hold this keyframe's box constant
+                    # rather than extrapolating any further, matching legacy.
+                    x, y, w, h = obj["bbox"]
                 tracks.append(
                     Track(
                         frame=frame + offset,
@@ -169,7 +184,7 @@ def _num_timesteps(labels: dict, clip_name: str) -> int:
     if not labels["images"]:
         raise ValueError(f"cannot derive sequence length for empty gt: {clip_name!r}")
     max_block = max(_keyframe_block(img) for img in labels["images"])
-    return max_block * _KEYFRAME_STRIDE + 1
+    return (max_block + 1) * _KEYFRAME_STRIDE
 
 
 def _load_clip(label_path: Path) -> GtSequence:
