@@ -14,11 +14,13 @@ from moteval.data.convert import build_sequence_data
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset, SequenceData
 from moteval.formats.mot_txt import read_mot
 from moteval.metrics.base import Metric, Scores
+from moteval.metrics.clear import CLEAR
 from moteval.metrics.count import Count
 from moteval.metrics.hota import HOTA
 from moteval.results import EvaluationResult, MetricScores
 
 __all__ = [
+    "CLEAR",
     "HOTA",
     "Count",
     "EvaluationResult",
