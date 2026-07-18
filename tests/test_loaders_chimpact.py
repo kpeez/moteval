@@ -166,6 +166,75 @@ def test_birth_death_boundaries(tmp_path):
     assert all((t.x, t.y, t.w, t.h) == (10.0, 10.0, 5.0, 5.0) for t in tail)
 
 
+def test_missing_intervening_keyframe_block_yields_zero_rows_for_that_window(tmp_path):
+    # Ported from legacy's test_frame_with_no_keyframe_block_has_no_gt_rows,
+    # but with the missing block sandwiched between two real keyframes
+    # rather than at the clip's end: block 1 has no image entry at all (not
+    # even an empty one), so frames 10-19 get zero GT rows for any track,
+    # regardless of which tracks are alive on either side of the gap.
+    labels = {
+        "images": [_coco_image(0, 0), _coco_image(2, 2)],
+        "annotations": [
+            _coco_ann(0, 0, 5, [1.0, 1.0, 2.0, 2.0]),
+            _coco_ann(1, 2, 9, [3.0, 3.0, 4.0, 4.0]),
+        ],
+    }
+    _write_clip(tmp_path, "clip-gap-block", labels)
+
+    dataset = load_chimpact(root=tmp_path, split="train")
+    (seq,) = dataset.sequences
+
+    assert seq.num_timesteps == 30
+    assert {t.frame for t in seq.tracks}.isdisjoint(range(10, 20))
+
+    # Track 5 (block 0) holds through its own interior (frames 1-9) since
+    # block 1 doesn't exist to interpolate toward.
+    track5 = [t for t in seq.tracks if t.track_id == 5]
+    assert sorted(t.frame for t in track5) == list(range(0, 10))
+    assert all((t.x, t.y, t.w, t.h) == (1.0, 1.0, 2.0, 2.0) for t in track5)
+
+    # Track 9 (block 2, the clip's terminal keyframe) is emitted fresh at
+    # frame 20 with no connection back across the gap, then holds its own
+    # tail (frames 21-29).
+    track9 = [t for t in seq.tracks if t.track_id == 9]
+    assert sorted(t.frame for t in track9) == list(range(20, 30))
+    assert all((t.x, t.y, t.w, t.h) == (3.0, 3.0, 4.0, 4.0) for t in track9)
+
+
+def test_multi_block_gap_then_reappearance_has_no_back_connection(tmp_path):
+    # Track 5 lives at block 0, is absent from blocks 1 and 2 (which exist
+    # with a different track, track 9), then reappears at block 3 with an
+    # unrelated box. Legacy holds for exactly one block after death (frames
+    # 1-9, using block 0's box), is silent through the entire multi-block gap
+    # (frames 10-29, regardless of what track 9 is doing there), then treats
+    # the reappearance as a fresh, unconnected keyframe -- no interpolation
+    # back to its old position.
+    labels = {
+        "images": [_coco_image(0, 0), _coco_image(1, 1), _coco_image(2, 2), _coco_image(3, 3)],
+        "annotations": [
+            _coco_ann(0, 0, 5, [1.0, 1.0, 2.0, 2.0]),
+            _coco_ann(1, 1, 9, [50.0, 50.0, 4.0, 4.0]),
+            _coco_ann(2, 2, 9, [55.0, 55.0, 4.0, 4.0]),
+            _coco_ann(3, 3, 5, [100.0, 100.0, 6.0, 6.0]),
+        ],
+    }
+    _write_clip(tmp_path, "clip-gap-track", labels)
+
+    dataset = load_chimpact(root=tmp_path, split="train")
+    (seq,) = dataset.sequences
+
+    assert seq.num_timesteps == 40
+
+    track5_frames = sorted(t.frame for t in seq.tracks if t.track_id == 5)
+    assert track5_frames == list(range(0, 10)) + list(range(30, 40))
+    before_gap = [t for t in seq.tracks if t.track_id == 5 and t.frame < 10]
+    assert all((t.x, t.y, t.w, t.h) == (1.0, 1.0, 2.0, 2.0) for t in before_gap)
+    after_gap = [t for t in seq.tracks if t.track_id == 5 and t.frame >= 30]
+    # Fresh keyframe at reappearance (box C), with no interpolation back to
+    # the pre-gap box (box A).
+    assert all((t.x, t.y, t.w, t.h) == (100.0, 100.0, 6.0, 6.0) for t in after_gap)
+
+
 def test_gt_class_id_matches_declared_constant_not_raw_coco_category(tmp_path):
     # Regression for the class_id hazard (issue #12 review comment): this
     # loader never touches read_mot, so every Track must be stamped

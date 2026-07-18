@@ -37,7 +37,13 @@ exactly at the last annotated frame), this is `(max_block + 1) * 10`: room
 for the last keyframe's own 9-frame hold-tail is required for the hold
 behavior above to ever produce output there, and it matches every
 round-length real clip exactly (e.g. `clip_9000_10000`'s 100 keyframe blocks
-derive `num_timesteps=1000`, its true length).
+derive `num_timesteps=1000`, its true length). For a non-round-length real
+clip (e.g. `clip_0_696`, true length 696 frames, 70 keyframe blocks 0-69),
+this derives `num_timesteps=700`, four frames past the clip's real end --
+the last keyframe's held box gets extended into 4 frames that never
+existed, up to 9 in the worst case. Harmless for the fixture tests here
+(there is no real clip to overshoot); must be revisited if ChimpACT
+real-data parity is ever added (the final parity gate is issue #20).
 """
 
 import json
