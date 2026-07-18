@@ -12,6 +12,7 @@ Predictions are numbered independently of GT (disjoint id ranges) and frames are
 from the same MOT-txt files the oracle reads, never reconstructed in memory.
 """
 
+import sys
 from pathlib import Path
 
 import motmetrics as mm
@@ -22,6 +23,14 @@ from moteval import HOTA, evaluate
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.formats.mot_txt import read_mot
 from tests.oracle.runner import run_mot_challenge
+
+# Same sys.path mechanism as tests/oracle/runner.py: makes `_trackeval` importable as
+# a top-level package for a direct check of the oracle's own HOTA combiner methods.
+_ORACLE_DIR = Path(__file__).resolve().parents[1] / "oracle"
+if str(_ORACLE_DIR) not in sys.path:
+    sys.path.insert(0, str(_ORACLE_DIR))
+
+from _trackeval.metrics import HOTA as OracleHOTA  # noqa: E402
 
 CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
 HOTA_FIELDS = HOTA().fields
@@ -205,6 +214,64 @@ def test_multi_sequence_combine(tmp_path):
         ],
     )
     _assert_hota_fields_equal(moteval_result.combined["HOTA"], oracle_scores)
+
+
+def test_combine_classes_matches_oracle(tmp_path):
+    """Class-averaged and det-averaged combiners, checked directly against the oracle.
+
+    The MOTChallenge runner only ever evaluates one class, so it can't exercise
+    ``combine_classes_class_averaged``/``combine_classes_det_averaged`` meaningfully:
+    averaging or summing over a single class is a no-op regardless of formula
+    correctness. This builds two per-sequence HOTA results with deliberately different
+    det counts via moteval's own ``eval_sequence`` (through ``evaluate``), treats them
+    as two classes, and feeds the exact same dicts to both moteval's combiners and the
+    vendored oracle ``HOTA`` class's combiners.
+    """
+    class_a_gt = [
+        [1, 1, 10, 10, 20, 40, 1, 1, 1],
+        [2, 1, 12, 10, 20, 40, 1, 1, 1],
+    ]
+    class_a_pred = [
+        [1, 1001, 10, 10, 20, 40, 1],
+        [2, 1001, 12, 10, 20, 40, 1],
+    ]
+    class_b_gt = [
+        [1, 1, 10, 10, 20, 40, 1, 1, 1],
+        [2, 1, 12, 10, 20, 40, 1, 1, 1],
+        [3, 1, 14, 10, 20, 40, 1, 1, 1],
+        [1, 2, 100, 50, 30, 60, 1, 1, 1],
+        [2, 2, 102, 50, 30, 60, 1, 1, 1],
+        [3, 2, 104, 50, 30, 60, 1, 1, 1],
+    ]
+    class_b_pred = [
+        [1, 2001, 10, 10, 20, 40, 1],
+        [2, 2001, 12, 10, 20, 40, 1],
+        [3, 2001, 14, 10, 20, 40, 1],
+        [1, 2002, 500, 500, 10, 10, 1],
+    ]
+    moteval_result, _ = _run(
+        tmp_path,
+        [
+            ("CLASSA01", 2, class_a_gt, class_a_pred),
+            ("CLASSB01", 3, class_b_gt, class_b_pred),
+        ],
+    )
+    all_res = {
+        "class_a": moteval_result.per_sequence["CLASSA01"]["HOTA"],
+        "class_b": moteval_result.per_sequence["CLASSB01"]["HOTA"],
+    }
+
+    moteval_class_avg = HOTA().combine_classes_class_averaged(all_res)
+    moteval_det_avg = HOTA().combine_classes_det_averaged(all_res)
+    oracle_class_avg = OracleHOTA().combine_classes_class_averaged(all_res)
+    oracle_det_avg = OracleHOTA().combine_classes_det_averaged(all_res)
+
+    _assert_hota_fields_equal(moteval_class_avg, oracle_class_avg)
+    _assert_hota_fields_equal(moteval_det_avg, oracle_det_avg)
+
+    # Proves the test has teeth: with genuinely different per-class det counts, a wrong
+    # combiner formula would make class-averaged and det-averaged coincide.
+    assert not np.array_equal(moteval_class_avg["DetA"], moteval_det_avg["DetA"])
 
 
 def test_empty_gt(tmp_path):
