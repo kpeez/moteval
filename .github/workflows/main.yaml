@@ -26,7 +26,10 @@ jobs:
           install-args: "--frozen"
 
       - name: Run checks
-        run: uv run prek run --all-files
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run ty check
 
   test:
     needs: check
