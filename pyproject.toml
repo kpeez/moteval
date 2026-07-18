@@ -17,6 +17,7 @@ moteval = "moteval.cli:main"
 dev = [
     "motmetrics",
     "opencv-python-headless>=5.0.0.93",
+    "prek>=0.4.10",
     "pytest>=8",
     "ruff>=0.6",
     "scikit-image>=0.26.0",
