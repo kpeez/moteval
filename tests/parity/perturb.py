@@ -18,9 +18,9 @@ masks and fall back to their original position (or are dropped) on conflict.
 from collections import defaultdict
 
 import numpy as np
-from pycocotools import mask as mask_utils
 
 from moteval.data.model import FrameConvention
+from moteval.data.similarity import decode_mask, encode_mask, masks_overlap
 from moteval.formats.mot_txt import Track
 from moteval.formats.mots_txt import MaskTrack
 
@@ -96,17 +96,13 @@ def perturb_box_tracks(
 
 
 def _translate_rle(rle_dict: dict, dy: int, dx: int) -> dict:
-    mask = mask_utils.decode(rle_dict)
-    mask = np.roll(mask, (dy, dx), axis=(0, 1))
-    return mask_utils.encode(np.asfortranarray(mask))
+    mask = np.roll(decode_mask(rle_dict), (dy, dx), axis=(0, 1))
+    return encode_mask(mask)
 
 
 def _overlaps(rle_dict: dict, occupied: list[dict]) -> bool:
-    if not occupied:
-        return False
-    merged = mask_utils.merge(occupied, intersect=False)
-    inter = mask_utils.merge([rle_dict, merged], intersect=True)
-    return float(mask_utils.area(inter)) > 0.0
+    # occupied masks are pairwise disjoint, so any overlap involves the candidate
+    return bool(occupied) and masks_overlap([rle_dict, *occupied])
 
 
 def perturb_mask_tracks(

@@ -209,7 +209,5 @@ class JAndF(Metric):
         return res
 
     def combine_classes_det_averaged(self, all_res: dict[str, Scores]) -> Scores:
-        res: Scores = {"num_gt_tracks": self._combine_sum(all_res, "num_gt_tracks")}
-        for field in _FLOAT_FIELDS:
-            res[field] = float(np.mean([scores[field] for scores in all_res.values()]))
-        return res
+        # Upstream's two class-combine modes coincide for J&F; keep them in lockstep.
+        return self.combine_classes_class_averaged(all_res)
