@@ -131,6 +131,18 @@ class TrackMAP(Metric):
         )
         dt_scores_arr = np.asarray(dt_scores)
 
+        # Upstream's dataset loaders (TAO/YouTubeVIS/BURST) presort dt tracks by
+        # descending confidence before eval_sequence ever runs (tao.py's
+        # `get_preprocessed_seq_data`, mergesort so score ties keep their original
+        # relative order); the per-threshold greedy match below is order-dependent
+        # on IoU ties, so this ordering must match, not just the later score-based
+        # resort in `combine_sequences`.
+        dt_order = np.argsort(-dt_scores_arr, kind="mergesort")
+        dt_frames = [dt_frames[i] for i in dt_order]
+        dt_lengths = [dt_lengths[i] for i in dt_order]
+        dt_areas = [dt_areas[i] for i in dt_order]
+        dt_scores_arr = dt_scores_arr[dt_order]
+
         gt_ig_masks = _ignore_masks(num_gt, gt_lengths, gt_areas)
         dt_ig_masks = _ignore_masks(num_dt, dt_lengths, dt_areas)
 
