@@ -17,11 +17,11 @@ def _raw(gt_classes, gt_conf, similarity, pred_classes, ignore_ioa=None):
         gt_ids=np.arange(num_gt, dtype=np.int64),
         gt_classes=np.array(gt_classes, dtype=np.int64),
         gt_conf=np.array(gt_conf, dtype=np.float64),
-        gt_boxes=np.zeros((num_gt, 4)),
+        gt_dets=np.zeros((num_gt, 4)),
         pred_ids=np.arange(100, 100 + num_pred, dtype=np.int64),
         pred_classes=np.array(pred_classes, dtype=np.int64),
         pred_confidences=np.ones(num_pred),
-        pred_boxes=np.zeros((num_pred, 4)),
+        pred_dets=np.zeros((num_pred, 4)),
         similarity=np.array(similarity, dtype=np.float64).reshape(num_gt, num_pred),
         ignore_ioa=np.array(ignore_ioa, dtype=np.float64).reshape(num_pred, -1),
     )

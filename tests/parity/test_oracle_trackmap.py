@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from moteval.data.model import SequenceData
+from moteval.data.model import BoxGeometry, SequenceData
 from moteval.data.similarity import box_iou
 from moteval.metrics.track_map import IOU_THRESHOLDS, TrackMAP
 
@@ -87,8 +87,7 @@ def _build_sequence_data(
         gt_ids=gt_ids_arr,
         pred_ids=pred_ids_arr,
         pred_confidences=pred_confs_arr,
-        gt_boxes=gt_boxes_arr,
-        pred_boxes=pred_boxes_arr,
+        geometry=BoxGeometry(gt=gt_boxes_arr, pred=pred_boxes_arr),
         similarity=similarity,
     )
 

@@ -25,7 +25,7 @@ from moteval.benchmarks.motchallenge import (
     load_motchallenge,
     max_frame_seq_length,
 )
-from moteval.data.model import FrameConvention, MOTDataset
+from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
 from moteval.formats.mot_txt import Track
 
@@ -69,7 +69,7 @@ GMOT40_CONFIG = MOTChallengeConfig(
 )
 
 
-def load_gmot40(root: str | Path | None = None, split: str = "test") -> MOTDataset:
+def load_gmot40(root: str | Path | None = None, split: str = "test") -> MOTDataset[GtSequence]:
     return load_motchallenge(GMOT40_CONFIG, root=root, split=split)
 
 
