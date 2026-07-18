@@ -134,6 +134,31 @@ def test_gt_class_id_defaults_to_pedestrian(tmp_path):
     assert all(track.class_id == 1 for track in seq.tracks)
 
 
+def test_gt_class_id_explicitly_stamped_from_config(tmp_path):
+    # Non-tautological version of the check above: rows that read_mot would
+    # default to class_id=1 must come out as class_id=7 when the config says
+    # so -- this fails if `replace(t, class_id=config.class_id)` is ever
+    # dropped from `_load_sequence`.
+    _make_sequence(
+        tmp_path,
+        "val",
+        "seq-01",
+        seq_length=2,
+        rows=["1,1,10,10,20,20,1,1,1", "2,1,12,10,20,20,1,1,1"],
+    )
+    config = MOTChallengeConfig(
+        name="test-motchallenge-class7",
+        default_root=tmp_path,
+        protocol=Protocol(name="test-class7", frame_convention=_CONVENTION, eval_classes=(7,)),
+        class_id=7,
+    )
+
+    dataset = load_motchallenge(config, split="val")
+
+    (seq,) = dataset.sequences
+    assert all(track.class_id == 7 for track in seq.tracks)
+
+
 def test_id_densification_through_build_sequence_data(tmp_path):
     _make_sequence(
         tmp_path,

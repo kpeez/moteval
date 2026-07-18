@@ -7,7 +7,7 @@ from moteval import evaluate
 from moteval.benchmarks.gmot40 import GMOT40_PROTOCOL, load_gmot40
 from moteval.data.convert import build_sequence_data
 from moteval.data.model import FrameConvention, GtSequence
-from moteval.formats.mot_txt import write_mot
+from moteval.formats.mot_txt import Track, write_mot
 from moteval.metrics.count import Count
 
 _CATEGORIES = ("airplane", "ball", "bird", "car", "fish", "insect", "person", "stock")
@@ -48,18 +48,6 @@ def test_seq_length_derived_from_last_annotated_zero_indexed_frame(tmp_path):
 
     (seq,) = dataset.sequences
     assert seq.num_timesteps == 3
-
-
-def test_gt_class_id_matches_protocol_eval_class(tmp_path):
-    # Regression for the class_id hazard (issue #11 comment): every GT Track
-    # must be stamped with the protocol's evaluated class, never left to
-    # read_mot's silent default.
-    _write_gt(tmp_path, "bird-0", ["0,1,10,10,20,20,1,1,1"])
-
-    dataset = load_gmot40(root=tmp_path, split="test")
-
-    (seq,) = dataset.sequences
-    assert all(track.class_id in GMOT40_PROTOCOL.eval_classes for track in seq.tracks)
 
 
 def test_frame_zero_contributes_and_matches_one_indexed_reencoding(tmp_path):
@@ -110,12 +98,17 @@ def test_end_to_end_evaluate_with_independently_numbered_predictions(tmp_path):
 
     dataset = load_gmot40(root=gt_root, split="test")
     (seq,) = dataset.sequences
-    write_mot(pred_dir / f"{seq.name}.txt", list(seq.tracks))
+    # Predictions numbered independently of GT: different track id, and only a
+    # disjoint one-frame subset of the two GT frames (frame 0, not frame 1).
+    write_mot(
+        pred_dir / f"{seq.name}.txt",
+        [Track(frame=0, track_id=901, x=11, y=11, w=20, h=20, conf=0.9)],
+    )
 
     result = evaluate(dataset, pred_dir, [Count()])
 
     assert result.combined["Count"] == {
-        "Dets": 2.0,
+        "Dets": 1.0,
         "GT_Dets": 2.0,
         "IDs": 1.0,
         "GT_IDs": 1.0,
