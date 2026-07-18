@@ -320,8 +320,8 @@ def test_empty_gt(tmp_path):
     # IDF1/IDR/IDP are 0.0 on the empty-gt early-return path (never recomputed via
     # _compute_final_fields), and combine_sequences recomputes them from the
     # (zero IDTP, zero IDFN, one IDFP) summed counts, which yields the same 0.0 --
-    # so this doesn't distinguish the paths for this metric the way CLEAR's MLR does,
-    # but is asserted explicitly per the CLEAR-doer handoff instruction to check anyway.
+    # unlike CLEAR's MLR, the early-return quirk is unobservable after combining,
+    # so this assertion pins the per-sequence value rather than distinguishing paths.
     assert moteval_result.per_sequence["EMPTYGT01"]["Identity"]["IDF1"] == 0.0
 
 
