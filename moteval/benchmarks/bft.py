@@ -13,7 +13,11 @@ would reject predictions that fall past the last annotated frame.
 from pathlib import Path
 
 from moteval.benchmarks.base import register_dataset
-from moteval.benchmarks.motchallenge import MOTChallengeConfig, load_motchallenge
+from moteval.benchmarks.motchallenge import (
+    MOTChallengeConfig,
+    load_motchallenge,
+    max_frame_seq_length,
+)
 from moteval.data.model import FrameConvention, MOTDataset
 from moteval.data.protocol import Protocol
 from moteval.formats.mot_txt import Track
@@ -38,9 +42,7 @@ def _bft_gt_path(base: Path, split: str, seq_name: str) -> Path:
 
 
 def _bft_seq_length(base: Path, split: str, seq_name: str, tracks: tuple[Track, ...]) -> int:
-    if not tracks:
-        raise ValueError(f"cannot derive sequence length for empty gt: {seq_name!r}")
-    return max(t.frame for t in tracks)
+    return max_frame_seq_length(seq_name, tracks)
 
 
 BFT_CONFIG = MOTChallengeConfig(
