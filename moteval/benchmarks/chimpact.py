@@ -211,7 +211,7 @@ def _split_clip_names(label_dir: Path, split: str) -> list[str]:
     return [name for name in names if name not in _VAL_CLIPS and name not in _TEST_CLIPS]
 
 
-def load_chimpact(root: str | Path | None = None, split: str = "val") -> MOTDataset:
+def load_chimpact(root: str | Path | None = None, split: str = "val") -> MOTDataset[GtSequence]:
     base = Path(root) if root is not None else _DEFAULT_ROOT
     label_dir = base / "ChimpACT_release_v1" / "labels"
     if not label_dir.is_dir():

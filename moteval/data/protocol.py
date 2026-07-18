@@ -36,6 +36,10 @@ class Protocol:
     ``distractor_classes`` are matched against but never evaluated. Thresholds carry
     TrackEval's canonical ``0.5`` defaults; ``drop_zero_conf_gt`` toggles the
     zero-marked GT exclusion (off only for preproc-free benchmarks like MOT15).
+    ``matching_fill`` is the score below-threshold pairs get during the Hungarian
+    matching step: upstream's box path zeroes them while its MOTS path sets
+    ``-10000``, and the two can tie-break differently, so the value is a declared
+    protocol parameter replicated exactly.
     """
 
     name: str
@@ -45,6 +49,7 @@ class Protocol:
     distractor_iou_threshold: float = 0.5
     ignore_iou_threshold: float = 0.5
     drop_zero_conf_gt: bool = True
+    matching_fill: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -59,11 +64,11 @@ class RawFrame:
     gt_ids: np.ndarray
     gt_classes: np.ndarray
     gt_conf: np.ndarray
-    gt_boxes: np.ndarray
+    gt_dets: np.ndarray
     pred_ids: np.ndarray
     pred_classes: np.ndarray
     pred_confidences: np.ndarray
-    pred_boxes: np.ndarray
+    pred_dets: np.ndarray
     similarity: np.ndarray
     ignore_ioa: np.ndarray
 
@@ -73,10 +78,10 @@ class PreprocessedFrame:
     """One frame after preprocessing: only surviving GT + predictions remain."""
 
     gt_ids: np.ndarray
-    gt_boxes: np.ndarray
+    gt_dets: np.ndarray
     pred_ids: np.ndarray
     pred_confidences: np.ndarray
-    pred_boxes: np.ndarray
+    pred_dets: np.ndarray
     similarity: np.ndarray
 
 
@@ -85,18 +90,21 @@ def preprocess_frame(frame: RawFrame, protocol: Protocol, cls_id: int) -> Prepro
     pred_keep = np.flatnonzero(frame.pred_classes == cls_id)
     pred_ids = frame.pred_ids[pred_keep]
     pred_confidences = frame.pred_confidences[pred_keep]
-    pred_boxes = frame.pred_boxes[pred_keep]
+    pred_dets = frame.pred_dets[pred_keep]
     similarity = frame.similarity[:, pred_keep]
     ignore_ioa = frame.ignore_ioa[pred_keep]
 
     # Step 2: Hungarian-match predictions to all GT (distractors included); drop
     # predictions matched above threshold to a distractor-class GT box. The
-    # `< thr - eps` zeroing and `> 0 + eps` guard mirror TrackEval exactly.
+    # `< thr - eps` fill (0 for boxes, -10000 for MOTS) and `> 0 + eps` guard
+    # mirror TrackEval exactly.
     match_cols = np.array([], dtype=np.int64)
     to_remove_matched = np.array([], dtype=np.int64)
     if frame.gt_ids.shape[0] > 0 and pred_ids.shape[0] > 0:
         matching_scores = similarity.copy()
-        matching_scores[matching_scores < protocol.distractor_iou_threshold - _EPS] = 0
+        matching_scores[matching_scores < protocol.distractor_iou_threshold - _EPS] = (
+            protocol.matching_fill
+        )
         match_rows, match_cols = linear_sum_assignment(-matching_scores)
         actually_matched = matching_scores[match_rows, match_cols] > 0 + _EPS
         match_rows = match_rows[actually_matched]
@@ -114,7 +122,7 @@ def preprocess_frame(frame: RawFrame, protocol: Protocol, cls_id: int) -> Prepro
     to_remove = np.concatenate((to_remove_matched, to_remove_unmatched)).astype(np.int64)
     pred_ids = np.delete(pred_ids, to_remove, axis=0)
     pred_confidences = np.delete(pred_confidences, to_remove, axis=0)
-    pred_boxes = np.delete(pred_boxes, to_remove, axis=0)
+    pred_dets = np.delete(pred_dets, to_remove, axis=0)
     similarity = np.delete(similarity, to_remove, axis=1)
 
     # Step 4: keep only evaluated-class GT, excluding conf-zero rows when declared.
@@ -123,9 +131,9 @@ def preprocess_frame(frame: RawFrame, protocol: Protocol, cls_id: int) -> Prepro
         gt_keep = gt_keep & (frame.gt_conf != 0)
     return PreprocessedFrame(
         gt_ids=frame.gt_ids[gt_keep],
-        gt_boxes=frame.gt_boxes[gt_keep],
+        gt_dets=frame.gt_dets[gt_keep],
         pred_ids=pred_ids,
         pred_confidences=pred_confidences,
-        pred_boxes=pred_boxes,
+        pred_dets=pred_dets,
         similarity=similarity[gt_keep],
     )

@@ -138,7 +138,7 @@ def _load_sequence(base: Path, split: str, seq_name: str, config: MOTChallengeCo
 
 def load_motchallenge(
     config: MOTChallengeConfig, root: str | Path | None = None, split: str = "val"
-) -> MOTDataset:
+) -> MOTDataset[GtSequence]:
     """Load a MOTChallenge-layout split into a canonical `MOTDataset`."""
     base = Path(root) if root is not None else config.default_root
     seq_names = config.seq_names(base, split)

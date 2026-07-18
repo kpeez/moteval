@@ -28,7 +28,7 @@ def _linear_track(
 
 
 @register_dataset("toy")
-def load_toy() -> MOTDataset:
+def load_toy() -> MOTDataset[GtSequence]:
     seq1 = GtSequence(
         name="toy-0001",
         num_timesteps=5,

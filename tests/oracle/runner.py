@@ -12,11 +12,11 @@ _ORACLE_DIR = Path(__file__).resolve().parent
 if str(_ORACLE_DIR) not in sys.path:
     sys.path.insert(0, str(_ORACLE_DIR))
 
-from _trackeval.datasets import MotChallenge2DBox  # noqa: E402
+from _trackeval.datasets import MotChallenge2DBox, MOTSChallenge  # noqa: E402
 from _trackeval.eval import Evaluator  # noqa: E402
-from _trackeval.metrics import CLEAR, HOTA, Count, Identity  # noqa: E402
+from _trackeval.metrics import CLEAR, HOTA, Count, Identity, JAndF  # noqa: E402
 
-_METRICS = {"HOTA": HOTA, "CLEAR": CLEAR, "Identity": Identity, "Count": Count}
+_METRICS = {"HOTA": HOTA, "CLEAR": CLEAR, "Identity": Identity, "Count": Count, "JAndF": JAndF}
 
 
 def run_mot_challenge(
@@ -66,4 +66,49 @@ def run_mot_challenge(
     output_res, _ = evaluator.evaluate([dataset], metrics_list)
 
     combined = output_res["MotChallenge2DBox"][tracker]["COMBINED_SEQ"]["pedestrian"]
+    return {name: combined[name] for name in metrics}
+
+
+def run_mots_challenge(
+    gt_folder: str | Path,
+    trackers_folder: str | Path,
+    seq_lengths: dict[str, int],
+    *,
+    tracker: str = "oracle",
+    metrics: tuple[str, ...] = ("HOTA", "CLEAR", "Identity", "Count", "JAndF"),
+) -> dict[str, dict]:
+    """Evaluate a MOTS-format sequence pair through the TrackEval oracle.
+
+    Same layout contract as `run_mot_challenge` (SKIP_SPLIT_FOL):
+        {gt_folder}/{seq}/gt/gt.txt          (whitespace MOTS rows)
+        {trackers_folder}/{tracker}/data/{seq}.txt
+
+    The oracle's ``JAndF`` imports cv2 and skimage at eval time (dev-only deps).
+    Returns the ``COMBINED_SEQ`` pedestrian results per metric.
+    """
+    eval_config = {
+        "USE_PARALLEL": False,
+        "PRINT_RESULTS": False,
+        "PRINT_CONFIG": False,
+        "TIME_PROGRESS": False,
+        "OUTPUT_SUMMARY": False,
+        "OUTPUT_DETAILED": False,
+        "PLOT_CURVES": False,
+    }
+    dataset_config = {
+        "GT_FOLDER": str(gt_folder),
+        "TRACKERS_FOLDER": str(trackers_folder),
+        "SPLIT_TO_EVAL": "train",
+        "SKIP_SPLIT_FOL": True,
+        "PRINT_CONFIG": False,
+        "TRACKERS_TO_EVAL": [tracker],
+        "SEQ_INFO": dict(seq_lengths),
+    }
+    metrics_list = [_METRICS[name]({"PRINT_CONFIG": False}) for name in metrics if name != "Count"]
+
+    evaluator = Evaluator(eval_config)
+    dataset = MOTSChallenge(dataset_config)
+    output_res, _ = evaluator.evaluate([dataset], metrics_list)
+
+    combined = output_res["MOTSChallenge"][tracker]["COMBINED_SEQ"]["pedestrian"]
     return {name: combined[name] for name in metrics}
