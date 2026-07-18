@@ -35,6 +35,7 @@ from moteval.metrics.clear import CLEAR
 from moteval.metrics.count import Count
 from moteval.metrics.hota import HOTA
 from moteval.metrics.identity import Identity
+from moteval.metrics.jf import JAndF
 from moteval.metrics.track_map import TrackMAP
 from moteval.results import EvaluationResult, MetricScores
 
@@ -46,6 +47,7 @@ __all__ = [
     "FrameConvention",
     "GtSequence",
     "Identity",
+    "JAndF",
     "MOTDataset",
     "MaskGtSequence",
     "MaskTrack",
