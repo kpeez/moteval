@@ -17,6 +17,8 @@ from moteval.metrics.base import Metric, Scores
 from moteval.metrics.clear import CLEAR
 from moteval.metrics.count import Count
 from moteval.metrics.hota import HOTA
+from moteval.metrics.identity import Identity
+from moteval.metrics.track_map import TrackMAP
 from moteval.results import EvaluationResult, MetricScores
 
 __all__ = [
@@ -26,9 +28,11 @@ __all__ = [
     "EvaluationResult",
     "FrameConvention",
     "GtSequence",
+    "Identity",
     "MOTDataset",
     "Metric",
     "SequenceData",
+    "TrackMAP",
     "evaluate",
     "load_dataset",
     "register_dataset",
