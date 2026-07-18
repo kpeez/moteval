@@ -32,7 +32,7 @@ import pytest
 
 from moteval.data.model import SequenceData
 from moteval.data.similarity import box_iou
-from moteval.metrics.track_map import TrackMAP
+from moteval.metrics.track_map import IOU_THRESHOLDS, TrackMAP
 
 _ORACLE_DIR = Path(__file__).resolve().parents[1] / "oracle"
 if str(_ORACLE_DIR) not in sys.path:
@@ -274,6 +274,32 @@ def test_id_zero_hazard_fix():
     _assert_trackmap_fields_equal(moteval_scores, oracle_scores)
 
 
+def test_dt_track_order_matches_upstream_score_presort():
+    """Upstream's dataset loaders (e.g. tao.py's `get_preprocessed_seq_data`) sort dt
+    tracks by descending confidence (mergesort, so score ties keep original order)
+    BEFORE eval_sequence ever runs. The per-threshold greedy match is order-dependent
+    on IoU ties (whichever dt is considered first wins a contested gt), so `eval_sequence`
+    must presort dt tracks the same way `_oracle_data` already does for this suite's
+    oracle side, not just rely on `combine_sequences`' later global score resort (that
+    resort only reorders the *ranking* used for precision/recall, after TP/FP
+    assignment has already been fixed by the greedy match).
+
+    Fixture: one gt track, two dt tracks both perfectly overlapping it (an IoU tie), so
+    only one can match. The LOW original/densified id gets the LOW score and the HIGH
+    id gets the HIGH score -- if dt processing order followed id order instead of
+    descending score, the wrong (low-score) dt would win the match and AP_all would
+    drop to 0.5 instead of ~1.0.
+    """
+    gt_tracks: GtTracks = {5: {t: [10, 10, 20, 20] for t in range(3)}}
+    pred_tracks: PredTracks = {
+        1: {t: ([10, 10, 20, 20], 0.5) for t in range(3)},  # low score, low id
+        9: {t: ([10, 10, 20, 20], 0.9) for t in range(3)},  # high score, high id
+    }
+    moteval_scores, oracle_scores = _run({"seq": (3, gt_tracks, pred_tracks)})
+    _assert_trackmap_fields_equal(moteval_scores, oracle_scores)
+    assert moteval_scores["AP_all"][0] == pytest.approx(1.0)
+
+
 def test_combine_classes_class_averaged_matches_oracle():
     """Class-averaged combiner, checked directly against the oracle.
 
@@ -340,7 +366,13 @@ def test_combine_classes_det_averaged_hand_computed_divergence():
     moteval_det_avg = TrackMAP().combine_classes_det_averaged(all_res)
     oracle_det_avg = OracleTrackMAP().combine_classes_det_averaged(all_res)
 
-    w_a, w_b = class_a["_num_dt_all"], class_b["_num_dt_all"]
+    # Independently counted from the raw fixture (not read from combine_sequences'
+    # `_num_dt_all` output, which would make this a tautology instead of a check): the
+    # "all" label never ignores any detection (its ignore mask is all-zero, by area
+    # and time range alike), so its weight is simply each class's total pred-track
+    # count, constant across every IoU threshold.
+    w_a = np.full(len(IOU_THRESHOLDS), len(class_a_pred), dtype=float)
+    w_b = np.full(len(IOU_THRESHOLDS), len(class_b_pred), dtype=float)
     v_a, v_b = class_a["AP_all"], class_b["AP_all"]
     weight_sum = w_a + w_b
     expected_ap_all = np.where(
