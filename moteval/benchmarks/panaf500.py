@@ -58,7 +58,9 @@ def _load_sequence(ann_path: Path) -> GtSequence:
     return GtSequence(name=ann_path.stem, num_timesteps=num_timesteps, tracks=tuple(tracks))
 
 
-def load_panaf500(root: str | Path | None = None, split: str = "validation") -> MOTDataset:
+def load_panaf500(
+    root: str | Path | None = None, split: str = "validation"
+) -> MOTDataset[GtSequence]:
     base = Path(root) if root is not None else _DEFAULT_ROOT
     ann_dir = base / "annotations" / split
     if not ann_dir.is_dir():

@@ -1,10 +1,15 @@
-"""Geometry similarity. For boxes: Jaccard IoU on xywh rows.
+"""Geometry similarity. Boxes: Jaccard IoU on xywh rows. Masks: pycocotools RLE IoU.
 
-Mirrors TrackEval's box IoU (convert xywh -> corners, clamp negatives, guard the
-zero-union case to 0) so later metric ports stay numerically comparable.
+Box IoU mirrors TrackEval's (convert xywh -> corners, clamp negatives, guard the
+zero-union case to 0). Mask IoU/IoA call ``pycocotools.mask.iou`` exactly as
+TrackEval's ``_calculate_mask_ious`` does — the ``iscrowd`` flag switches the
+denominator to intersection-over-area for ignore-region tests — so metric ports
+stay numerically comparable. RLE encoding always goes through Fortran-order
+arrays, matching the pycocotools contract.
 """
 
 import numpy as np
+from pycocotools import mask as mask_utils
 
 
 def box_iou(boxes_a: np.ndarray, boxes_b: np.ndarray) -> np.ndarray:
@@ -61,3 +66,60 @@ def box_ioa(boxes_a: np.ndarray, boxes_b: np.ndarray) -> np.ndarray:
 
     area_a = (aw * ah)[:, None]
     return np.divide(inter, area_a, out=np.zeros_like(inter), where=area_a > 0.0)
+
+
+def mask_iou(masks_a: list, masks_b: list) -> np.ndarray:
+    """IoU matrix between two lists of RLE masks, shaped ``(len(a), len(b))``.
+
+    Mirrors TrackEval ``_calculate_mask_ious(..., is_encoded=True, do_ioa=False)``:
+    ``pycocotools.mask.iou`` with every ``iscrowd`` flag False, reshaping the
+    empty-input ``[]`` return to a properly-shaped zero-size array.
+    """
+    ious = mask_utils.iou(masks_a, masks_b, [False] * len(masks_b))
+    if len(masks_a) == 0 or len(masks_b) == 0:
+        ious = np.asarray(ious).reshape(len(masks_a), len(masks_b))
+    return ious
+
+
+def mask_ioa(masks_a: list, masks_b: list) -> np.ndarray:
+    """Intersection-over-area matrix, normalised by each ``masks_a`` mask's area.
+
+    Mirrors TrackEval ``_calculate_mask_ious(..., is_encoded=True, do_ioa=True)``,
+    used to test unmatched predictions against the merged crowd-ignore mask:
+    every ``masks_b`` entry carries ``iscrowd=True`` so the denominator is the
+    ``masks_a`` mask's own area.
+    """
+    ioas = mask_utils.iou(masks_a, masks_b, [True] * len(masks_b))
+    if len(masks_a) == 0 or len(masks_b) == 0:
+        ioas = np.asarray(ioas).reshape(len(masks_a), len(masks_b))
+    return ioas
+
+
+def encode_mask(mask: np.ndarray) -> dict:
+    """Encode one binary ``(h, w)`` mask as a compressed RLE dict.
+
+    pycocotools requires Fortran-contiguous uint8 input; C-order arrays are
+    converted, never rejected, so callers can pass masks built naturally in
+    C order.
+    """
+    if mask.ndim != 2:
+        raise ValueError(f"expected a single (h, w) mask, got shape {mask.shape}")
+    return mask_utils.encode(np.asfortranarray(mask.astype(np.uint8)))
+
+
+def decode_mask(rle: dict) -> np.ndarray:
+    """Decode one RLE dict back to a binary ``(h, w)`` uint8 mask."""
+    return mask_utils.decode(rle)
+
+
+def merge_masks(rles: list) -> dict:
+    """Union a list of RLE masks into one RLE (empty list -> empty mask), exactly
+    as TrackEval merges per-frame ignore regions: ``mask.merge(intersect=False)``."""
+    return mask_utils.merge(rles, intersect=False)
+
+
+def masks_overlap(rles: list) -> bool:
+    """Whether any two RLE masks in the list overlap (TrackEval rejects such input)."""
+    merged_area = mask_utils.area(mask_utils.merge(rles, intersect=False))
+    total_area = sum(mask_utils.area(rle) for rle in rles)
+    return bool(total_area > merged_area)
