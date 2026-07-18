@@ -1,0 +1,49 @@
+[project]
+name = "moteval"
+version = "0.1.0"
+description = "MOT evaluation library: a from-scratch TrackEval rewrite producing bit-identical numbers."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2",
+    "scipy>=1.11",
+    "pycocotools>=2.0.7",
+]
+
+[dependency-groups]
+dev = [
+    "motmetrics",
+    "pytest>=8",
+    "ruff>=0.6",
+    "ty>=0.0.1a1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["moteval"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/moteval", "/README.md"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["tests/oracle/_trackeval"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ty.environment]
+extra-paths = ["tests/oracle"]
+
+[tool.ty.src]
+exclude = ["tests/oracle/_trackeval"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.uv.sources]
+motmetrics = { git = "https://github.com/cheind/py-motmetrics", rev = "develop" }

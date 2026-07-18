@@ -57,12 +57,19 @@ MOTS-txt) · `moteval/metrics/` (base ABC + hota/clear/identity/count/jf/track_m
 
 ## Gotchas
 
-- `data/` is a symlink to `/data/downloads`; parity tests needing real data skip loudly when
-  absent (DanceTrack val is required for the final parity gate, issue #20).
+- `data/benchmarks` is a symlink to external storage holding one dir per dataset; `moteval
+  data download` targets `data/benchmarks/<dataset>` by default. Parity tests needing real
+  data skip loudly when absent (DanceTrack val is required for the final parity gate, issue #20).
 - Golden fixture oracles come from track-zoo git history: `git show f48f449:<path>` in
   <https://github.com/kpeez/track-zoo>.
-- GMOT-40 and ChimpACT are natively 0-indexed (loaders shift); ChimpACT GT is COCO keyframes
-  every 10th frame with linear interpolation between them, dropping `bbox_id == 23`.
+- GMOT-40 and ChimpACT are natively 0-indexed. GMOT-40's loader keeps raw 0-indexed frame
+  numbers and declares `FrameConvention(first_frame=0)` (ADR-0002: frame-indexing is a
+  declared loader parameter, not a load-time rewrite) rather than shifting like the legacy
+  loader did; ChimpACT (#12) still needs to decide whether to declare or shift.
+- BFT, AnimalTrack, and GMOT-40 have no `seqinfo.ini` source, so their loaders derive
+  `num_timesteps` from the last annotated frame instead. This undercounts a sequence with no
+  GT in its final frames — harmless for metrics (empty trailing frames contribute nothing)
+  but predictions past the last annotated frame raise the frame-out-of-range error.
 - UAVDT ignore regions (`<seq>_gt_ignore.txt`) must be honored — the legacy loader ignored
   them; that was a protocol gap, not a decision.
 - Out of scope (ADR-0003): tracker orchestration, SAM3 prompts, VEval/SA-FARI, plots, VACE,
