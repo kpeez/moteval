@@ -21,7 +21,7 @@ from moteval import CLEAR, HOTA, Count, Identity, MOTDataset, evaluate
 from moteval.benchmarks.mots20 import MOTS20_IGNORE_CLASS, MOTS20_PROTOCOL
 from moteval.data.model import MaskGtSequence
 from moteval.data.similarity import encode_mask
-from moteval.formats.mots_txt import MaskTrack, read_mots
+from moteval.formats.mots_txt import MaskTrack, read_mots, write_mots
 from moteval.metrics.jf import JAndF
 from tests.oracle.runner import run_mots_challenge
 
@@ -52,20 +52,14 @@ def _row(frame: int, track_id: int, mask: np.ndarray, class_id: int = 2) -> Mask
     )
 
 
-def _write(path: Path, rows: list[MaskTrack]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [f"{t.frame} {t.track_id} {t.class_id} {t.img_h} {t.img_w} {t.rle}" for t in rows]
-    path.write_text("\n".join(lines) + "\n" if lines else "")
-
-
 def _run_both(tmp_path: Path, sequences: list[tuple[str, int, list[MaskTrack], list[MaskTrack]]]):
     gt_sequences = []
     seq_lengths = {}
     for name, num_timesteps, gt_rows, pred_rows in sequences:
         gt_path = tmp_path / "gt" / name / "gt" / "gt.txt"
         pred_path = tmp_path / "trackers" / "oracle" / "data" / f"{name}.txt"
-        _write(gt_path, gt_rows)
-        _write(pred_path, pred_rows)
+        write_mots(gt_path, gt_rows)
+        write_mots(pred_path, pred_rows)
         rows = read_mots(gt_path)
         gt_sequences.append(
             MaskGtSequence(
