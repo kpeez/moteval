@@ -10,6 +10,7 @@ from pathlib import Path
 
 from moteval.benchmarks import animaltrack as _animaltrack  # noqa: F401  (registers animaltrack)
 from moteval.benchmarks import bft as _bft  # noqa: F401  (registers bft)
+from moteval.benchmarks import chimpact as _chimpact  # noqa: F401  (registers chimpact)
 from moteval.benchmarks import dancetrack as _dancetrack  # noqa: F401  (registers dancetrack)
 from moteval.benchmarks import gmot40 as _gmot40  # noqa: F401  (registers gmot40)
 from moteval.benchmarks import panaf500 as _panaf500  # noqa: F401  (registers panaf500)
