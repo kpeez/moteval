@@ -122,6 +122,8 @@ class HOTA(Metric):
         return self._finalize(arrays)
 
     def combine_classes_class_averaged(self, all_res: dict[str, Scores]) -> Scores:
+        # Upstream's `ignore_empty_classes` parameter is deliberately unsupported here;
+        # this always averages over every class in `all_res`.
         arrays: Arrays = {}
         for field in _INTEGER_ARRAY_FIELDS:
             arrays[field] = np.asarray(self._combine_sum(all_res, field))
