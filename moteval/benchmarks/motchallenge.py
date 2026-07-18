@@ -53,6 +53,18 @@ def _seqinfo_seq_length(base: Path, split: str, seq_name: str, tracks: tuple[Tra
     return _read_seq_length(base / split / seq_name)
 
 
+def max_frame_seq_length(seq_name: str, tracks: tuple[Track, ...], offset: int = 0) -> int:
+    """Derive ``num_timesteps`` from the last annotated frame, for benchmarks with
+    no ``seqinfo.ini`` source (BFT, AnimalTrack, GMOT-40). ``offset`` is 1 for
+    0-indexed frame conventions, where the last frame *index* needs +1 to become a
+    count. Raises loudly on empty GT since there is no other frame-count source to
+    fall back on.
+    """
+    if not tracks:
+        raise ValueError(f"cannot derive sequence length for empty gt: {seq_name!r}")
+    return max(t.frame for t in tracks) + offset
+
+
 @dataclass(frozen=True)
 class MOTChallengeConfig:
     """Per-benchmark configuration for the generic MOTChallenge adapter.
