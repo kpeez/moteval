@@ -18,6 +18,7 @@ import pytest
 
 from moteval import Identity, evaluate
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
+from moteval.data.protocol import Protocol
 from moteval.formats.mot_txt import read_mot
 from tests.oracle.runner import run_mot_challenge
 
@@ -30,6 +31,7 @@ if str(_ORACLE_DIR) not in sys.path:
 from _trackeval.metrics import Identity as OracleIdentity  # noqa: E402
 
 CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
+PROTOCOL = Protocol(name="parity", frame_convention=CONVENTION, eval_classes=(1,))
 IDENTITY_FIELDS = Identity().fields
 
 
@@ -56,7 +58,7 @@ def _run(tmp_path: Path, sequences: list[tuple[str, int, list[list], list[list]]
         seq_lengths[name] = num_timesteps
 
     dataset = MOTDataset(
-        name="synthetic", split="val", sequences=tuple(gt_sequences), frame_convention=CONVENTION
+        name="synthetic", split="val", sequences=tuple(gt_sequences), protocol=PROTOCOL
     )
     moteval_result = evaluate(dataset, tmp_path / "trackers" / "oracle" / "data", [Identity()])
     oracle_result = run_mot_challenge(

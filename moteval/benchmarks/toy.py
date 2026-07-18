@@ -7,9 +7,15 @@ read from disk so the tracer bullet stays hermetic; predictions are read from a
 
 from moteval.benchmarks.base import register_dataset
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
+from moteval.data.protocol import Protocol
 from moteval.formats.mot_txt import Track
 
 TOY_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
+TOY_PROTOCOL = Protocol(
+    name="toy",
+    frame_convention=TOY_CONVENTION,
+    eval_classes=(1,),
+)
 
 
 def _linear_track(
@@ -37,5 +43,5 @@ def load_toy() -> MOTDataset:
         name="toy",
         split="val",
         sequences=(seq1, seq2),
-        frame_convention=TOY_CONVENTION,
+        protocol=TOY_PROTOCOL,
     )
