@@ -86,7 +86,10 @@ class HOTA(Metric):
                 arrays["HOTA_FN"][a] += len(gt_ids_t) - num_matches
                 arrays["HOTA_FP"][a] += len(pred_ids_t) - num_matches
                 if num_matches > 0:
-                    arrays["LocA"][a] += similarity[alpha_match_rows, alpha_match_cols].sum()
+                    # builtin sum, not ndarray.sum(): upstream accumulates matched
+                    # similarities strictly left-to-right; numpy's pairwise summation
+                    # rounds differently once a frame has >8 matches (ULP drift).
+                    arrays["LocA"][a] += sum(similarity[alpha_match_rows, alpha_match_cols])
                     matches_counts[a][gt_ids_t[alpha_match_rows], pred_ids_t[alpha_match_cols]] += 1
 
         for a, _alpha in enumerate(ALPHAS):

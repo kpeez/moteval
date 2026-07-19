@@ -34,10 +34,18 @@ def box_iou(boxes_a: np.ndarray, boxes_b: np.ndarray) -> np.ndarray:
     iy2 = np.minimum(ay2[:, None], by2[None, :])
     inter = np.maximum(ix2 - ix1, 0.0) * np.maximum(iy2 - iy1, 0.0)
 
-    area_a = (aw * ah)[:, None]
-    area_b = (bw * bh)[None, :]
-    union = area_a + area_b - inter
-    return np.where(union > 0.0, inter / union, 0.0)
+    # areas derived from the converted corners, exactly as upstream:
+    # ((x0+w)-x0) differs from w by an ULP when x0+w rounds, and LocA's
+    # similarity sums are bit-sensitive to that difference.
+    area_a = (ax2 - ax1) * (ay2 - ay1)
+    area_b = (bx2 - bx1) * (by2 - by1)
+    union = area_a[:, None] + area_b[None, :] - inter
+    eps = np.finfo("float").eps
+    inter[area_a <= eps, :] = 0.0
+    inter[:, area_b <= eps] = 0.0
+    inter[union <= eps] = 0.0
+    union[union <= eps] = 1.0
+    return inter / union
 
 
 def box_ioa(boxes_a: np.ndarray, boxes_b: np.ndarray) -> np.ndarray:
@@ -64,8 +72,12 @@ def box_ioa(boxes_a: np.ndarray, boxes_b: np.ndarray) -> np.ndarray:
     iy2 = np.minimum(ay2[:, None], by2[None, :])
     inter = np.maximum(ix2 - ix1, 0.0) * np.maximum(iy2 - iy1, 0.0)
 
-    area_a = (aw * ah)[:, None]
-    return np.divide(inter, area_a, out=np.zeros_like(inter), where=area_a > 0.0)
+    # corner-derived area + eps guard, exactly as upstream's do_ioa branch
+    area_a = (ax2 - ax1) * (ay2 - ay1)
+    ioas = np.zeros_like(inter)
+    valid = area_a > np.finfo("float").eps
+    ioas[valid, :] = inter[valid, :] / area_a[valid][:, None]
+    return ioas
 
 
 def mask_iou(masks_a: list, masks_b: list) -> np.ndarray:

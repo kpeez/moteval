@@ -10,15 +10,18 @@ assignment on mean-over-time J only (upstream's default ``optim_type='J'``;
 its unreachable 'J&F' branch is not ported). Unlike other metrics, J&F reads
 mask geometry directly rather than precomputed similarity.
 
-Upstream dilates boundary maps with ``cv2.dilate`` + ``skimage.morphology.disk``;
-this port uses ``scipy.ndimage.binary_dilation`` with the same disk structuring
-element, which is bitwise-identical for binary inputs (verified against the
-oracle by the parity suite), so neither heavy dependency is needed at runtime.
+Upstream dilates boundary maps with ``cv2.dilate`` + ``skimage.morphology.disk``
+and intersects each boundary with the other's dilation; this port counts the
+identical matches via nearest-neighbor queries on the sparse boundary
+coordinates (a pixel is inside the disk dilation iff its nearest boundary pixel
+is within the disk radius), which is exact for integer coordinates and avoids
+both the heavy dependencies and full-frame dilation cost (seconds per frame at
+1080p). Verified against the oracle's real cv2/skimage path by the parity suite.
 """
 
 import numpy as np
 from pycocotools import mask as mask_utils
-from scipy.ndimage import binary_dilation
+from scipy.spatial import KDTree
 
 from moteval.data.model import SequenceData
 from moteval.metrics._matching import linear_sum_assignment
@@ -28,13 +31,6 @@ _EPS = float(np.finfo("float").eps)
 _BOUND_TH = 0.008
 _N_BINS = 4
 _FLOAT_FIELDS = ("J-Mean", "J-Recall", "J-Decay", "F-Mean", "F-Recall", "F-Decay", "J&F")
-
-
-def _disk(radius: float) -> np.ndarray:
-    """skimage.morphology.disk equivalent: L2 ball of the given radius."""
-    r = int(radius)
-    y, x = np.ogrid[-r : r + 1, -r : r + 1]
-    return x * x + y * y <= r * r
 
 
 def _seg2bmap(seg: np.ndarray) -> np.ndarray:
@@ -71,12 +67,6 @@ def _compute_f(gt_dets: list, pred_dets: list, pred_id: int, gt_id: int) -> np.n
 
         fg_boundary = _seg2bmap(curr_pred_mask)
         gt_boundary = _seg2bmap(curr_gt_mask)
-        structure = _disk(bound_pix)
-        fg_dil = binary_dilation(fg_boundary, structure=structure)
-        gt_dil = binary_dilation(gt_boundary, structure=structure)
-
-        gt_match = gt_boundary * fg_dil
-        fg_match = fg_boundary * gt_dil
         n_fg = np.sum(fg_boundary)
         n_gt = np.sum(gt_boundary)
 
@@ -87,8 +77,21 @@ def _compute_f(gt_dets: list, pred_dets: list, pred_id: int, gt_id: int) -> np.n
         elif n_fg == 0 and n_gt == 0:
             precision, recall = 1.0, 1.0
         else:
-            precision = np.sum(fg_match) / float(n_fg)
-            recall = np.sum(gt_match) / float(n_gt)
+            # Upstream dilates each boundary by an L2 disk of radius r=int(bound_pix)
+            # and counts the other boundary's pixels inside the dilation. A pixel is
+            # inside the dilation iff its nearest boundary pixel lies within distance
+            # r, so nearest-neighbor queries on the sparse boundary coordinates give
+            # the identical counts without materializing full-frame dilations (which
+            # cost seconds per frame at 1080p). Exact despite float distances: for
+            # integer coordinates and integer r, d <= r never misrounds because
+            # correctly-rounded sqrt preserves ordering against the representable r.
+            r = int(bound_pix)
+            fg_pts = np.argwhere(fg_boundary)
+            gt_pts = np.argwhere(gt_boundary)
+            fg_match = np.count_nonzero(KDTree(gt_pts).query(fg_pts, k=1)[0] <= r)
+            gt_match = np.count_nonzero(KDTree(fg_pts).query(gt_pts, k=1)[0] <= r)
+            precision = fg_match / float(n_fg)
+            recall = gt_match / float(n_gt)
 
         f[t] = 0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
     return f
