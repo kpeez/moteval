@@ -1,6 +1,8 @@
 # moteval.benchmarks
 
-One module per supported benchmark, plus the machinery they share.
+One module per supported benchmark, plus the machinery they share. For the user-facing
+dataset table (sources, download commands, on-disk layouts) see
+[docs/DATASETS.md](../../docs/DATASETS.md).
 
 - Each benchmark module (`dancetrack.py`, `sportsmot.py`, `mots20.py`, `bft.py`,
   `animaltrack.py`, `gmot40.py`, `chimpact.py`, `panaf500.py`, `uavdt.py`) defines a
