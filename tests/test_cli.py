@@ -12,7 +12,7 @@ import pytest
 
 from moteval import evaluate, load_dataset
 from moteval.cli import main
-from moteval.formats.mot_txt import write_mot
+from moteval.formats import write_mot
 from moteval.results import EvaluationResult
 
 

@@ -9,7 +9,7 @@ dataset registers as ``"toy"`` so in-process CLI tests can resolve it by name.
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
 from moteval.data.registry import register_dataset
-from moteval.formats.mot_txt import Track
+from moteval.formats import Track
 
 TOY_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
 TOY_PROTOCOL = Protocol(

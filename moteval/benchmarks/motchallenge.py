@@ -30,7 +30,7 @@ from pathlib import Path
 
 from moteval.data.model import GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
-from moteval.formats.mot_txt import Track, read_mot
+from moteval.formats import Track, read_mot
 
 _SEQINFO_SECTION = "Sequence"
 _SEQLENGTH_KEY = "seqLength"

@@ -21,8 +21,7 @@ import numpy as np
 
 from moteval.data.model import FrameConvention
 from moteval.data.similarity import decode_mask, encode_mask, masks_overlap
-from moteval.formats.mot_txt import Track
-from moteval.formats.mots_txt import MaskTrack
+from moteval.formats import MaskTrack, Track
 
 _BASE_ID = 1000
 _FRESH_ID = 5000

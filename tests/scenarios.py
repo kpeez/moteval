@@ -45,8 +45,7 @@ from moteval.data.model import (
 )
 from moteval.data.protocol import Protocol
 from moteval.data.similarity import box_iou, encode_mask
-from moteval.formats.mot_txt import read_mot, write_mot
-from moteval.formats.mots_txt import MaskTrack, read_mots, write_mots
+from moteval.formats import MaskTrack, read_mot, read_mots, write_mot, write_mots
 from tests.perturb import perturb_box_tracks, perturb_mask_tracks
 
 BOX_PROTOCOL = Protocol(

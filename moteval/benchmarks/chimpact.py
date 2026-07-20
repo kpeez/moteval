@@ -52,7 +52,7 @@ from pathlib import Path
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
 from moteval.data.registry import register_dataset
-from moteval.formats.mot_txt import Track
+from moteval.formats import Track
 
 _KEYFRAME_STRIDE = 10
 _UNNAMED_BBOX_ID = 23

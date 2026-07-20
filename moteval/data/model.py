@@ -10,8 +10,7 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 
 import numpy as np
 
-from moteval.formats.mot_txt import Track
-from moteval.formats.mots_txt import MaskTrack
+from moteval.formats import MaskTrack, Track
 
 if TYPE_CHECKING:
     from moteval.data.protocol import Protocol

@@ -9,7 +9,7 @@ from moteval.data.convert import build_sequence_data
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol, RawFrame, preprocess_frame
 from moteval.data.similarity import box_ioa, box_iou
-from moteval.formats.mot_txt import Track, read_mot, write_mot
+from moteval.formats import Track, read_mot, write_mot
 from moteval.metrics.count import Count
 
 CONVENTION = FrameConvention("1-indexed", 1)

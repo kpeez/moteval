@@ -27,8 +27,7 @@ from moteval.data.model import (
 )
 from moteval.data.protocol import Protocol
 from moteval.data.registry import load_dataset, register_dataset
-from moteval.formats.mot_txt import Track, read_mot
-from moteval.formats.mots_txt import MaskTrack, read_mots
+from moteval.formats import MaskTrack, Track, read_mot, read_mots
 from moteval.metrics.base import Metric, Scores
 from moteval.metrics.clear import CLEAR
 from moteval.metrics.count import Count

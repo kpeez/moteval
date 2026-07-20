@@ -23,7 +23,7 @@ from moteval.benchmarks.uavdt import UAVDT_CONFIG, UAVDT_PROTOCOL, load_uavdt
 from moteval.data.convert import build_sequence_data
 from moteval.data.model import FrameConvention, GtSequence
 from moteval.data.protocol import Protocol
-from moteval.formats.mot_txt import Track, write_mot
+from moteval.formats import Track, write_mot
 from moteval.metrics.count import Count
 
 # ------------------------------------------------------------ common matrix

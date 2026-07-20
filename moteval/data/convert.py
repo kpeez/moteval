@@ -33,8 +33,7 @@ from moteval.data.similarity import (
     masks_overlap,
     merge_masks,
 )
-from moteval.formats.mot_txt import Track
-from moteval.formats.mots_txt import MaskTrack
+from moteval.formats import MaskTrack, Track
 
 
 def _densify(ids: list[int]) -> dict[int, int]:
