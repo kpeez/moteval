@@ -19,7 +19,6 @@ note in `bft.py`), plus one since frame 0 is the first timestep.
 
 from pathlib import Path
 
-from moteval.benchmarks.base import register_dataset
 from moteval.benchmarks.motchallenge import (
     MOTChallengeConfig,
     load_motchallenge,
@@ -27,6 +26,7 @@ from moteval.benchmarks.motchallenge import (
 )
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
+from moteval.data.registry import register_dataset
 from moteval.formats.mot_txt import Track
 
 _ANIMAL_SUBSTRINGS = ("bird", "fish", "insect", "stock")

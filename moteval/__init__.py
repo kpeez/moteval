@@ -16,9 +16,7 @@ from moteval.benchmarks import gmot40 as _gmot40  # noqa: F401  (registers gmot4
 from moteval.benchmarks import mots20 as _mots20  # noqa: F401  (registers mots20)
 from moteval.benchmarks import panaf500 as _panaf500  # noqa: F401  (registers panaf500)
 from moteval.benchmarks import sportsmot as _sportsmot  # noqa: F401  (registers sportsmot)
-from moteval.benchmarks import toy as _toy  # noqa: F401  (registers the toy dataset)
 from moteval.benchmarks import uavdt as _uavdt  # noqa: F401  (registers uavdt)
-from moteval.benchmarks.base import load_dataset, register_dataset
 from moteval.data.convert import build_mask_sequence_data, build_sequence_data
 from moteval.data.model import (
     FrameConvention,
@@ -28,6 +26,7 @@ from moteval.data.model import (
     SequenceData,
 )
 from moteval.data.protocol import Protocol
+from moteval.data.registry import load_dataset, register_dataset
 from moteval.formats.mot_txt import Track, read_mot
 from moteval.formats.mots_txt import MaskTrack, read_mots
 from moteval.metrics.base import Metric, Scores

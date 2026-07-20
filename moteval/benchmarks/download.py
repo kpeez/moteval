@@ -109,7 +109,6 @@ class DownloadSpec:
     fetch_steps: tuple[FetchStep, ...]
     expected_layout: LayoutCheck
     unfetchable_reason: str | None = None
-    bundled: bool = False
 
     @property
     def fetchable(self) -> bool:
@@ -119,14 +118,14 @@ class DownloadSpec:
 @dataclass(frozen=True)
 class BenchmarkInfo:
     name: str
-    availability: Literal["fetchable", "unfetchable", "bundled"]
+    availability: Literal["fetchable", "unfetchable"]
 
 
 @dataclass(frozen=True)
 class BenchmarkState:
     name: str
-    state: Literal["present", "absent", "bundled"]
-    path: Path | None
+    state: Literal["present", "absent"]
+    path: Path
 
 
 _ANIMALTRACK_ID = "1P0oaPRruthyALztjJW8nbOegOpU_szew"
@@ -224,12 +223,6 @@ _SPEC_DECLARATIONS = (
         expected_layout=LayoutCheck(("val",), "val/<seq>/{gt/gt.txt,seqinfo.ini}"),
     ),
     DownloadSpec(
-        name="toy",
-        fetch_steps=(),
-        expected_layout=LayoutCheck((), "bundled in memory"),
-        bundled=True,
-    ),
-    DownloadSpec(
         name="uavdt",
         fetch_steps=(*_UAVDT_FILES, ZipExtraction("UAV-benchmark-MOTD_v1.0.zip")),
         expected_layout=LayoutCheck(
@@ -293,9 +286,7 @@ def list_benchmarks() -> tuple[BenchmarkInfo, ...]:
     return tuple(
         BenchmarkInfo(
             name=spec.name,
-            availability=(
-                "bundled" if spec.bundled else "fetchable" if spec.fetchable else "unfetchable"
-            ),
+            availability="fetchable" if spec.fetchable else "unfetchable",
         )
         for spec in SPECS.values()
     )
@@ -306,14 +297,8 @@ def benchmark_status(root: Path) -> tuple[BenchmarkState, ...]:
     return tuple(
         BenchmarkState(
             name=spec.name,
-            state=(
-                "bundled"
-                if spec.bundled
-                else "present"
-                if spec.expected_layout.is_present(root / spec.name)
-                else "absent"
-            ),
-            path=None if spec.bundled else root / spec.name,
+            state=("present" if spec.expected_layout.is_present(root / spec.name) else "absent"),
+            path=root / spec.name,
         )
         for spec in SPECS.values()
     )
@@ -711,8 +696,6 @@ def download_benchmark(name: str, root: Path) -> Path:
         raise _unknown_benchmark(name) from None
     if spec.unfetchable_reason is not None:
         raise RuntimeError(spec.unfetchable_reason)
-    if spec.bundled:
-        return root
     destination = root / spec.name
     destination.mkdir(parents=True, exist_ok=True)
     for step in spec.fetch_steps:

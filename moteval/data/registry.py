@@ -1,7 +1,9 @@
-"""Named registries so new datasets plug in by name."""
+"""Dataset registry: loaders keyed by name produce a `MOTDataset`."""
 
 from collections.abc import Callable
 from typing import Generic, TypeVar
+
+from moteval.data.model import MOTDataset
 
 T = TypeVar("T")
 
@@ -28,3 +30,16 @@ class Registry(Generic[T]):
 
     def names(self) -> list[str]:
         return sorted(self._entries)
+
+
+DatasetLoader = Callable[[], MOTDataset]
+
+DATASETS: Registry[DatasetLoader] = Registry("dataset")
+
+
+def register_dataset(name: str) -> Callable[[DatasetLoader], DatasetLoader]:
+    return DATASETS.register(name)
+
+
+def load_dataset(name: str) -> MOTDataset:
+    return DATASETS.get(name)()

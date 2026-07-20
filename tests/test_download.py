@@ -6,11 +6,7 @@ from pathlib import Path
 
 import pytest
 
-import moteval.download as download
-
-_marker_config = getattr(pytest.mark, "_config", None)
-if _marker_config is not None:
-    _marker_config.addinivalue_line("markers", "network: opt-in test that downloads real data")
+import moteval.benchmarks.download as download
 
 
 def _write_zip(path: Path, files: dict[str, str]) -> None:

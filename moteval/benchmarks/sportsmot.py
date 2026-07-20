@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from moteval.benchmarks.base import register_dataset
 from moteval.benchmarks.motchallenge import MOTChallengeConfig, load_motchallenge
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
+from moteval.data.registry import register_dataset
 
 SPORTSMOT_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
 SPORTSMOT_PROTOCOL = Protocol(
