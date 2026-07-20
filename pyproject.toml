@@ -15,12 +15,9 @@ moteval = "moteval.cli:main"
 
 [dependency-groups]
 dev = [
-    "motmetrics",
-    "opencv-python-headless>=5.0.0.93",
     "prek>=0.4.10",
     "pytest>=8",
     "ruff>=0.6",
-    "scikit-image>=0.26.0",
     "ty>=0.0.1a1",
 ]
 
@@ -37,19 +34,14 @@ include = ["/moteval", "/README.md"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-extend-exclude = ["tests/oracle/_trackeval"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
-[tool.ty.environment]
-extra-paths = ["tests/oracle"]
-
-[tool.ty.src]
-exclude = ["tests/oracle/_trackeval"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-[tool.uv.sources]
-motmetrics = { git = "https://github.com/cheind/py-motmetrics", rev = "develop" }
+addopts = "-m 'not real_data'"
+markers = [
+    "network: opt-in test that downloads real data",
+    "real_data: slow real-data parity gate; run with `just test-real`",
+]
