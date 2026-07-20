@@ -9,3 +9,6 @@ check:
 
 test:
     uv run pytest
+
+test-real:
+    uv run pytest -m real_data

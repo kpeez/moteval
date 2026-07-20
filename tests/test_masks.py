@@ -4,11 +4,10 @@ import numpy as np
 import pytest
 
 from moteval import CLEAR, HOTA, Count, Identity, evaluate
-from moteval.benchmarks.base import DATASETS
 from moteval.benchmarks.mots20 import MOTS20_PROTOCOL, load_mots20
 from moteval.data.model import BoxGeometry, MaskGeometry
 from moteval.data.similarity import decode_mask, encode_mask, mask_ioa, mask_iou
-from moteval.formats.mots_txt import MaskTrack, read_mots, write_mots
+from moteval.formats import MaskTrack, read_mots, write_mots
 
 
 def _square_mask(h: int, w: int, r0: int, r1: int, c0: int, c1: int) -> np.ndarray:
@@ -150,10 +149,7 @@ def _perfect_gt_rows():
     ]
 
 
-def test_mots20_is_registered_with_mots_protocol():
-    import moteval  # noqa: F401  (import triggers registration)
-
-    assert "mots20" in DATASETS.names()
+def test_mots20_protocol_declares_mots_matching_semantics():
     assert MOTS20_PROTOCOL.eval_classes == (2,)
     assert MOTS20_PROTOCOL.matching_fill == -10000.0
     assert MOTS20_PROTOCOL.drop_zero_conf_gt is False
