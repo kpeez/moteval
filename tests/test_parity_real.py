@@ -101,7 +101,7 @@ def test_real_data_parity_mots20_mask_sequence(tmp_path):
 
 def test_perturbation_is_seeded_and_independently_numbered():
     from moteval.data.model import FrameConvention
-    from moteval.formats.mot_txt import Track
+    from moteval.formats import Track
 
     convention = FrameConvention(name="1-indexed", first_frame=1)
     gt = tuple(

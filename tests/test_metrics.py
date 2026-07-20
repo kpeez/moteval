@@ -19,7 +19,7 @@ import numpy as np
 
 from moteval import CLEAR, HOTA, Count, Identity, MOTDataset, Protocol, evaluate
 from moteval.data.model import FrameConvention, GtSequence
-from moteval.formats.mot_txt import Track, write_mot
+from moteval.formats import Track, write_mot
 
 GOLDEN_PROTOCOL = Protocol(
     name="golden",

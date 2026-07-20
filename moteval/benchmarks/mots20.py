@@ -19,7 +19,7 @@ from moteval.benchmarks.motchallenge import _read_seq_length
 from moteval.data.model import FrameConvention, MaskGtSequence, MOTDataset
 from moteval.data.protocol import Protocol
 from moteval.data.registry import register_dataset
-from moteval.formats.mots_txt import read_mots
+from moteval.formats import read_mots
 
 MOTS20_IGNORE_CLASS = 10
 MOTS20_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)

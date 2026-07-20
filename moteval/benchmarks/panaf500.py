@@ -16,7 +16,7 @@ from pathlib import Path
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
 from moteval.data.registry import register_dataset
-from moteval.formats.mot_txt import Track
+from moteval.formats import Track
 
 PANAF500_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
 PANAF500_PROTOCOL = Protocol(

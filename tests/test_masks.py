@@ -7,7 +7,7 @@ from moteval import CLEAR, HOTA, Count, Identity, evaluate
 from moteval.benchmarks.mots20 import MOTS20_PROTOCOL, load_mots20
 from moteval.data.model import BoxGeometry, MaskGeometry
 from moteval.data.similarity import decode_mask, encode_mask, mask_ioa, mask_iou
-from moteval.formats.mots_txt import MaskTrack, read_mots, write_mots
+from moteval.formats import MaskTrack, read_mots, write_mots
 
 
 def _square_mask(h: int, w: int, r0: int, r1: int, c0: int, c1: int) -> np.ndarray:

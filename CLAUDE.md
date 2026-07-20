@@ -28,7 +28,7 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
 
 - `moteval/data/` — model, convert, similarity, protocol, registry (`registry.py` holds
   `Registry`/`register_dataset`/`load_dataset`)
-- `moteval/formats/` — `mot_txt`, `mots_txt`
+- `moteval/formats.py` — MOT box rows (`Track`) and MOTS mask rows (`MaskTrack`)
 - `moteval/metrics/` — base ABC + hota/clear/identity/count/jf/track_map
 - `moteval/benchmarks/` — one loader module per benchmark, plus `download.py`; see that
   directory's `README.md` for loader conventions
