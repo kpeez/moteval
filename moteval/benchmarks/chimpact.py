@@ -49,10 +49,10 @@ real-data parity is ever added (the final parity gate is issue #20).
 import json
 from pathlib import Path
 
-from moteval.benchmarks.base import register_dataset
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
-from moteval.formats.mot_txt import Track
+from moteval.data.registry import register_dataset
+from moteval.formats import Track
 
 _KEYFRAME_STRIDE = 10
 _UNNAMED_BBOX_ID = 23

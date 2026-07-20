@@ -12,13 +12,13 @@ from typing import cast
 import numpy as np
 
 from moteval import CLEAR, HOTA, Count, Identity, JAndF, Metric, MOTDataset, TrackMAP, evaluate
-from moteval.benchmarks.base import DATASETS
-from moteval.download import (
+from moteval.benchmarks.download import (
     DEFAULT_DATA_ROOT,
     benchmark_status,
     download_benchmark,
     list_benchmarks,
 )
+from moteval.data.registry import DATASETS
 from moteval.results import EvaluationResult, iter_csv_rows, to_json_dict
 
 _DEFAULT_METRICS = "hota,clear,identity,count"
@@ -113,18 +113,14 @@ def _data_status(args: argparse.Namespace) -> int:
     root = _data_root(args)
     print("benchmark     status    path")
     for benchmark in benchmark_status(root):
-        path = "-" if benchmark.path is None else str(benchmark.path)
-        print(f"{benchmark.name:<13} {benchmark.state:<9} {path}")
+        print(f"{benchmark.name:<13} {benchmark.state:<9} {benchmark.path}")
     return 0
 
 
 def _data_download(args: argparse.Namespace) -> int:
     root = _data_root(args)
     destination = download_benchmark(args.benchmark, root)
-    if args.benchmark == "toy":
-        print("toy is bundled; no download required")
-    else:
-        print(f"downloaded {args.benchmark} to {destination}")
+    print(f"downloaded {args.benchmark} to {destination}")
     return 0
 
 

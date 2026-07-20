@@ -31,7 +31,6 @@ exist", so absence is treated as no regions to honor.
 
 from pathlib import Path
 
-from moteval.benchmarks.base import register_dataset
 from moteval.benchmarks.motchallenge import (
     MOTChallengeConfig,
     load_motchallenge,
@@ -39,7 +38,8 @@ from moteval.benchmarks.motchallenge import (
 )
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
-from moteval.formats.mot_txt import Track
+from moteval.data.registry import register_dataset
+from moteval.formats import Track
 
 UAVDT_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
 UAVDT_PROTOCOL = Protocol(

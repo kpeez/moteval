@@ -26,6 +26,7 @@ numbers — published results stay comparable — and modernizes everything else
 - **Built-in benchmarks**: DanceTrack, SportsMOT, BFT, AnimalTrack, GMOT-40, ChimpACT,
   UAVDT (ignore regions honored), PanAf500, plus a generic MOTChallenge-format adapter and
   MOTS-txt mask support. Custom datasets register a loader + protocol — no core edits.
+  Sources, download commands, and on-disk layouts: [docs/DATASETS.md](docs/DATASETS.md).
 - **API-first**: `evaluate(dataset, predictions, metrics)` returns typed per-sequence and
   combined results. CLI wraps it: `moteval run --dataset dancetrack --split val --pred <dir>`
   (console table + CSV/JSON), `moteval data download|list|status` for managed dataset roots.
