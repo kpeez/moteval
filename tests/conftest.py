@@ -1,13 +1,14 @@
-"""Bundled toy benchmark: two tiny 1-indexed MOTChallenge sequences, in memory.
+"""Shared test fixtures: the in-memory toy dataset.
 
-Two tracks per sequence over five frames. Ground truth is generated rather than
-read from disk so the tracer bullet stays hermetic; predictions are read from a
-`<seq>.txt` directory by `evaluate`.
+Two tiny 1-indexed MOTChallenge-style sequences, two tracks each over five
+frames. Ground truth is generated in memory so tests stay hermetic;
+predictions are read from a ``<seq>.txt`` directory by ``evaluate``. The
+dataset registers as ``"toy"`` so in-process CLI tests can resolve it by name.
 """
 
-from moteval.benchmarks.base import register_dataset
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
+from moteval.data.registry import register_dataset
 from moteval.formats.mot_txt import Track
 
 TOY_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
