@@ -34,18 +34,26 @@ class Identity(Metric):
 
         num_gt_ids = data.num_gt_ids
         num_pred_ids = data.num_pred_ids
-        potential_matches_count = np.zeros((num_gt_ids, num_pred_ids))
-        gt_id_count = np.zeros(num_gt_ids)
-        pred_id_count = np.zeros(num_pred_ids)
 
-        for gt_ids_t, pred_ids_t, similarity in zip(
-            data.gt_ids, data.pred_ids, data.similarity, strict=True
-        ):
-            matches_mask = similarity >= THRESHOLD
-            match_idx_gt, match_idx_pred = np.nonzero(matches_mask)
-            potential_matches_count[gt_ids_t[match_idx_gt], pred_ids_t[match_idx_pred]] += 1
-            gt_id_count[gt_ids_t] += 1
-            pred_id_count[pred_ids_t] += 1
+        # Every accumulator here is an integer frame count, so bincount over
+        # collected flat indices is bit-identical to per-frame scatter-adds.
+        match_flat_indices = [
+            (gt_ids_t[:, np.newaxis] * num_pred_ids + pred_ids_t[np.newaxis, :])[
+                similarity >= THRESHOLD
+            ]
+            for gt_ids_t, pred_ids_t, similarity in zip(
+                data.gt_ids, data.pred_ids, data.similarity, strict=True
+            )
+        ]
+        potential_matches_count = (
+            np.bincount(np.concatenate(match_flat_indices), minlength=num_gt_ids * num_pred_ids)
+            .reshape(num_gt_ids, num_pred_ids)
+            .astype(float)
+        )
+        gt_id_count = np.bincount(np.concatenate(data.gt_ids), minlength=num_gt_ids).astype(float)
+        pred_id_count = np.bincount(np.concatenate(data.pred_ids), minlength=num_pred_ids).astype(
+            float
+        )
 
         fp_mat = np.zeros((num_gt_ids + num_pred_ids, num_gt_ids + num_pred_ids))
         fn_mat = np.zeros((num_gt_ids + num_pred_ids, num_gt_ids + num_pred_ids))
