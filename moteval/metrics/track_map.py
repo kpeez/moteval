@@ -104,6 +104,82 @@ def _track_iou(dt_frames: dict[int, np.ndarray], gt_frames: dict[int, np.ndarray
     return intersect / union if union > 0 else 0.0
 
 
+def _union_set_order_is_ascending(
+    dt_frames: dict[int, np.ndarray], gt_frames: dict[int, np.ndarray]
+) -> bool:
+    frames = np.fromiter(set(gt_frames) | set(dt_frames), dtype=np.int64)
+    return bool(np.all(frames[1:] > frames[:-1]))
+
+
+def _track_iou_matrix(
+    data: SequenceData,
+    dt_frames: list[dict[int, np.ndarray]],
+    gt_frames: list[dict[int, np.ndarray]],
+) -> np.ndarray:
+    """Pairwise track IoU, vectorized frame-major; float-exact vs `_track_iou`.
+
+    `_track_iou` accumulates intersection/union sequentially over the pair's
+    `set(gt) | set(dt)` frame union. Here each pair's per-frame contribution
+    terms are computed elementwise with the same IEEE expressions, then reduced
+    with `np.add.accumulate` — a strict left-to-right scan in ascending frame
+    order, where absent frames contribute exactly 0.0 (an exact no-op). That
+    matches the scalar loop bit-for-bit whenever the union set iterates in
+    ascending order; pairs where it does not (sparse tracks whose frame numbers
+    wrap the set's hash table) fall back to `_track_iou`. Zero-intersection
+    pairs are exactly 0.0 under any summation order and never need the guard.
+    """
+    num_dt, num_gt, num_t = len(dt_frames), len(gt_frames), data.num_timesteps
+    ious = np.zeros((num_dt, num_gt))
+    if num_dt == 0 or num_gt == 0:
+        return ious
+
+    def densify(frames: list[dict[int, np.ndarray]]) -> tuple[np.ndarray, np.ndarray]:
+        boxes = np.zeros((num_t, len(frames), 4))
+        present = np.zeros((num_t, len(frames)), dtype=bool)
+        for track_id, per_frame in enumerate(frames):
+            for t, box in per_frame.items():
+                boxes[t, track_id] = box
+                present[t, track_id] = True
+        return boxes, present
+
+    gt_boxes, gt_present = densify(gt_frames)
+    dt_boxes, dt_present = densify(dt_frames)
+    gt_area = gt_boxes[:, :, 2] * gt_boxes[:, :, 3]
+
+    for i in range(num_dt):
+        d = dt_boxes[:, i, :]
+        d_here = dt_present[:, i]
+        w = np.maximum(
+            np.minimum(d[:, 0:1] + d[:, 2:3], gt_boxes[:, :, 0] + gt_boxes[:, :, 2])
+            - np.maximum(d[:, 0:1], gt_boxes[:, :, 0]),
+            0.0,
+        )
+        h = np.maximum(
+            np.minimum(d[:, 1:2] + d[:, 3:4], gt_boxes[:, :, 1] + gt_boxes[:, :, 3])
+            - np.maximum(d[:, 1:2], gt_boxes[:, :, 1]),
+            0.0,
+        )
+        inter = w * h
+        d_area = (d[:, 2] * d[:, 3])[:, np.newaxis]
+        both = gt_present & d_here[:, np.newaxis]
+        union_terms = np.where(
+            both,
+            d_area + gt_area - inter,
+            np.where(gt_present, gt_area, np.where(d_here[:, np.newaxis], d_area, 0.0)),
+        )
+        inter_terms = np.where(both, inter, 0.0)
+        union = np.add.accumulate(union_terms, axis=0)[-1]
+        intersect = np.add.accumulate(inter_terms, axis=0)[-1]
+        row = np.zeros(num_gt)
+        positive = union > 0
+        np.divide(intersect, union, out=row, where=positive)
+        for j in np.flatnonzero(intersect > 0):
+            if not _union_set_order_is_ascending(dt_frames[i], gt_frames[j]):
+                row[j] = _track_iou(dt_frames[i], gt_frames[j])
+        ious[i] = row
+    return ious
+
+
 def _ignore_masks(num_ids: int, lengths: list[int], areas: list[float]) -> list[np.ndarray]:
     masks = [np.zeros(num_ids, dtype=int)]
     for lo, hi in AREA_RANGES:
@@ -146,10 +222,7 @@ class TrackMAP(Metric):
         gt_ig_masks = _ignore_masks(num_gt, gt_lengths, gt_areas)
         dt_ig_masks = _ignore_masks(num_dt, dt_lengths, dt_areas)
 
-        ious = np.zeros((num_dt, num_gt))
-        for i in range(num_dt):
-            for j in range(num_gt):
-                ious[i, j] = _track_iou(dt_frames[i], gt_frames[j])
+        ious = _track_iou_matrix(data, dt_frames, gt_frames)
 
         num_thrs = len(IOU_THRESHOLDS)
         scores: Scores = {_DT_SCORES: dt_scores_arr}
