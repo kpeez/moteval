@@ -53,45 +53,71 @@ def _seg2bmap(seg: np.ndarray) -> np.ndarray:
     return b
 
 
-def _compute_f(gt_dets: list, pred_dets: list, pred_id: int, gt_id: int) -> np.ndarray:
+def _boundary_points(rle: dict) -> np.ndarray:
+    """`np.argwhere(_seg2bmap(decode(rle)))`, computed on the mask's bbox crop.
+
+    `_seg2bmap` boundaries sit on mask pixels or one pixel to their top/left,
+    so a 1px top/left margin captures them all; the clamped 1px bottom/right
+    margin makes the crop's last row/col coincide with the frame's whenever the
+    bbox touches the frame edge, so `_seg2bmap`'s edge fixups are unchanged.
+    Rows/cols outside the crop can never hold boundary pixels (all-False
+    neighborhoods). Point sets verified identical to the full-frame path over
+    every mask of the MOTS20 parity workload, including frame-edge masks.
+    """
+    height, width = rle["size"]
+    x, y, bw, bh = mask_utils.toBbox(rle).astype(int)
+    r0, c0 = max(0, y - 1), max(0, x - 1)
+    r1, c1 = min(height, y + bh + 1), min(width, x + bw + 1)
+    boundary = _seg2bmap(mask_utils.decode(rle)[r0:r1, c0:c1])
+    return np.argwhere(boundary) + (r0, c0)
+
+
+def _compute_f(
+    gt_dets: list,
+    pred_dets: list,
+    pred_id: int,
+    gt_id: int,
+    gt_areas: list[np.ndarray],
+    pred_areas: list[np.ndarray],
+) -> np.ndarray:
     f = np.zeros(len(gt_dets))
     for t, (gt_masks, pred_masks) in enumerate(zip(gt_dets, pred_dets, strict=True)):
-        curr_pred_mask = mask_utils.decode(pred_masks[pred_id])
-        curr_gt_mask = mask_utils.decode(gt_masks[gt_id])
+        # A mask's `_seg2bmap` boundary is empty iff its area is 0 (no pixels)
+        # or H*W (full frame: every transition-free row/col plus the edge
+        # fixups yields no boundary). Both cases are decided from the RLE area
+        # without decoding, and produce the same precision/recall the original
+        # empty-boundary branches assigned.
+        height, width = pred_masks[pred_id]["size"]
+        full_area = height * width
+        fg_nonempty = 0 < pred_areas[t][pred_id] < full_area
+        gt_nonempty = 0 < gt_areas[t][gt_id] < full_area
+        if not fg_nonempty and not gt_nonempty:
+            f[t] = 1.0  # precision = recall = 1
+            continue
+        if not fg_nonempty or not gt_nonempty:
+            f[t] = 0.0  # one of precision/recall is 0, the other 1
+            continue
 
         bound_pix = (
             _BOUND_TH
             if _BOUND_TH >= 1 - _EPS
-            else np.ceil(_BOUND_TH * np.linalg.norm(curr_pred_mask.shape))
+            else np.ceil(_BOUND_TH * np.linalg.norm((height, width)))
         )
-
-        fg_boundary = _seg2bmap(curr_pred_mask)
-        gt_boundary = _seg2bmap(curr_gt_mask)
-        n_fg = np.sum(fg_boundary)
-        n_gt = np.sum(gt_boundary)
-
-        if n_fg == 0 and n_gt > 0:
-            precision, recall = 1.0, 0.0
-        elif n_fg > 0 and n_gt == 0:
-            precision, recall = 0.0, 1.0
-        elif n_fg == 0 and n_gt == 0:
-            precision, recall = 1.0, 1.0
-        else:
-            # Upstream dilates each boundary by an L2 disk of radius r=int(bound_pix)
-            # and counts the other boundary's pixels inside the dilation. A pixel is
-            # inside the dilation iff its nearest boundary pixel lies within distance
-            # r, so nearest-neighbor queries on the sparse boundary coordinates give
-            # the identical counts without materializing full-frame dilations (which
-            # cost seconds per frame at 1080p). Exact despite float distances: for
-            # integer coordinates and integer r, d <= r never misrounds because
-            # correctly-rounded sqrt preserves ordering against the representable r.
-            r = int(bound_pix)
-            fg_pts = np.argwhere(fg_boundary)
-            gt_pts = np.argwhere(gt_boundary)
-            fg_match = np.count_nonzero(KDTree(gt_pts).query(fg_pts, k=1)[0] <= r)
-            gt_match = np.count_nonzero(KDTree(fg_pts).query(gt_pts, k=1)[0] <= r)
-            precision = fg_match / float(n_fg)
-            recall = gt_match / float(n_gt)
+        # Upstream dilates each boundary by an L2 disk of radius r=int(bound_pix)
+        # and counts the other boundary's pixels inside the dilation. A pixel is
+        # inside the dilation iff its nearest boundary pixel lies within distance
+        # r, so nearest-neighbor queries on the sparse boundary coordinates give
+        # the identical counts without materializing full-frame dilations (which
+        # cost seconds per frame at 1080p). Exact despite float distances: for
+        # integer coordinates and integer r, d <= r never misrounds because
+        # correctly-rounded sqrt preserves ordering against the representable r.
+        r = int(bound_pix)
+        fg_pts = _boundary_points(pred_masks[pred_id])
+        gt_pts = _boundary_points(gt_masks[gt_id])
+        fg_match = np.count_nonzero(KDTree(gt_pts).query(fg_pts, k=1)[0] <= r)
+        gt_match = np.count_nonzero(KDTree(fg_pts).query(gt_pts, k=1)[0] <= r)
+        precision = fg_match / float(len(fg_pts))
+        recall = gt_match / float(len(gt_pts))
 
         f[t] = 0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
     return f
@@ -157,6 +183,10 @@ class JAndF(Metric):
 
         j = _compute_j(gt_dets, pred_dets, num_gt_ids, num_pred_ids, num_timesteps)
 
+        # RLE-side per-frame areas for _compute_f's empty-boundary fast path
+        gt_areas = [mask_utils.area(dets) for dets in gt_dets]
+        pred_areas = [mask_utils.area(dets) for dets in pred_dets]
+
         # assignment on mean-over-time J (upstream default optim_type='J');
         # F is computed only for assigned pairs
         optim_metrics = np.mean(j, axis=2)
@@ -164,7 +194,7 @@ class JAndF(Metric):
         j_m = j[row_ind, col_ind, :]
         f_m = np.zeros_like(j_m)
         for i, (pred_ind, gt_ind) in enumerate(zip(row_ind, col_ind, strict=True)):
-            f_m[i] = _compute_f(gt_dets, pred_dets, pred_ind, gt_ind)
+            f_m[i] = _compute_f(gt_dets, pred_dets, pred_ind, gt_ind, gt_areas, pred_areas)
 
         # append zero rows for unmatched GT tracks (false negatives)
         if j_m.shape[0] < data.num_gt_ids:

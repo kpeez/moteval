@@ -71,11 +71,14 @@ class CLEAR(Metric):
                 gt_id_count[gt_ids_t] += 1
                 continue
 
-            score_mat = (
+            continues_prev_pairing = (
                 pred_ids_t[np.newaxis, :] == prev_timestep_tracker_id[gt_ids_t[:, np.newaxis]]
             )
-            score_mat = 1000 * score_mat + similarity
-            score_mat[similarity < THRESHOLD - EPS] = 0
+            score_mat = np.where(
+                similarity < THRESHOLD - EPS,
+                0.0,
+                1000 * continues_prev_pairing + similarity,
+            )
 
             match_rows, match_cols = linear_sum_assignment(-score_mat)
             actually_matched_mask = score_mat[match_rows, match_cols] > 0 + EPS
@@ -89,7 +92,7 @@ class CLEAR(Metric):
             is_idsw = (~np.isnan(prev_matched_tracker_ids)) & (
                 matched_pred_ids != prev_matched_tracker_ids
             )
-            res["IDSW"] += np.sum(is_idsw)
+            res["IDSW"] += is_idsw.sum()
 
             gt_id_count[gt_ids_t] += 1
             gt_matched_count[matched_gt_ids] += 1
