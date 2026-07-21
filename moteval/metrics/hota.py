@@ -46,20 +46,26 @@ class HOTA(Metric):
         for gt_ids_t, pred_ids_t, similarity in zip(
             data.gt_ids, data.pred_ids, data.similarity, strict=True
         ):
-            sim_iou_denom = (
-                similarity.sum(0)[np.newaxis, :] + similarity.sum(1)[:, np.newaxis] - similarity
-            )
-            sim_iou = np.zeros_like(similarity)
-            sim_iou_mask = sim_iou_denom > 0 + EPS
-            sim_iou[sim_iou_mask] = similarity[sim_iou_mask] / sim_iou_denom[sim_iou_mask]
-            potential_matches_count[gt_ids_t[:, np.newaxis], pred_ids_t[np.newaxis, :]] += sim_iou
+            if len(gt_ids_t) > 0 and len(pred_ids_t) > 0:
+                sim_iou_denom = (
+                    similarity.sum(0)[np.newaxis, :] + similarity.sum(1)[:, np.newaxis] - similarity
+                )
+                sim_iou = np.zeros_like(similarity)
+                sim_iou_mask = sim_iou_denom > 0 + EPS
+                sim_iou[sim_iou_mask] = similarity[sim_iou_mask] / sim_iou_denom[sim_iou_mask]
+                potential_matches_count[gt_ids_t[:, np.newaxis], pred_ids_t[np.newaxis, :]] += (
+                    sim_iou
+                )
             gt_id_count[gt_ids_t] += 1
             pred_id_count[0, pred_ids_t] += 1
 
         global_alignment_score = potential_matches_count / (
             gt_id_count + pred_id_count - potential_matches_count
         )
-        matches_counts = [np.zeros_like(potential_matches_count) for _ in ALPHAS]
+
+        num_gt_ids, num_pred_ids = data.num_gt_ids, data.num_pred_ids
+        alpha_thresholds = ALPHAS - EPS
+        match_flat_indices: list[np.ndarray] = []
 
         for gt_ids_t, pred_ids_t, similarity in zip(
             data.gt_ids, data.pred_ids, data.similarity, strict=True
@@ -77,23 +83,37 @@ class HOTA(Metric):
             )
             match_rows, match_cols = linear_sum_assignment(-score_mat)
 
-            for a, alpha in enumerate(ALPHAS):
-                actually_matched_mask = similarity[match_rows, match_cols] >= alpha - EPS
-                alpha_match_rows = match_rows[actually_matched_mask]
-                alpha_match_cols = match_cols[actually_matched_mask]
-                num_matches = len(alpha_match_rows)
-                arrays["HOTA_TP"][a] += num_matches
-                arrays["HOTA_FN"][a] += len(gt_ids_t) - num_matches
-                arrays["HOTA_FP"][a] += len(pred_ids_t) - num_matches
-                if num_matches > 0:
-                    # builtin sum, not ndarray.sum(): upstream accumulates matched
-                    # similarities strictly left-to-right; numpy's pairwise summation
-                    # rounds differently once a frame has >8 matches (ULP drift).
-                    arrays["LocA"][a] += sum(similarity[alpha_match_rows, alpha_match_cols])
-                    matches_counts[a][gt_ids_t[alpha_match_rows], pred_ids_t[alpha_match_cols]] += 1
+            # Vectorized across the 19 alphas; every quantity below is either an
+            # order-independent integer count or (LocA) a strict left-to-right
+            # float scan identical to upstream's accumulation.
+            matched_sims = similarity[match_rows, match_cols]
+            matched = matched_sims[:, np.newaxis] >= alpha_thresholds[np.newaxis, :]
+            num_matches = matched.sum(0)
+            arrays["HOTA_TP"] += num_matches
+            arrays["HOTA_FN"] += len(gt_ids_t) - num_matches
+            arrays["HOTA_FP"] += len(pred_ids_t) - num_matches
+            if len(matched_sims) > 0:
+                # np.add.accumulate is a single-accumulator left-to-right scan
+                # (upstream uses builtin sum, never ndarray.sum's 8-way pairwise
+                # unroll); masked-out entries add exactly 0.0, an exact no-op.
+                arrays["LocA"] += np.add.accumulate(
+                    np.where(matched, matched_sims[:, np.newaxis], 0.0), axis=0
+                )[-1]
+                pair_flat = gt_ids_t[match_rows] * num_pred_ids + pred_ids_t[match_cols]
+                pair_idx, alpha_idx = np.nonzero(matched)
+                match_flat_indices.append(
+                    alpha_idx * (num_gt_ids * num_pred_ids) + pair_flat[pair_idx]
+                )
+
+        matches_counts = np.bincount(
+            np.concatenate(match_flat_indices)
+            if match_flat_indices
+            else np.empty(0, dtype=np.int64),
+            minlength=len(ALPHAS) * num_gt_ids * num_pred_ids,
+        ).reshape(len(ALPHAS), num_gt_ids, num_pred_ids)
 
         for a, _alpha in enumerate(ALPHAS):
-            matches_count = matches_counts[a]
+            matches_count = matches_counts[a].astype(float)
             ass_a = matches_count / np.maximum(1, gt_id_count + pred_id_count - matches_count)
             arrays["AssA"][a] = np.sum(matches_count * ass_a) / np.maximum(1, arrays["HOTA_TP"][a])
             ass_re = matches_count / np.maximum(1, gt_id_count)
