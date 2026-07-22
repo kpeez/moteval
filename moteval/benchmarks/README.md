@@ -9,8 +9,8 @@ dataset table (sources, download commands, on-disk layouts) see
   loader that reads the on-disk ground truth into a `MOTDataset` and registers it by
   name via `moteval.data.registry.register_dataset`. `motchallenge.py` holds the shared
   MOTChallenge-layout reader that several loaders build on.
-- `download.py` declares where each benchmark's data comes from (`SPECS`) and implements
-  `moteval data list/status/download`. Downloads land under `data/benchmarks/<name>` by
+- Benchmark downloads are dev tooling in `scripts/download_benchmarks.py` (declarative
+  `SPECS` + `list/status/download` subcommands), targeting `data/benchmarks/<name>` by
   default (`MOTEVAL_DATA_ROOT` or `--root` overrides).
 
 ## Adding a benchmark
@@ -19,8 +19,8 @@ dataset table (sources, download commands, on-disk layouts) see
    returns a `MOTDataset` and declares its `Protocol` (frame convention, eval classes,
    preprocessing) — never subclass-hook preprocessing.
 2. Import the module for side effect in `moteval/__init__.py`.
-3. Add a `DownloadSpec` to `download.py` (or an `unfetchable_reason` if the data needs
-   manual acquisition).
+3. Add a `DownloadSpec` to `scripts/download_benchmarks.py` (or an `unfetchable_reason`
+   if the data needs manual acquisition).
 
 ## Conventions worth knowing
 
