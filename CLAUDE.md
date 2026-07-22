@@ -26,13 +26,15 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
 
 ## Layout
 
-- `moteval/data/` — model, convert, similarity, protocol, registry (`registry.py` holds
-  `Registry`/`register_dataset`/`load_dataset`)
+- `moteval/data/` — model, convert, similarity, protocol
 - `moteval/formats.py` — MOT box rows (`Track`) and MOTS mask rows (`MaskTrack`)
 - `moteval/metrics/` — base ABC + hota/clear/identity/count/jf/track_map
-- `moteval/benchmarks/` — one loader module per benchmark, plus `download.py`; see that
-  directory's `README.md` for loader conventions
-- `moteval/results.py`, `moteval/cli.py`
+- `moteval/benchmarks/` — one loader module per benchmark; `__init__.py` holds the
+  explicit `BENCHMARKS` dict + `load_dataset(name, root, split)` (no registration —
+  custom data loads by path via `load_motchallenge`/`load_mots` or builds a `MOTDataset`
+  directly); see that directory's `README.md` for loader conventions
+- `moteval/eval.py` (`evaluate`), `moteval/results.py`, `moteval/cli.py`
+- `scripts/download_benchmarks.py` — dev-only benchmark downloader (`list/status/download`)
 - `tests/` — flat suite (test_metrics.py, test_parity.py, test_parity_real.py, test_data.py,
   test_loaders.py, test_masks.py, test_cli.py, test_download.py), `tests/fixtures/*.json`
   (frozen TrackEval oracle numbers), `tests/scenarios.py` (shared scenario definitions),
@@ -55,8 +57,9 @@ All three must pass before any PR.
   `scripts/regen_parity_fixtures.py`, which clones TrackEval @ `12c8791b`, applies
   numpy>=2 alias patches, and rewrites the JSONs.
 - `data/benchmarks` is a symlink to external storage holding one dir per dataset;
-  `moteval data download` targets `data/benchmarks/<dataset>` by default. Parity tests
-  needing real data skip loudly when it's absent.
+  `uv run scripts/download_benchmarks.py download <name>` targets
+  `data/benchmarks/<dataset>` by default. Parity tests needing real data skip loudly
+  when it's absent.
 - GMOT-40 and ChimpACT are natively 0-indexed. Both loaders keep raw 0-indexed frame
   numbers and declare `FrameConvention(first_frame=0)` rather than shifting.
 - BFT, AnimalTrack, and GMOT-40 have no `seqinfo.ini` source, so their loaders derive

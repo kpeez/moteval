@@ -15,7 +15,6 @@ from pathlib import Path
 
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
-from moteval.data.registry import register_dataset
 from moteval.formats import Track
 
 PANAF500_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
@@ -67,6 +66,3 @@ def load_panaf500(
         raise ValueError(f"split directory not found: {ann_dir}")
     sequences = tuple(_load_sequence(p) for p in sorted(ann_dir.glob("*.json")))
     return MOTDataset(name="panaf500", split=split, sequences=sequences, protocol=PANAF500_PROTOCOL)
-
-
-register_dataset("panaf500")(load_panaf500)

@@ -14,12 +14,11 @@ from pathlib import Path
 
 from moteval.benchmarks.motchallenge import (
     MOTChallengeConfig,
-    load_motchallenge,
+    load_layout,
     max_frame_seq_length,
 )
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
-from moteval.data.registry import register_dataset
 from moteval.formats import Track
 
 BFT_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
@@ -56,7 +55,4 @@ BFT_CONFIG = MOTChallengeConfig(
 
 
 def load_bft(root: str | Path | None = None, split: str = "val") -> MOTDataset[GtSequence]:
-    return load_motchallenge(BFT_CONFIG, root=root, split=split)
-
-
-register_dataset("bft")(load_bft)
+    return load_layout(BFT_CONFIG, root=root, split=split)

@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 
 from moteval import CLEAR, HOTA, Count, Identity, evaluate
-from moteval.benchmarks.mots20 import MOTS20_PROTOCOL, load_mots20
-from moteval.data.model import BoxGeometry, MaskGeometry
+from moteval.benchmarks.mots20 import MOTS20_PROTOCOL, load_mots, load_mots20
+from moteval.data.model import BoxGeometry, GtSequence, MaskGeometry
 from moteval.data.similarity import decode_mask, encode_mask, mask_ioa, mask_iou
 from moteval.formats import MaskTrack, read_mots, write_mots
 
@@ -239,6 +239,7 @@ def test_geometry_accessors_fail_loudly_across_kinds(tmp_path):
 
     toy = load_dataset("toy")
     box_seq = toy.sequences[0]
+    assert isinstance(box_seq, GtSequence)
     box_data = build_sequence_data(box_seq, (), toy.protocol, 1)
     assert isinstance(box_data.geometry, BoxGeometry)
     assert box_data.gt_boxes[0].shape[1] == 4
@@ -252,3 +253,36 @@ def test_geometry_accessors_fail_loudly_across_kinds(tmp_path):
     assert mask_data.gt_masks[0].shape == (2,)
     with pytest.raises(TypeError, match="mask geometry"):
         _ = mask_data.gt_boxes
+
+
+def test_load_mots_scores_a_custom_layout_without_registration(tmp_path):
+    root = tmp_path / "my-mask-data"
+    seq_dir = root / "train" / "SEQ01"
+    write_mots(
+        seq_dir / "gt" / "gt.txt",
+        [
+            _mask_row(1, 1, 2, TRACK1[0]),
+            _mask_row(2, 1, 2, TRACK1[1]),
+            _mask_row(1, 100, 10, _square_mask(H, W, 12, 19, 10, 19)),
+        ],
+    )
+    (seq_dir / "seqinfo.ini").write_text("[Sequence]\nseqLength=2\n")
+
+    dataset = load_mots(root)
+
+    assert dataset.name == "my-mask-data"
+    assert dataset.protocol.eval_classes == (2,)
+    assert dataset.protocol.matching_fill == -10000.0
+    assert dataset.protocol.drop_zero_conf_gt is False
+    (seq,) = dataset.sequences
+    # Class-10 rows route to ignore regions exactly as in the MOTS20 loader.
+    assert len(seq.ignore_regions) == 1
+    assert len(seq.tracks) == 2
+
+    pred_dir = tmp_path / "preds"
+    write_mots(
+        pred_dir / "SEQ01.txt",
+        [_mask_row(1, 7, 2, TRACK1[0]), _mask_row(2, 7, 2, TRACK1[1])],
+    )
+    result = evaluate(dataset, pred_dir, [Count()])
+    assert result.combined["Count"] == {"Dets": 2.0, "GT_Dets": 2.0, "IDs": 1.0, "GT_IDs": 1.0}
