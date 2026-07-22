@@ -21,12 +21,11 @@ from pathlib import Path
 
 from moteval.benchmarks.motchallenge import (
     MOTChallengeConfig,
-    load_motchallenge,
+    load_layout,
     max_frame_seq_length,
 )
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
-from moteval.data.registry import register_dataset
 from moteval.formats import Track
 
 _ANIMAL_SUBSTRINGS = ("bird", "fish", "insect", "stock")
@@ -70,7 +69,4 @@ GMOT40_CONFIG = MOTChallengeConfig(
 
 
 def load_gmot40(root: str | Path | None = None, split: str = "test") -> MOTDataset[GtSequence]:
-    return load_motchallenge(GMOT40_CONFIG, root=root, split=split)
-
-
-register_dataset("gmot40")(load_gmot40)
+    return load_layout(GMOT40_CONFIG, root=root, split=split)

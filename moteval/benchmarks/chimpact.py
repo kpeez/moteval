@@ -51,7 +51,6 @@ from pathlib import Path
 
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
-from moteval.data.registry import register_dataset
 from moteval.formats import Track
 
 _KEYFRAME_STRIDE = 10
@@ -219,6 +218,3 @@ def load_chimpact(root: str | Path | None = None, split: str = "val") -> MOTData
     names = _split_clip_names(label_dir, split)
     sequences = tuple(_load_clip(label_dir / f"{name}.json") for name in names)
     return MOTDataset(name="chimpact", split=split, sequences=sequences, protocol=CHIMPACT_PROTOCOL)
-
-
-register_dataset("chimpact")(load_chimpact)

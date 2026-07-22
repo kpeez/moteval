@@ -18,7 +18,6 @@ from pathlib import Path
 from moteval.benchmarks.motchallenge import _read_seq_length
 from moteval.data.model import FrameConvention, MaskGtSequence, MOTDataset
 from moteval.data.protocol import Protocol
-from moteval.data.registry import register_dataset
 from moteval.formats import read_mots
 
 MOTS20_IGNORE_CLASS = 10
@@ -46,14 +45,38 @@ def _load_sequence(base: Path, split: str, seq_name: str) -> MaskGtSequence:
     )
 
 
-def load_mots20(root: str | Path | None = None, split: str = "train") -> MOTDataset[MaskGtSequence]:
-    base = Path(root) if root is not None else MOTS20_DEFAULT_ROOT
+def _load_split(
+    base: Path, split: str, name: str, protocol: Protocol
+) -> MOTDataset[MaskGtSequence]:
     split_dir = base / split
     if not split_dir.is_dir():
         raise ValueError(f"split directory not found: {split_dir}")
     seq_names = sorted(p.name for p in split_dir.iterdir() if p.is_dir())
-    sequences = tuple(_load_sequence(base, split, name) for name in seq_names)
-    return MOTDataset(name="mots20", split=split, sequences=sequences, protocol=MOTS20_PROTOCOL)
+    sequences = tuple(_load_sequence(base, split, seq_name) for seq_name in seq_names)
+    return MOTDataset(name=name, split=split, sequences=sequences, protocol=protocol)
 
 
-register_dataset("mots20")(load_mots20)
+def load_mots20(root: str | Path | None = None, split: str = "train") -> MOTDataset[MaskGtSequence]:
+    base = Path(root) if root is not None else MOTS20_DEFAULT_ROOT
+    return _load_split(base, split, "mots20", MOTS20_PROTOCOL)
+
+
+def load_mots(
+    root: str | Path, split: str = "train", class_id: int = 2
+) -> MOTDataset[MaskGtSequence]:
+    """Load any standard MOTS-layout directory, no registration required.
+
+    For custom mask data at ``<root>/<split>/<seq>/gt/gt.txt`` (whitespace MOTS
+    rows) + ``seqinfo.ini``: 1-indexed frames, class-10 rows routed to ignore
+    regions, upstream MOTS matching semantics (``matching_fill=-10000``, GT never
+    conf-filtered). ``class_id`` selects the evaluated class (MOTS pedestrian
+    convention is 2). The dataset is named after the root directory.
+    """
+    protocol = Protocol(
+        name="mots",
+        frame_convention=MOTS20_CONVENTION,
+        eval_classes=(class_id,),
+        drop_zero_conf_gt=False,
+        matching_fill=-10000.0,
+    )
+    return _load_split(Path(root), split, Path(root).name, protocol)

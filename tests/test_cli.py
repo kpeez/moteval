@@ -1,7 +1,8 @@
 """CLI tests: run in-process via `moteval.cli.main(argv)` -- the installed
-console script isn't used because "toy" is registered only inside the test
-suite (tests/conftest.py) and a subprocess entry point never sees it, and
-because a nested `uv run` under `uv run pytest` deadlocks on uv's project lock.
+console script isn't used because "toy" is inserted into `BENCHMARKS` only
+inside the test suite (tests/conftest.py) and a subprocess entry point never
+sees it, and because a nested `uv run` under `uv run pytest` deadlocks on uv's
+project lock.
 """
 
 import csv
@@ -10,7 +11,7 @@ import json
 import numpy as np
 import pytest
 
-from moteval import evaluate, load_dataset
+from moteval import GtSequence, evaluate, load_dataset
 from moteval.cli import main
 from moteval.formats import write_mot
 from moteval.results import EvaluationResult
@@ -21,6 +22,7 @@ def toy_predictions(tmp_path):
     dataset = load_dataset("toy")
     pred_dir = tmp_path / "predictions"
     for sequence in dataset.sequences:
+        assert isinstance(sequence, GtSequence)
         write_mot(pred_dir / f"{sequence.name}.txt", list(sequence.tracks))
     return dataset, pred_dir
 
@@ -201,7 +203,7 @@ def test_unknown_dataset_lists_registered_names(toy_predictions, capsys):
 
     err = capsys.readouterr().err
     assert "unknown dataset 'not-a-dataset'" in err
-    assert "registered:" in err
+    assert "available:" in err
     assert "dancetrack" in err
     assert "toy" in err
     assert "Traceback" not in err
@@ -236,4 +238,33 @@ def test_missing_input_paths_are_actionable(args, message, capsys):
     err = capsys.readouterr().err
     assert message in err
     assert "not found or not a directory" in err
+    assert "Traceback" not in err
+
+
+# ------------------------------------------------------- custom data (no --dataset)
+
+
+def test_run_without_dataset_loads_motchallenge_layout(tmp_path, capsys):
+    seq_dir = tmp_path / "gt" / "train" / "SEQ01"
+    (seq_dir / "gt").mkdir(parents=True)
+    (seq_dir / "gt" / "gt.txt").write_text("1,1,10,10,20,20,1\n2,1,12,10,20,20,1\n")
+    (seq_dir / "seqinfo.ini").write_text("[Sequence]\nseqLength=2\n")
+    pred_dir = tmp_path / "pred"
+    pred_dir.mkdir()
+    (pred_dir / "SEQ01.txt").write_text("1,7,10,10,20,20,1\n2,7,12,10,20,20,1\n")
+
+    exit_code = main(["run", "--gt", str(tmp_path / "gt"), "--pred", str(pred_dir)])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "SEQ01" in out
+    assert "COMBINED" in out
+
+
+def test_run_without_dataset_requires_gt(capsys):
+    with pytest.raises(SystemExit):
+        main(["run", "--pred", "."])
+
+    err = capsys.readouterr().err
+    assert "--gt is required when --dataset is omitted" in err
     assert "Traceback" not in err

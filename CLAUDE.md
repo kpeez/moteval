@@ -26,14 +26,15 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
 
 ## Layout
 
-- `moteval/data/` — model, convert, similarity, protocol, registry (`registry.py` holds
-  `Registry`/`register_dataset`/`load_dataset`)
+- `moteval/data/` — model, convert, similarity, protocol
 - `moteval/formats.py` — MOT box rows (`Track`) and MOTS mask rows (`MaskTrack`)
 - `moteval/metrics/` — base ABC + hota/clear/identity/count/jf/track_map
-- `moteval/benchmarks/` — one loader module per benchmark; see that directory's
-  `README.md` for loader conventions
-- `scripts/download_benchmarks.py` — dev-only benchmark downloader (`list/status/download`)
+- `moteval/benchmarks/` — one loader module per benchmark; `__init__.py` holds the
+  explicit `BENCHMARKS` dict + `load_dataset(name, root, split)` (no registration —
+  custom data loads by path via `load_motchallenge`/`load_mots` or builds a `MOTDataset`
+  directly); see that directory's `README.md` for loader conventions
 - `moteval/results.py`, `moteval/cli.py`
+- `scripts/download_benchmarks.py` — dev-only benchmark downloader (`list/status/download`)
 - `tests/` — flat suite (test_metrics.py, test_parity.py, test_parity_real.py, test_data.py,
   test_loaders.py, test_masks.py, test_cli.py, test_download.py), `tests/fixtures/*.json`
   (frozen TrackEval oracle numbers), `tests/scenarios.py` (shared scenario definitions),

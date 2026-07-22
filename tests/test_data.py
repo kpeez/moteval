@@ -443,7 +443,6 @@ def test_custom_dataset_evaluates_through_public_api(tmp_path):
         distractor_classes=(2,),
     )
 
-    @moteval.register_dataset("test-ext-json-distractors")
     def load_custom_dataset() -> moteval.MOTDataset:
         rows = json.loads(annotations_path.read_text())
         tracks = tuple(
@@ -467,7 +466,7 @@ def test_custom_dataset_evaluates_through_public_api(tmp_path):
             protocol=distractor_protocol,
         )
 
-    dataset = moteval.load_dataset("test-ext-json-distractors")
+    dataset = load_custom_dataset()
     predictions_dir = tmp_path / "predictions"
     predictions_dir.mkdir()
     (predictions_dir / "custom-sequence.txt").write_text(
@@ -527,10 +526,11 @@ def test_custom_dataset_evaluates_through_public_api(tmp_path):
     }
 
 
-def test_unknown_dataset_lists_registered_names():
-    with pytest.raises(KeyError) as exc_info:
+def test_unknown_dataset_lists_available_names():
+    with pytest.raises(ValueError) as exc_info:
         load_dataset("nonexistent")
 
     message = str(exc_info.value)
-    assert "registered:" in message
+    assert "available:" in message
+    assert "dancetrack" in message
     assert "toy" in message

@@ -1,22 +1,19 @@
 """moteval: a from-scratch TrackEval rewrite. Public API surface.
 
-`evaluate(dataset, predictions, metrics)` scores a loaded `MOTDataset` against a
-directory of ``<seq>.txt`` MOTChallenge predictions and returns typed per-sequence
-and combined results.
+Three ways in, all converging on `evaluate(dataset, predictions, metrics)`:
+
+- `load_dataset(name, root=None, split=None)` — a built-in benchmark by name.
+- `load_motchallenge(root, split)` / `load_mots(root, split)` — any directory in
+  the standard box/mask layout, no registration needed.
+- Construct a `MOTDataset` yourself from any source format.
 """
 
 from collections.abc import Sequence
 from pathlib import Path
 
-from moteval.benchmarks import animaltrack as _animaltrack  # noqa: F401  (registers animaltrack)
-from moteval.benchmarks import bft as _bft  # noqa: F401  (registers bft)
-from moteval.benchmarks import chimpact as _chimpact  # noqa: F401  (registers chimpact)
-from moteval.benchmarks import dancetrack as _dancetrack  # noqa: F401  (registers dancetrack)
-from moteval.benchmarks import gmot40 as _gmot40  # noqa: F401  (registers gmot40)
-from moteval.benchmarks import mots20 as _mots20  # noqa: F401  (registers mots20)
-from moteval.benchmarks import panaf500 as _panaf500  # noqa: F401  (registers panaf500)
-from moteval.benchmarks import sportsmot as _sportsmot  # noqa: F401  (registers sportsmot)
-from moteval.benchmarks import uavdt as _uavdt  # noqa: F401  (registers uavdt)
+from moteval.benchmarks import load_dataset
+from moteval.benchmarks.motchallenge import load_motchallenge
+from moteval.benchmarks.mots20 import load_mots
 from moteval.data.convert import build_mask_sequence_data, build_sequence_data
 from moteval.data.model import (
     FrameConvention,
@@ -26,7 +23,6 @@ from moteval.data.model import (
     SequenceData,
 )
 from moteval.data.protocol import Protocol
-from moteval.data.registry import load_dataset, register_dataset
 from moteval.formats import MaskTrack, Track, read_mot, read_mots
 from moteval.metrics.base import Metric, Scores
 from moteval.metrics.clear import CLEAR
@@ -50,13 +46,18 @@ __all__ = [
     "MaskGtSequence",
     "MaskTrack",
     "Metric",
+    "MetricScores",
     "Protocol",
+    "Scores",
     "SequenceData",
     "Track",
     "TrackMAP",
     "evaluate",
     "load_dataset",
-    "register_dataset",
+    "load_motchallenge",
+    "load_mots",
+    "read_mot",
+    "read_mots",
 ]
 
 
