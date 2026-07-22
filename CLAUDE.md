@@ -33,7 +33,7 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
   explicit `BENCHMARKS` dict + `load_dataset(name, root, split)` (no registration —
   custom data loads by path via `load_motchallenge`/`load_mots` or builds a `MOTDataset`
   directly); see that directory's `README.md` for loader conventions
-- `moteval/results.py`, `moteval/cli.py`
+- `moteval/eval.py` (`evaluate`), `moteval/results.py`, `moteval/cli.py`
 - `scripts/download_benchmarks.py` — dev-only benchmark downloader (`list/status/download`)
 - `tests/` — flat suite (test_metrics.py, test_parity.py, test_parity_real.py, test_data.py,
   test_loaders.py, test_masks.py, test_cli.py, test_download.py), `tests/fixtures/*.json`
