@@ -1,3 +1,10 @@
+"""Tests for the dev download script (scripts/download_benchmarks.py).
+
+Not a package module, so it is loaded here by file path. Fetchers are
+monkeypatched; only the ``network``-marked test touches the real internet.
+"""
+
+import importlib.util
 import io
 import os
 import tarfile
@@ -6,7 +13,11 @@ from pathlib import Path
 
 import pytest
 
-import moteval.benchmarks.download as download
+_SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "download_benchmarks.py"
+_spec = importlib.util.spec_from_file_location("download_benchmarks", _SCRIPT_PATH)
+assert _spec is not None and _spec.loader is not None
+download = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(download)
 
 
 def _write_zip(path: Path, files: dict[str, str]) -> None:
@@ -177,6 +188,95 @@ def test_unfetchable_benchmark_fails_before_creating_a_directory(tmp_path: Path)
         download.download_benchmark("chimpact", tmp_path)
 
     assert not (tmp_path / "chimpact").exists()
+
+
+_EXPECTED_BENCHMARKS = (
+    "animaltrack",
+    "bft",
+    "chimpact",
+    "dancetrack",
+    "gmot40",
+    "mots20",
+    "panaf500",
+    "sportsmot",
+    "uavdt",
+)
+
+
+def test_script_list_reports_every_supported_benchmark(capsys):
+    exit_code = download.main(["list"])
+
+    assert exit_code == 0
+    rows = [line.split() for line in capsys.readouterr().out.splitlines()[1:]]
+    assert tuple(row[0] for row in rows) == _EXPECTED_BENCHMARKS
+    assert dict(rows)["chimpact"] == "unfetchable"
+
+
+def test_script_status_uses_loader_layout_markers(tmp_path, capsys):
+    (tmp_path / "animaltrack" / "gt_all").mkdir(parents=True)
+    (tmp_path / "chimpact" / "ChimpACT_release_v1" / "labels").mkdir(parents=True)
+
+    exit_code = download.main(["--root", str(tmp_path), "status"])
+
+    assert exit_code == 0
+    rows = {
+        parts[0]: parts[1]
+        for line in capsys.readouterr().out.splitlines()[1:]
+        if (parts := line.split())
+    }
+    assert rows["animaltrack"] == "present"
+    assert rows["chimpact"] == "present"
+    assert rows["dancetrack"] == "absent"
+
+
+def test_script_root_option_overrides_environment(tmp_path, monkeypatch, capsys):
+    environment_root = tmp_path / "environment"
+    cli_root = tmp_path / "cli"
+    (environment_root / "gmot40" / "track_label").mkdir(parents=True)
+    monkeypatch.setenv("MOTEVAL_DATA_ROOT", str(environment_root))
+
+    exit_code = download.main(["--root", str(cli_root), "status"])
+
+    assert exit_code == 0
+    gmot40_row = next(
+        line for line in capsys.readouterr().out.splitlines() if line.startswith("gmot40")
+    )
+    assert "absent" in gmot40_row
+    assert str(cli_root / "gmot40") in gmot40_row
+
+
+def test_script_status_uses_environment_root(tmp_path, monkeypatch, capsys):
+    (tmp_path / "sportsmot" / "val").mkdir(parents=True)
+    monkeypatch.setenv("MOTEVAL_DATA_ROOT", str(tmp_path))
+
+    exit_code = download.main(["status"])
+
+    assert exit_code == 0
+    sportsmot_row = next(
+        line for line in capsys.readouterr().out.splitlines() if line.startswith("sportsmot")
+    )
+    assert "present" in sportsmot_row
+    assert str(tmp_path / "sportsmot") in sportsmot_row
+
+
+def test_script_unknown_download_lists_valid_benchmark_names(tmp_path, capsys):
+    with pytest.raises(SystemExit):
+        download.main(["--root", str(tmp_path), "download", "not-a-benchmark"])
+
+    err = capsys.readouterr().err
+    assert "unknown benchmark 'not-a-benchmark'" in err
+    assert "valid names: " + ", ".join(_EXPECTED_BENCHMARKS) in err
+    assert "Traceback" not in err
+
+
+def test_script_unfetchable_download_gives_manual_acquisition_layout(tmp_path, capsys):
+    with pytest.raises(SystemExit):
+        download.main(["--root", str(tmp_path), "download", "chimpact"])
+
+    err = capsys.readouterr().err
+    assert "no stable programmatic artifact" in err
+    assert "https://github.com/ShirleyMaxx/ChimpACT" in err
+    assert "<root>/chimpact/ChimpACT_release_v1/labels/<clip>.json" in err
 
 
 @pytest.mark.network

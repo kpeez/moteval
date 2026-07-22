@@ -1,7 +1,8 @@
 """CLI tests: run in-process via `moteval.cli.main(argv)` -- the installed
-console script isn't used because "toy" is registered only inside the test
-suite (tests/conftest.py) and a subprocess entry point never sees it, and
-because a nested `uv run` under `uv run pytest` deadlocks on uv's project lock.
+console script isn't used because "toy" is inserted into `BENCHMARKS` only
+inside the test suite (tests/conftest.py) and a subprocess entry point never
+sees it, and because a nested `uv run` under `uv run pytest` deadlocks on uv's
+project lock.
 """
 
 import csv
@@ -10,7 +11,7 @@ import json
 import numpy as np
 import pytest
 
-from moteval import evaluate, load_dataset
+from moteval import GtSequence, evaluate, load_dataset
 from moteval.cli import main
 from moteval.formats import write_mot
 from moteval.results import EvaluationResult
@@ -21,6 +22,7 @@ def toy_predictions(tmp_path):
     dataset = load_dataset("toy")
     pred_dir = tmp_path / "predictions"
     for sequence in dataset.sequences:
+        assert isinstance(sequence, GtSequence)
         write_mot(pred_dir / f"{sequence.name}.txt", list(sequence.tracks))
     return dataset, pred_dir
 
@@ -201,7 +203,7 @@ def test_unknown_dataset_lists_registered_names(toy_predictions, capsys):
 
     err = capsys.readouterr().err
     assert "unknown dataset 'not-a-dataset'" in err
-    assert "registered:" in err
+    assert "available:" in err
     assert "dancetrack" in err
     assert "toy" in err
     assert "Traceback" not in err
@@ -239,94 +241,30 @@ def test_missing_input_paths_are_actionable(args, message, capsys):
     assert "Traceback" not in err
 
 
-# --------------------------------------------------------------- data command
+# ------------------------------------------------------- custom data (no --dataset)
 
 
-_EXPECTED_BENCHMARKS = (
-    "animaltrack",
-    "bft",
-    "chimpact",
-    "dancetrack",
-    "gmot40",
-    "mots20",
-    "panaf500",
-    "sportsmot",
-    "uavdt",
-)
+def test_run_without_dataset_loads_motchallenge_layout(tmp_path, capsys):
+    seq_dir = tmp_path / "gt" / "train" / "SEQ01"
+    (seq_dir / "gt").mkdir(parents=True)
+    (seq_dir / "gt" / "gt.txt").write_text("1,1,10,10,20,20,1\n2,1,12,10,20,20,1\n")
+    (seq_dir / "seqinfo.ini").write_text("[Sequence]\nseqLength=2\n")
+    pred_dir = tmp_path / "pred"
+    pred_dir.mkdir()
+    (pred_dir / "SEQ01.txt").write_text("1,7,10,10,20,20,1\n2,7,12,10,20,20,1\n")
 
-
-def test_data_list_reports_every_supported_benchmark(capsys):
-    exit_code = main(["data", "list"])
+    exit_code = main(["run", "--gt", str(tmp_path / "gt"), "--pred", str(pred_dir)])
 
     assert exit_code == 0
-    rows = [line.split() for line in capsys.readouterr().out.splitlines()[1:]]
-    assert tuple(row[0] for row in rows) == _EXPECTED_BENCHMARKS
-    assert dict(rows)["chimpact"] == "unfetchable"
+    out = capsys.readouterr().out
+    assert "SEQ01" in out
+    assert "COMBINED" in out
 
 
-def test_data_status_uses_loader_layout_markers(tmp_path, capsys):
-    (tmp_path / "animaltrack" / "gt_all").mkdir(parents=True)
-    (tmp_path / "chimpact" / "ChimpACT_release_v1" / "labels").mkdir(parents=True)
-
-    exit_code = main(["data", "status", "--root", str(tmp_path)])
-
-    assert exit_code == 0
-    rows = {
-        parts[0]: parts[1]
-        for line in capsys.readouterr().out.splitlines()[1:]
-        if (parts := line.split())
-    }
-    assert rows["animaltrack"] == "present"
-    assert rows["chimpact"] == "present"
-    assert rows["dancetrack"] == "absent"
-
-
-def test_data_root_option_overrides_environment(tmp_path, monkeypatch, capsys):
-    environment_root = tmp_path / "environment"
-    cli_root = tmp_path / "cli"
-    (environment_root / "gmot40" / "track_label").mkdir(parents=True)
-    monkeypatch.setenv("MOTEVAL_DATA_ROOT", str(environment_root))
-
-    exit_code = main(["data", "--root", str(cli_root), "status"])
-
-    assert exit_code == 0
-    gmot40_row = next(
-        line for line in capsys.readouterr().out.splitlines() if line.startswith("gmot40")
-    )
-    assert "absent" in gmot40_row
-    assert str(cli_root / "gmot40") in gmot40_row
-
-
-def test_data_status_uses_environment_root(tmp_path, monkeypatch, capsys):
-    (tmp_path / "sportsmot" / "val").mkdir(parents=True)
-    monkeypatch.setenv("MOTEVAL_DATA_ROOT", str(tmp_path))
-
-    exit_code = main(["data", "status"])
-
-    assert exit_code == 0
-    sportsmot_row = next(
-        line for line in capsys.readouterr().out.splitlines() if line.startswith("sportsmot")
-    )
-    assert "present" in sportsmot_row
-    assert str(tmp_path / "sportsmot") in sportsmot_row
-
-
-def test_unknown_download_lists_valid_benchmark_names(tmp_path, capsys):
+def test_run_without_dataset_requires_gt(capsys):
     with pytest.raises(SystemExit):
-        main(["data", "download", "not-a-benchmark", "--root", str(tmp_path)])
+        main(["run", "--pred", "."])
 
     err = capsys.readouterr().err
-    assert "unknown benchmark 'not-a-benchmark'" in err
-    assert "valid names: " + ", ".join(_EXPECTED_BENCHMARKS) in err
-    assert "Traceback" not in err
-
-
-def test_unfetchable_download_gives_manual_acquisition_layout(tmp_path, capsys):
-    with pytest.raises(SystemExit):
-        main(["data", "download", "chimpact", "--root", str(tmp_path)])
-
-    err = capsys.readouterr().err
-    assert "no stable programmatic artifact" in err
-    assert "https://github.com/ShirleyMaxx/ChimpACT" in err
-    assert "<root>/chimpact/ChimpACT_release_v1/labels/<clip>.json" in err
+    assert "--gt is required when --dataset is omitted" in err
     assert "Traceback" not in err

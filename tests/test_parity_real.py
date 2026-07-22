@@ -7,7 +7,7 @@ data with the same seeds — regenerate with
 ``scripts/regen_parity_fixtures.py --real-data``.
 
 Each test skips loudly when its dataset is absent from ``data/benchmarks/``,
-naming the ``moteval data download`` command that fetches it. A fully-skipped
+naming the ``scripts/download_benchmarks.py download`` script that fetches it. A fully-skipped
 run does not count as the gate passing.
 """
 
@@ -43,7 +43,7 @@ def _require(split_root: Path, benchmark: str, expected_sequences: int) -> None:
     if not split_root.is_dir() or not any(split_root.iterdir()):
         pytest.skip(
             f"SKIPPING REAL-DATA PARITY GATE: {benchmark} not found under {split_root} — "
-            f"fetch it with `moteval data download {benchmark}`"
+            f"fetch it with `scripts/download_benchmarks.py download {benchmark}`"
         )
     # A split that is still syncing (e.g. cloud-storage hydration in progress)
     # skips loudly rather than evaluating a partial dataset.
@@ -58,7 +58,7 @@ def _require(split_root: Path, benchmark: str, expected_sequences: int) -> None:
             f"SKIPPING REAL-DATA PARITY GATE: {benchmark} under {split_root} looks incomplete "
             f"({len(seq_dirs)}/{expected_sequences} sequence dirs; missing gt/seqinfo: "
             f"{incomplete[:5]}) — still downloading? Re-run once "
-            f"`moteval data download {benchmark}` has finished."
+            f"`scripts/download_benchmarks.py download {benchmark}` has finished."
         )
 
 

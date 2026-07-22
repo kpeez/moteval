@@ -28,7 +28,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from moteval.data.model import GtSequence, MOTDataset
+from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
 from moteval.formats import Track, read_mot
 
@@ -136,7 +136,7 @@ def _load_sequence(base: Path, split: str, seq_name: str, config: MOTChallengeCo
     )
 
 
-def load_motchallenge(
+def load_layout(
     config: MOTChallengeConfig, root: str | Path | None = None, split: str = "val"
 ) -> MOTDataset[GtSequence]:
     """Load a MOTChallenge-layout split into a canonical `MOTDataset`."""
@@ -144,3 +144,25 @@ def load_motchallenge(
     seq_names = config.seq_names(base, split)
     sequences = tuple(_load_sequence(base, split, name, config) for name in seq_names)
     return MOTDataset(name=config.name, split=split, sequences=sequences, protocol=config.protocol)
+
+
+MOTCHALLENGE_PROTOCOL = Protocol(
+    name="motchallenge",
+    frame_convention=FrameConvention(name="1-indexed", first_frame=1),
+    eval_classes=(1,),
+)
+
+
+def load_motchallenge(root: str | Path, split: str = "train") -> MOTDataset[GtSequence]:
+    """Load any standard MOTChallenge-layout directory, no registration required.
+
+    For custom box data at ``<root>/<split>/<seq>/gt/gt.txt`` + ``seqinfo.ini``:
+    1-indexed frames, single evaluated class (1), no distractors, conf-zero GT
+    rows dropped (the gt.txt "consider" flag). The dataset is named after the
+    root directory. Benchmarks with their own quirks get a dedicated module
+    instead; this is the seam for data that already matches the plain layout.
+    """
+    config = MOTChallengeConfig(
+        name=Path(root).name, default_root=Path(root), protocol=MOTCHALLENGE_PROTOCOL
+    )
+    return load_layout(config, root=root, split=split)

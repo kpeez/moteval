@@ -1,10 +1,11 @@
 # Benchmark datasets
 
-Ground-truth annotations for every benchmark moteval can score. `moteval data download
-<name>` fetches a dataset into `data/benchmarks/<name>` (override with `--root` or
-`MOTEVAL_DATA_ROOT`); `moteval data list` / `moteval data status` show availability and
-on-disk state. moteval downloads **annotations only** — frames/videos are never needed
-for scoring.
+Ground-truth annotations for every benchmark moteval can score. The dev script
+`uv run scripts/download_benchmarks.py download <name>` fetches a dataset into
+`data/benchmarks/<name>` (override with `--root` or `MOTEVAL_DATA_ROOT`); its `list` /
+`status` subcommands show availability and on-disk state. Downloads are **annotations
+only** — frames/videos are never needed for scoring. Some sources shell out to external
+tools (`curl`, `gdown`, `hf`), which must be on PATH.
 
 | Dataset | Domain | Annotations | Source |
 | --- | --- | --- | --- |
@@ -16,12 +17,12 @@ for scoring.
 | GMOT-40 | animals | MOT boxes | [repo](https://github.com/Spritea/GMOT40) · [releases](https://github.com/Spritea/GMOT40/releases/tag/v0.1) |
 | PanAf500 | animals | COCO-style JSON | [project page](https://obrookes.github.io/panaf.github.io/) · [data.bris](https://data.bris.ac.uk/data/dataset/1h73erszj3ckn2qjwm4sqmr2wt) |
 | ChimpACT | animals | COCO-style JSON | [repo](https://github.com/ShirleyMaxx/ChimpACT) — **manual**: gated Google Form, no programmatic artifact |
-| UAVDT | vehicles | MOT boxes + ignore regions | [website](https://sites.google.com/view/grli-uavdt/%E9%A6%96%E9%A1%B5) · gdrive (see `download.py`) |
+| UAVDT | vehicles | MOT boxes + ignore regions | [website](https://sites.google.com/view/grli-uavdt/%E9%A6%96%E9%A1%B5) · gdrive (see `scripts/download_benchmarks.py`) |
 
 ## Managed layout
 
-`moteval data download` verifies each dataset against the exact layout its loader reads
-(the `expected_layout` in `moteval/benchmarks/download.py`):
+The download script verifies each dataset against the exact layout its loader reads
+(the `expected_layout` in `scripts/download_benchmarks.py`):
 
 ```
 data/benchmarks/
@@ -46,5 +47,5 @@ data/benchmarks/
   the last annotated frame; predictions past it raise a frame-out-of-range error.
 - UAVDT's `<seq>_gt_ignore.txt` regions are honored during preprocessing.
 - ChimpACT requires requesting access via the official repository's form, then placing
-  the release's COCO JSON files at the path above; `moteval data status` will report it
-  `present` once the layout matches.
+  the release's COCO JSON files at the path above; the download script's `status`
+  subcommand will report it `present` once the layout matches.

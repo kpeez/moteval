@@ -3,12 +3,16 @@
 Two tiny 1-indexed MOTChallenge-style sequences, two tracks each over five
 frames. Ground truth is generated in memory so tests stay hermetic;
 predictions are read from a ``<seq>.txt`` directory by ``evaluate``. The
-dataset registers as ``"toy"`` so in-process CLI tests can resolve it by name.
+loader is inserted into `BENCHMARKS` as ``"toy"`` so in-process CLI tests can
+resolve it by name (``root``/``split`` are accepted and ignored — the data is
+synthesized, not read from disk).
 """
 
+from pathlib import Path
+
+from moteval.benchmarks import BENCHMARKS
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
-from moteval.data.registry import register_dataset
 from moteval.formats import Track
 
 TOY_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
@@ -28,8 +32,7 @@ def _linear_track(
     ]
 
 
-@register_dataset("toy")
-def load_toy() -> MOTDataset[GtSequence]:
+def load_toy(root: str | Path | None = None, split: str = "val") -> MOTDataset[GtSequence]:
     seq1 = GtSequence(
         name="toy-0001",
         num_timesteps=5,
@@ -46,3 +49,6 @@ def load_toy() -> MOTDataset[GtSequence]:
         sequences=(seq1, seq2),
         protocol=TOY_PROTOCOL,
     )
+
+
+BENCHMARKS["toy"] = load_toy

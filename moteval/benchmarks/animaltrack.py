@@ -15,12 +15,11 @@ from pathlib import Path
 
 from moteval.benchmarks.motchallenge import (
     MOTChallengeConfig,
-    load_motchallenge,
+    load_layout,
     max_frame_seq_length,
 )
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
-from moteval.data.registry import register_dataset
 from moteval.formats import Track
 
 ANIMALTRACK_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
@@ -70,7 +69,4 @@ ANIMALTRACK_CONFIG = MOTChallengeConfig(
 
 
 def load_animaltrack(root: str | Path | None = None, split: str = "all") -> MOTDataset[GtSequence]:
-    return load_motchallenge(ANIMALTRACK_CONFIG, root=root, split=split)
-
-
-register_dataset("animaltrack")(load_animaltrack)
+    return load_layout(ANIMALTRACK_CONFIG, root=root, split=split)

@@ -33,12 +33,11 @@ from pathlib import Path
 
 from moteval.benchmarks.motchallenge import (
     MOTChallengeConfig,
-    load_motchallenge,
+    load_layout,
     max_frame_seq_length,
 )
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
-from moteval.data.registry import register_dataset
 from moteval.formats import Track
 
 UAVDT_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
@@ -86,7 +85,4 @@ UAVDT_CONFIG = MOTChallengeConfig(
 
 
 def load_uavdt(root: str | Path | None = None, split: str = "all") -> MOTDataset[GtSequence]:
-    return load_motchallenge(UAVDT_CONFIG, root=root, split=split)
-
-
-register_dataset("uavdt")(load_uavdt)
+    return load_layout(UAVDT_CONFIG, root=root, split=split)

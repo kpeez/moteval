@@ -2,23 +2,26 @@
 
 import argparse
 import csv
-import inspect
 import json
-import os
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
-from typing import cast
 
 import numpy as np
 
-from moteval import CLEAR, HOTA, Count, Identity, JAndF, Metric, MOTDataset, TrackMAP, evaluate
-from moteval.benchmarks.download import (
-    DEFAULT_DATA_ROOT,
-    benchmark_status,
-    download_benchmark,
-    list_benchmarks,
+from moteval import (
+    CLEAR,
+    HOTA,
+    Count,
+    Identity,
+    JAndF,
+    Metric,
+    MOTDataset,
+    TrackMAP,
+    evaluate,
+    load_dataset,
+    load_motchallenge,
+    load_mots,
 )
-from moteval.data.registry import DATASETS
 from moteval.results import EvaluationResult, iter_csv_rows, to_json_dict
 
 _DEFAULT_METRICS = "hota,clear,identity,count"
@@ -51,77 +54,21 @@ def _parser() -> argparse.ArgumentParser:
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     run = subcommands.add_parser("run", help="evaluate prediction files")
-    run.add_argument("--dataset", required=True, help="registered dataset name")
+    run.add_argument("--dataset", help="built-in benchmark name (omit to load --gt directly)")
     run.add_argument("--split", help="dataset split (uses the loader default when omitted)")
     run.add_argument("--gt", type=Path, help="ground-truth dataset root")
+    run.add_argument(
+        "--format",
+        choices=("mot", "mots"),
+        default="mot",
+        help="ground-truth layout when --dataset is omitted (default: mot)",
+    )
     run.add_argument("--pred", type=Path, required=True, help="prediction directory")
     run.add_argument("--metrics", default=_DEFAULT_METRICS, help="comma-separated metrics")
     run.add_argument("--out-csv", type=Path, help="write long-form CSV results")
     run.add_argument("--out-json", type=Path, help="write JSON results")
     run.set_defaults(handler=_run)
-
-    data = subcommands.add_parser("data", help="manage benchmark ground truth")
-    data.add_argument("--root", dest="data_root", type=Path, help="managed benchmark root")
-    data_commands = data.add_subparsers(dest="data_command", required=True)
-
-    data_list = data_commands.add_parser("list", help="list managed benchmarks")
-    _add_data_root_override(data_list)
-    data_list.set_defaults(handler=_data_list)
-
-    data_status = data_commands.add_parser("status", help="check benchmark data layouts")
-    _add_data_root_override(data_status)
-    data_status.set_defaults(handler=_data_status)
-
-    data_download = data_commands.add_parser("download", help="download benchmark data")
-    data_download.add_argument("benchmark", help="benchmark name")
-    _add_data_root_override(data_download)
-    data_download.set_defaults(handler=_data_download)
     return parser
-
-
-def _add_data_root_override(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--root",
-        dest="subcommand_data_root",
-        type=Path,
-        help="managed benchmark root",
-    )
-
-
-def _data_root(args: argparse.Namespace) -> Path:
-    if args.subcommand_data_root is not None:
-        return args.subcommand_data_root
-    if args.data_root is not None:
-        return args.data_root
-    if "MOTEVAL_DATA_ROOT" not in os.environ:
-        return DEFAULT_DATA_ROOT
-    raw_root = os.environ["MOTEVAL_DATA_ROOT"]
-    if not raw_root.strip():
-        raise ValueError("MOTEVAL_DATA_ROOT must not be empty")
-    return Path(raw_root)
-
-
-def _data_list(args: argparse.Namespace) -> int:
-    _data_root(args)
-    print("benchmark     availability")
-    for benchmark in list_benchmarks():
-        print(f"{benchmark.name:<13} {benchmark.availability}")
-    return 0
-
-
-def _data_status(args: argparse.Namespace) -> int:
-    root = _data_root(args)
-    print("benchmark     status    path")
-    for benchmark in benchmark_status(root):
-        print(f"{benchmark.name:<13} {benchmark.state:<9} {benchmark.path}")
-    return 0
-
-
-def _data_download(args: argparse.Namespace) -> int:
-    root = _data_root(args)
-    destination = download_benchmark(args.benchmark, root)
-    print(f"downloaded {args.benchmark} to {destination}")
-    return 0
 
 
 def _resolve_metrics(raw_names: str) -> list[Metric]:
@@ -136,20 +83,15 @@ def _resolve_metrics(raw_names: str) -> list[Metric]:
     return [_METRICS[name]() for name in names]
 
 
-def _load_dataset(name: str, root: Path | None, split: str | None) -> MOTDataset:
-    try:
-        registered_loader = DATASETS.get(name)
-    except KeyError as error:
-        raise ValueError(error.args[0]) from None
-
-    loader = cast(Callable[..., MOTDataset], registered_loader)
-    parameters = inspect.signature(loader).parameters
-    kwargs: dict[str, object] = {}
-    if root is not None and "root" in parameters:
-        kwargs["root"] = root
-    if split is not None and "split" in parameters:
-        kwargs["split"] = split
-    return loader(**kwargs)
+def _load(args: argparse.Namespace) -> MOTDataset:
+    if args.dataset is not None:
+        return load_dataset(args.dataset, root=args.gt, split=args.split)
+    if args.gt is None:
+        raise ValueError("--gt is required when --dataset is omitted")
+    split = args.split if args.split is not None else "train"
+    if args.format == "mots":
+        return load_mots(args.gt, split=split)
+    return load_motchallenge(args.gt, split=split)
 
 
 def _scalar(value: float | np.ndarray) -> float:
@@ -206,7 +148,7 @@ def _run(args: argparse.Namespace) -> int:
     if not args.pred.is_dir():
         raise ValueError(f"prediction directory not found or not a directory: {args.pred}")
 
-    dataset = _load_dataset(args.dataset, args.gt, args.split)
+    dataset = _load(args)
     result = evaluate(dataset, args.pred, metrics)
     print(_table(result))
     if args.out_csv is not None:
@@ -222,7 +164,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.handler(args)
-    except Exception as error:
+    except ValueError as error:
         parser.error(str(error))
 
 

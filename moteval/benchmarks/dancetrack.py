@@ -2,10 +2,9 @@
 
 from pathlib import Path
 
-from moteval.benchmarks.motchallenge import MOTChallengeConfig, load_motchallenge
+from moteval.benchmarks.motchallenge import MOTChallengeConfig, load_layout
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
-from moteval.data.registry import register_dataset
 
 DANCETRACK_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
 DANCETRACK_PROTOCOL = Protocol(
@@ -21,7 +20,4 @@ DANCETRACK_CONFIG = MOTChallengeConfig(
 
 
 def load_dancetrack(root: str | Path | None = None, split: str = "val") -> MOTDataset[GtSequence]:
-    return load_motchallenge(DANCETRACK_CONFIG, root=root, split=split)
-
-
-register_dataset("dancetrack")(load_dancetrack)
+    return load_layout(DANCETRACK_CONFIG, root=root, split=split)

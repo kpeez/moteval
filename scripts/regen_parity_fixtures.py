@@ -330,7 +330,7 @@ def gen_real_data(oracle: SimpleNamespace) -> dict:
         if not root.is_dir() or not any(root.iterdir()):
             raise SystemExit(
                 f"{benchmark} not found under {root} — fetch it with "
-                f"`moteval data download {benchmark}`"
+                f"`scripts/download_benchmarks.py download {benchmark}`"
             )
     fixture = {}
     with tempfile.TemporaryDirectory() as td:

@@ -3,7 +3,7 @@ name = "moteval"
 version = "0.1.0"
 description = "MOT evaluation library: a from-scratch TrackEval rewrite producing bit-identical numbers."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "numpy>=2",
     "scipy>=1.11",
@@ -32,7 +32,7 @@ packages = ["moteval"]
 include = ["/moteval", "/README.md"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]

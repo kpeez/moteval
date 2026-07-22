@@ -15,7 +15,7 @@ from moteval.benchmarks.bft import load_bft
 from moteval.benchmarks.chimpact import _CLASS_ID, _TEST_CLIPS, _VAL_CLIPS, load_chimpact
 from moteval.benchmarks.dancetrack import load_dancetrack
 from moteval.benchmarks.gmot40 import GMOT40_PROTOCOL, load_gmot40
-from moteval.benchmarks.motchallenge import MOTChallengeConfig, load_motchallenge
+from moteval.benchmarks.motchallenge import MOTChallengeConfig, load_layout, load_motchallenge
 from moteval.benchmarks.panaf500 import _CLASS_ID as _PANAF500_CLASS_ID
 from moteval.benchmarks.panaf500 import _xyxy_to_xywh, load_panaf500
 from moteval.benchmarks.sportsmot import load_sportsmot
@@ -547,7 +547,7 @@ def test_motchallenge_sequence_discovery_sorted_by_name(tmp_path):
     for name in ("seq-02", "seq-10", "seq-01"):
         _make_mc_sequence(tmp_path, "val", name, 1, ["1,1,10,10,20,20,1,1,1"])
 
-    dataset = load_motchallenge(_mc_config(tmp_path), split="val")
+    dataset = load_layout(_mc_config(tmp_path), split="val")
 
     assert [seq.name for seq in dataset.sequences] == ["seq-01", "seq-02", "seq-10"]
 
@@ -565,7 +565,7 @@ def test_motchallenge_seq_length_comes_from_seqinfo_not_max_gt_frame(tmp_path):
         ],
     )
 
-    dataset = load_motchallenge(_mc_config(tmp_path), split="val")
+    dataset = load_layout(_mc_config(tmp_path), split="val")
 
     (seq,) = dataset.sequences
     assert seq.num_timesteps == 10
@@ -576,7 +576,7 @@ def test_motchallenge_missing_seqinfo_raises(tmp_path):
     _write_mc_gt(seq_dir, ["1,1,10,10,20,20,1,1,1"])
 
     with pytest.raises(ValueError, match="seqinfo.ini"):
-        load_motchallenge(_mc_config(tmp_path), split="val")
+        load_layout(_mc_config(tmp_path), split="val")
 
 
 def test_motchallenge_seqinfo_missing_seqlength_key_raises(tmp_path):
@@ -586,7 +586,7 @@ def test_motchallenge_seqinfo_missing_seqlength_key_raises(tmp_path):
     _write_mc_gt(seq_dir, ["1,1,10,10,20,20,1,1,1"])
 
     with pytest.raises(ValueError, match="seqLength"):
-        load_motchallenge(_mc_config(tmp_path), split="val")
+        load_layout(_mc_config(tmp_path), split="val")
 
 
 def test_motchallenge_seqinfo_non_integer_seqlength_raises(tmp_path):
@@ -595,7 +595,7 @@ def test_motchallenge_seqinfo_non_integer_seqlength_raises(tmp_path):
     )
 
     with pytest.raises(ValueError, match="seqLength"):
-        load_motchallenge(_mc_config(tmp_path), split="val")
+        load_layout(_mc_config(tmp_path), split="val")
 
 
 def test_motchallenge_missing_gt_txt_raises(tmp_path):
@@ -603,7 +603,7 @@ def test_motchallenge_missing_gt_txt_raises(tmp_path):
     _write_seqinfo(seq_dir, 5)
 
     with pytest.raises(ValueError, match="gt.txt"):
-        load_motchallenge(_mc_config(tmp_path), split="val")
+        load_layout(_mc_config(tmp_path), split="val")
 
 
 def test_motchallenge_malformed_gt_row_raises_and_names_file(tmp_path):
@@ -612,7 +612,7 @@ def test_motchallenge_malformed_gt_row_raises_and_names_file(tmp_path):
     )
 
     with pytest.raises(ValueError) as exc:
-        load_motchallenge(_mc_config(tmp_path), split="val")
+        load_layout(_mc_config(tmp_path), split="val")
     assert str(seq_dir / "gt" / "gt.txt") in str(exc.value)
 
 
@@ -634,7 +634,7 @@ def test_motchallenge_gt_class_id_explicitly_stamped_from_config(tmp_path):
         class_id=7,
     )
 
-    dataset = load_motchallenge(config, split="val")
+    dataset = load_layout(config, split="val")
 
     (seq,) = dataset.sequences
     assert all(track.class_id == 7 for track in seq.tracks)
@@ -653,7 +653,7 @@ def test_motchallenge_frames_binned_regardless_of_file_order(tmp_path):
         ],
     )
 
-    dataset = load_motchallenge(_mc_config(tmp_path), split="val")
+    dataset = load_layout(_mc_config(tmp_path), split="val")
     (seq,) = dataset.sequences
     data = build_sequence_data(seq, (), _MC_TEST_PROTOCOL, 1)
 
@@ -714,7 +714,7 @@ def test_uavdt_gt_class_id_explicitly_stamped_from_config(tmp_path):
         protocol=replace(UAVDT_PROTOCOL, eval_classes=(7,)),
     )
 
-    dataset = load_motchallenge(config, root=tmp_path, split="all")
+    dataset = load_layout(config, root=tmp_path, split="all")
 
     (seq,) = dataset.sequences
     assert all(track.class_id == 7 for track in seq.tracks)
@@ -937,3 +937,50 @@ def test_panaf500_end_to_end_evaluate_with_independently_numbered_predictions(tm
         "IDs": 1.0,
         "GT_IDs": 1.0,
     }
+
+
+# ------------------------------------------------ generic loader (no registration)
+
+
+def test_load_motchallenge_scores_a_custom_layout_without_registration(tmp_path):
+    root = tmp_path / "my-tracker-data"
+    seq_dir = root / "train" / "SEQ01"
+    (seq_dir / "gt").mkdir(parents=True)
+    (seq_dir / "gt" / "gt.txt").write_text("1,1,10,10,20,20,1\n2,1,12,10,20,20,1\n")
+    (seq_dir / "seqinfo.ini").write_text("[Sequence]\nseqLength=2\n")
+
+    dataset = load_motchallenge(root)
+
+    assert dataset.name == "my-tracker-data"
+    assert dataset.split == "train"
+    assert dataset.protocol.frame_convention.first_frame == 1
+    assert dataset.protocol.eval_classes == (1,)
+
+    pred_dir = tmp_path / "pred"
+    pred_dir.mkdir()
+    # Predictions numbered independently of GT.
+    write_mot(
+        pred_dir / "SEQ01.txt",
+        [Track(frame=1, track_id=901, x=10, y=10, w=20, h=20, conf=0.9)],
+    )
+    result = evaluate(dataset, pred_dir, [Count()])
+    assert result.combined["Count"] == {
+        "Dets": 1.0,
+        "GT_Dets": 2.0,
+        "IDs": 1.0,
+        "GT_IDs": 1.0,
+    }
+
+
+def test_load_motchallenge_drops_conf_zero_gt_rows(tmp_path):
+    root = tmp_path / "custom"
+    seq_dir = root / "train" / "SEQ01"
+    (seq_dir / "gt").mkdir(parents=True)
+    (seq_dir / "gt" / "gt.txt").write_text("1,1,10,10,20,20,1\n1,2,100,100,20,20,0\n")
+    (seq_dir / "seqinfo.ini").write_text("[Sequence]\nseqLength=1\n")
+
+    dataset = load_motchallenge(root)
+    result = evaluate(dataset, tmp_path / "no-preds", [Count()])
+
+    # The conf-zero "consider" flag row is excluded from evaluation.
+    assert result.combined["Count"]["GT_Dets"] == 1.0

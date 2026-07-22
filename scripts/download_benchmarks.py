@@ -1,5 +1,18 @@
-"""Declarative benchmark downloads executed by one shared engine."""
+"""Declarative benchmark downloads executed by one shared engine.
 
+Dev tooling, not part of the installed package: populates ``data/benchmarks/<name>``
+so loaders and the real-data parity gate have ground truth to read. External fetch
+tools (``curl``, ``gdown``, ``hf``) must be on PATH for the sources that need them.
+
+    uv run scripts/download_benchmarks.py list
+    uv run scripts/download_benchmarks.py status [--root DIR]
+    uv run scripts/download_benchmarks.py download <benchmark> [--root DIR]
+
+``--root`` overrides the target root, else ``MOTEVAL_DATA_ROOT``, else
+``data/benchmarks``.
+"""
+
+import argparse
 import json
 import os
 import shutil
@@ -706,3 +719,46 @@ def download_benchmark(name: str, root: Path) -> Path:
             f"expected {spec.expected_layout.description}"
         )
     return destination
+
+
+def _resolve_root(root: Path | None) -> Path:
+    if root is not None:
+        return root
+    if "MOTEVAL_DATA_ROOT" not in os.environ:
+        return DEFAULT_DATA_ROOT
+    raw_root = os.environ["MOTEVAL_DATA_ROOT"]
+    if not raw_root.strip():
+        raise ValueError("MOTEVAL_DATA_ROOT must not be empty")
+    return Path(raw_root)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="download_benchmarks.py", description=__doc__)
+    parser.add_argument("--root", type=Path, help="managed benchmark root")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("list", help="list managed benchmarks")
+    commands.add_parser("status", help="check benchmark data layouts")
+    fetch = commands.add_parser("download", help="download benchmark data")
+    fetch.add_argument("benchmark", help="benchmark name")
+    args = parser.parse_args(argv)
+
+    try:
+        root = _resolve_root(args.root)
+        if args.command == "list":
+            print("benchmark     availability")
+            for info in list_benchmarks():
+                print(f"{info.name:<13} {info.availability}")
+        elif args.command == "status":
+            print("benchmark     status    path")
+            for state in benchmark_status(root):
+                print(f"{state.name:<13} {state.state:<9} {state.path}")
+        else:
+            destination = download_benchmark(args.benchmark, root)
+            print(f"downloaded {args.benchmark} to {destination}")
+    except (ValueError, RuntimeError) as error:
+        parser.error(str(error))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
