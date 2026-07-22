@@ -6,7 +6,7 @@ loaders, and a CLI.
 
 ## Installation
 
-moteval requires Python ≥ 3.11 and is not yet on PyPI; install from GitHub:
+moteval requires Python ≥ 3.10 and is not yet on PyPI; install from GitHub:
 
 ```sh
 pip install git+https://github.com/kpeez/moteval.git
