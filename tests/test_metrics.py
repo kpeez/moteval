@@ -286,7 +286,7 @@ def test_conf_zero_gt_dropped_but_matched_pred_stays(tmp_path) -> None:
 
 
 def test_multi_sequence_combine_is_detection_weighted(tmp_path) -> None:
-    # Sequence "perfect" is tracked perfectly; sequence "missed" has no preds.
+    # Sequence "perfect" is tracked perfectly; sequence "missed" has an empty file.
     # Combining sums TP/FN/FP (TrackEval-style detection weighting), it does NOT
     # average the per-sequence scores: combined TP=5, FN=5 -> DetA=0.5, while
     # AssA is TP-weighted -> (1*5 + 0*0)/5 = 1, so combined HOTA = sqrt(0.5),
@@ -296,7 +296,7 @@ def test_multi_sequence_combine_is_detection_weighted(tmp_path) -> None:
         GtSequence(name="perfect", num_timesteps=5, tracks=tuple(gt)),
         GtSequence(name="missed", num_timesteps=5, tracks=tuple(gt)),
     )
-    result = _evaluate(dataset, {"perfect": gt}, tmp_path)  # no file for "missed"
+    result = _evaluate(dataset, {"perfect": gt, "missed": []}, tmp_path)
 
     per_perfect = result.per_sequence["perfect"]
     per_missed = result.per_sequence["missed"]
@@ -359,11 +359,11 @@ def test_empty_gt_sequence(tmp_path) -> None:
 
 
 def test_empty_predictions_sequence(tmp_path) -> None:
-    # GT present (10 dets, 2 ids), no prediction file: everything is missed.
+    # GT present (10 dets, 2 ids), empty prediction file: everything is missed.
     # CLEAR's empty-preds early return sets CLR_FN, ML and MLR only.
     gt = _boxes(1, 0.0, 5) + _boxes(2, 500.0, 5)
     dataset = _dataset(GtSequence(name="seq", num_timesteps=5, tracks=tuple(gt)))
-    result = _evaluate(dataset, {}, tmp_path)
+    result = _evaluate(dataset, {"seq": []}, tmp_path)
 
     scores = result.per_sequence["seq"]
     assert_scores_exact(scores["Count"], {"Dets": 0.0, "GT_Dets": 10.0, "IDs": 0.0, "GT_IDs": 2.0})
