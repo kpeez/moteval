@@ -29,6 +29,9 @@ class EvaluationResult:
 
     ``per_sequence`` maps sequence name -> metric name -> field -> value;
     ``combined`` maps metric name -> field -> value across all sequences.
+    Both hold only each metric's declared ``Metric.fields``. A metric with no
+    per-sequence field (TrackMAP, whose AP pools detections across sequences)
+    is absent from ``per_sequence``.
     """
 
     per_sequence: dict[str, MetricScores]

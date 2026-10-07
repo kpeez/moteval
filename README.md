@@ -43,8 +43,9 @@ COMBINED     89.334  86.667  92.895    90  92.541     0  94.737    18       20
 ```
 
 `--metrics hota,clear,identity,count,track_map,jf` selects metrics, `--out-csv` /
-`--out-json` export every field (not just the headline columns), and `--format mots`
-reads mask (MOTS-txt) ground truth.
+`--out-json` export every declared metric field (not just the headline columns), and
+`--format mots` reads mask (MOTS-txt) ground truth. TrackMAP reports combined scores only:
+its AP pools detections across all sequences, so it has no per-sequence entry.
 
 The same from Python:
 
