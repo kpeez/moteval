@@ -40,7 +40,8 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
   (frozen TrackEval oracle numbers), `tests/scenarios.py` (shared scenario definitions),
   `tests/perturb.py` (seeded perturbed predictions), `tests/rle.py` (RLE encoding for mask
   fixtures), `tests/conftest.py` (in-memory toy dataset; the `toy_benchmark` fixture
-  registers it by name for a single test). `tests/temp/` is gitignored scratch.
+  registers it by name for a single test). `tests/temp/` is gitignored scratch
+  for data, not tests (see Gotchas).
 
 ## Commands
 
@@ -76,5 +77,10 @@ All three must pass before any PR.
   the nested invocation deadlocks on uv's project lock. CLI tests run in-process via
   `moteval.cli.main(argv)`; if a subprocess is ever unavoidable, call the installed
   `.venv/bin/moteval` entry point directly.
+- pytest collects `test_*.py` files under the gitignored `tests/temp/`, because it sits
+  inside `testpaths`. Keep scratch tests outside `tests/`.
+- A same-size source swap within the same second can leave a stale `.pyc` that Python
+  still trusts. Run mutation probes with `PYTHONDONTWRITEBYTECODE=1` after you delete
+  every `__pycache__` directory outside `.venv`.
 - Out of scope: tracker orchestration, SAM3 prompts, VEval/SA-FARI, plots, VACE,
   ID-Euclidean. Don't add them.

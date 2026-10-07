@@ -11,7 +11,7 @@ from moteval.data.protocol import Protocol, RawFrame, preprocess_frame
 from moteval.data.similarity import box_ioa, box_iou
 from moteval.formats import Track, read_mot, write_mot
 from moteval.metrics.count import Count
-from tests.conftest import load_toy
+from tests.conftest import load_toy, write_perfect_predictions
 
 CONVENTION = FrameConvention("1-indexed", 1)
 _PROTOCOL = Protocol(name="t", frame_convention=CONVENTION, eval_classes=(1,))
@@ -343,14 +343,9 @@ def test_zero_indexed_benchmark_bit_identical_to_one_indexed_reencoding(tmp_path
 # --------------------------------------------------------------- evaluate()
 
 
-def _write_predictions_matching_gt(dataset, pred_dir):
-    for seq in dataset.sequences:
-        write_mot(pred_dir / f"{seq.name}.txt", list(seq.tracks))
-
-
 def test_evaluate_returns_per_sequence_and_combined_count(tmp_path):
     dataset = load_toy()
-    _write_predictions_matching_gt(dataset, tmp_path)
+    write_perfect_predictions(dataset, tmp_path)
 
     result = evaluate(dataset, tmp_path, [Count()])
 

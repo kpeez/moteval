@@ -213,6 +213,20 @@ def test_mots20_overlapping_gt_masks_raise(tmp_path):
         evaluate(dataset, tmp_path / "preds", [Count()])
 
 
+def test_mots20_overlapping_predicted_masks_raise(tmp_path):
+    _write_mots20_layout(tmp_path / "data", _perfect_gt_rows())
+    dataset = load_mots20(root=tmp_path / "data", split="train")
+    # Frame 1: ids 7 and 9 share rows 4-7, cols 4-7. GT masks never overlap.
+    preds = [
+        _mask_row(1, 7, 2, _square_mask(H, W, 2, 8, 2, 8)),
+        _mask_row(1, 9, 2, _square_mask(H, W, 4, 10, 4, 10)),
+    ]
+    pred_dir = tmp_path / "preds"
+    write_mots(pred_dir / "MOTS20-02.txt", preds)
+    with pytest.raises(ValueError, match="overlapping predicted masks at timestep 0"):
+        evaluate(dataset, pred_dir, [Count()])
+
+
 def test_mots20_out_of_range_prediction_frame_raises(tmp_path):
     _write_mots20_layout(tmp_path / "data", _perfect_gt_rows())
     dataset = load_mots20(root=tmp_path / "data", split="train")
