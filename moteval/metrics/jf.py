@@ -21,13 +21,13 @@ both the heavy dependencies and full-frame dilation cost (seconds per frame at
 
 import numpy as np
 from pycocotools import mask as mask_utils
+from scipy.optimize import linear_sum_assignment
 from scipy.spatial import KDTree
 
 from moteval.data.model import RleMask, SequenceData
-from moteval.metrics._matching import linear_sum_assignment
+from moteval.metrics._matching import EPS
 from moteval.metrics.base import Metric, Scores
 
-_EPS = float(np.finfo("float").eps)
 _BOUND_TH = 0.008
 _N_BINS = 4
 _FLOAT_FIELDS = ("J-Mean", "J-Recall", "J-Decay", "F-Mean", "F-Recall", "F-Decay", "J&F")
@@ -106,7 +106,7 @@ def _compute_f(
 
         bound_pix = (
             _BOUND_TH
-            if _BOUND_TH >= 1 - _EPS
+            if _BOUND_TH >= 1 - EPS
             else np.ceil(_BOUND_TH * np.linalg.norm((height, width)))
         )
         # Upstream dilates each boundary by an L2 disk of radius r=int(bound_pix)
@@ -214,9 +214,9 @@ class JAndF(Metric):
 
         res: dict[str, list] = {
             "J-Mean": [np.nanmean(j_m[i, :]) for i in range(j_m.shape[0])],
-            "J-Recall": [np.nanmean(j_m[i, :] > 0.5 + _EPS) for i in range(j_m.shape[0])],
+            "J-Recall": [np.nanmean(j_m[i, :] > 0.5 + EPS) for i in range(j_m.shape[0])],
             "F-Mean": [np.nanmean(f_m[i, :]) for i in range(f_m.shape[0])],
-            "F-Recall": [np.nanmean(f_m[i, :] > 0.5 + _EPS) for i in range(f_m.shape[0])],
+            "F-Recall": [np.nanmean(f_m[i, :] > 0.5 + EPS) for i in range(f_m.shape[0])],
             "J-Decay": [],
             "F-Decay": [],
         }

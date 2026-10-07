@@ -17,14 +17,21 @@ from moteval import CLEAR, HOTA, Count, Identity, JAndF, TrackMAP, evaluate
 from tests.scenarios import (
     BOX_SCENARIOS,
     COMBINE_CLASSES_SCENARIO,
+    MOTS_MULTI_CLASS_SCENARIO,
     TRACKMAP_SCENARIOS,
     build_box_dataset,
     build_mots_dataset,
     build_mots_scenarios,
+    build_multi_class_box_dataset,
+    build_multi_class_mots_dataset,
     build_trackmap_sequence_data,
+    mots_track_classes,
     predictions_dir,
+    sequence_classes,
     write_mot_scenario,
     write_mots_scenario,
+    write_multi_class_box_scenario,
+    write_multi_class_mots_scenario,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -70,11 +77,49 @@ def test_hota_combine_classes_class_averaged(tmp_path):
     frozen = SYNTHETIC_BOX["combine_classes_class_averaged"]["HOTA"]
     _assert_fields_equal(class_avg, frozen, "combine_classes_class_averaged.HOTA")
 
-    # det_averaged is moteval's sole intentional divergence from upstream (upstream
-    # bug); it is deliberately absent from the fixtures. Prove the combiners differ
-    # so the class-averaged check above has teeth.
+    # The combiners differ on this input, so the class-averaged check above has teeth.
+    # (HOTA det_averaged matches upstream; the multi-class tests below check it against
+    # the oracle. Only TrackMAP's det_averaged diverges.)
     det_avg = HOTA().combine_classes_det_averaged(all_res)
     assert not np.array_equal(class_avg["DetA"], det_avg["DetA"])
+
+
+# TrackMAP's det_averaged is the sole permitted divergence (upstream's is a copy of its
+# class-averaged combiner), so the regen script never freezes it; test_data.py pins
+# moteval's detection-weighted value with a hand-derived test.
+_COMBINATIONS = ("class_averaged", "det_averaged")
+
+
+def _assert_combinations_equal(result, fixtures: dict, expected_metrics: dict) -> None:
+    for combination in _COMBINATIONS:
+        frozen = fixtures[f"multi_class_{combination}"]
+        assert set(frozen) == expected_metrics[combination]
+        for name, fields in frozen.items():
+            _assert_fields_equal(
+                getattr(result, combination)[name], fields, f"{combination}.{name}"
+            )
+
+
+def test_box_multi_class_combinations(tmp_path):
+    scenario = next(s for s in BOX_SCENARIOS if s.name == COMBINE_CLASSES_SCENARIO)
+    write_multi_class_box_scenario(tmp_path, scenario, sequence_classes(scenario))
+    dataset = build_multi_class_box_dataset(tmp_path, scenario)
+    metrics = (*BOX_METRICS, TrackMAP)
+    result = evaluate(dataset, predictions_dir(tmp_path), [m() for m in metrics])
+    names = {m.__name__ for m in metrics}
+    expected = {"class_averaged": names, "det_averaged": names - {"TrackMAP"}}
+    _assert_combinations_equal(result, SYNTHETIC_BOX, expected)
+
+
+def test_mots_multi_class_combinations(tmp_path):
+    scenario = next(s for s in MOTS_SCENARIOS if s.name == MOTS_MULTI_CLASS_SCENARIO)
+    write_multi_class_mots_scenario(tmp_path, scenario, mots_track_classes)
+    dataset = build_multi_class_mots_dataset(tmp_path, scenario)
+    result = evaluate(dataset, predictions_dir(tmp_path), [m() for m in MOTS_METRICS])
+    names = {m.__name__ for m in MOTS_METRICS}
+    _assert_combinations_equal(
+        result, SYNTHETIC_MOTS, {"class_averaged": names, "det_averaged": names}
+    )
 
 
 @pytest.mark.parametrize("scenario", MOTS_SCENARIOS, ids=lambda s: s.name)

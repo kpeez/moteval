@@ -4,7 +4,7 @@ Two parallel reader/writer pairs — parallel because the formats are, not becau
 one derives from the other:
 
 - **Boxes** (`Track`, `read_mot`, `write_mot`): comma-separated
-  ``frame,id,x,y,w,h,conf`` rows, one per detection. Boxes are ``xywh`` in
+  ``frame,id,x,y,w,h,conf[,class,...]`` rows, one per detection. Boxes are ``xywh`` in
   pixels with the top-left corner at ``(x, y)``.
 - **Masks** (`MaskTrack`, `read_mots`, `write_mots`): whitespace-separated
   ``frame id class img_h img_w rle`` rows, one per mask. ``rle`` is a
@@ -25,10 +25,8 @@ class Track:
 
     For ground-truth rows read from a ``gt.txt`` file, ``conf`` carries the file's
     7th column (the "consider" flag). For predictions it is the detection
-    confidence. ``class_id`` defaults to pedestrian (1). `read_mot` parses no class
-    column, so every row it returns keeps that default — multi-class GT loaders
-    must construct `Track` rows with an explicit ``class_id`` themselves rather
-    than reuse `read_mot`.
+    confidence. ``class_id`` defaults to pedestrian (1). `read_mot` keeps that
+    default unless the caller asks it to read the class column (``class_column=True``).
     """
 
     frame: int
@@ -41,15 +39,23 @@ class Track:
     class_id: int = 1
 
 
-def read_mot(path: Path) -> list[Track]:
-    """Parse a MOTChallenge txt file into `Track` rows."""
+def read_mot(path: Path, *, class_column: bool = False) -> list[Track]:
+    """Parse a MOTChallenge txt file into `Track` rows.
+
+    With ``class_column=False`` (the default) the 8th column is ignored and every
+    row gets ``class_id=1``: many single-class prediction files hold ``-1`` there.
+    With ``class_column=True`` the 8th column is the class id. A row without it, or
+    with a negative class (``-1`` is the MOTChallenge "unset" marker), raises rather
+    than silently scoring in no class. `evaluate` sets it for multi-class protocols
+    only.
+    """
     tracks: list[Track] = []
     for lineno, line in enumerate(path.read_text().splitlines(), start=1):
         line = line.strip()
         if not line:
             continue
         fields = line.split(",")
-        if len(fields) < 6:
+        if len(fields) < (8 if class_column else 6):
             raise ValueError(f"malformed MOT row in {path}:{lineno}: {line!r}")
         try:
             conf = float(fields[6]) if len(fields) > 6 else 1.0
@@ -61,19 +67,26 @@ def read_mot(path: Path) -> list[Track]:
                 w=float(fields[4]),
                 h=float(fields[5]),
                 conf=conf,
+                class_id=int(fields[7]) if class_column else 1,
             )
         except ValueError as err:
             raise ValueError(f"malformed MOT row in {path}:{lineno}: {line!r}") from err
+        if track.class_id < 0:
+            raise ValueError(f"MOT row without a class (column 8) in {path}:{lineno}: {line!r}")
         tracks.append(track)
     return tracks
 
 
 def write_mot(path: Path, tracks: list[Track]) -> None:
-    """Write `Track` rows as MOTChallenge predictions (trailing fields = -1)."""
+    """Write `Track` rows as MOTChallenge predictions.
+
+    Column 8 holds ``class_id``, so `read_mot` with ``class_column=True`` reads the
+    classes back. The two trailing fields are ``-1``.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = sorted(tracks, key=lambda t: (t.frame, t.track_id))
     lines = [
-        f"{t.frame},{t.track_id},{t.x:.2f},{t.y:.2f},{t.w:.2f},{t.h:.2f},{t.conf:.4f},-1,-1,-1"
+        f"{t.frame},{t.track_id},{t.x:.2f},{t.y:.2f},{t.w:.2f},{t.h:.2f},{t.conf:.4f},{t.class_id},-1,-1"
         for t in rows
     ]
     path.write_text("\n".join(lines) + ("\n" if lines else ""))

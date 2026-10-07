@@ -29,11 +29,12 @@ from moteval.metrics.hota import HOTA
 from moteval.metrics.identity import Identity
 from moteval.metrics.jf import JAndF
 from moteval.metrics.track_map import TrackMAP
-from moteval.results import EvaluationResult, MetricScores
+from moteval.results import ClassResult, EvaluationResult, MetricScores
 
 __all__ = [
     "CLEAR",
     "HOTA",
+    "ClassResult",
     "Count",
     "EvaluationResult",
     "FrameConvention",

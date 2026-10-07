@@ -64,6 +64,26 @@ Ground truth in any other format converts by constructing a `moteval.MOTDataset`
 tracks plus a `Protocol` declaring the frame convention and evaluated classes — and
 calling `evaluate` on it.
 
+### Multi-class evaluation
+
+Every built-in benchmark evaluates one class. A `Protocol` whose `eval_classes` lists
+several class ids makes `evaluate` score each class on its own and then combine the
+classes in the two ways TrackEval does:
+
+- Box predictions give their class in column 8 of each MOTChallenge row (as `gt.txt`
+  does). moteval reads that column only for multi-class protocols, so single-class
+  prediction files that hold `-1` there keep working. In a multi-class run, a row with
+  no column 8 or a negative class raises. MOTS rows always carry their class.
+- `EvaluationResult.per_class` maps each class id to that class's `per_sequence` and
+  `combined` scores. `class_averaged` is the plain mean over classes;
+  `det_averaged` pools the detections of all classes. In a multi-class run,
+  `per_sequence` and `combined` are empty. In a single-class run, the three new fields
+  are empty, and the result, JSON, CSV and table are the same as before.
+- JSON adds `per_class` (class id as a string), `class_averaged` and `det_averaged`.
+  CSV columns become `class,seq,metric,field,value`: one block per class id (each
+  sequence, then `COMBINED`), then `class_averaged` and `det_averaged` rows with
+  `seq = COMBINED`. The table gains the same leading `class` column and rows.
+
 ## Metrics
 
 | CLI name | Metric | Fields |
@@ -108,5 +128,7 @@ DanceTrack, SportsMOT, and MOTS20 data.
 
 One documented divergence: upstream's TrackMAP `combine_classes_det_averaged` is a
 copy-paste of its class-averaged combiner and never actually weights by detections (an
-upstream bug); moteval implements the intended detection-weighted average. Everything
-else matches to the last bit, including upstream's intentional quirks.
+upstream bug); moteval implements the intended detection-weighted average. It affects
+only TrackMAP's `det_averaged` result in a multi-class run. Everything else matches to
+the last bit, including upstream's intentional quirks and every other metric's
+class-averaged and det-averaged results.

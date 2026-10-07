@@ -14,7 +14,8 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
   below-threshold fill of `0` vs the MOTS-path fill of `-10000` (`Protocol.matching_fill`),
   and J&F's uint8 decay bins wrapping past 255 frames.
 - Sole permitted numeric divergence: TrackMAP `combine_classes_det_averaged` (upstream bug;
-  we implement the correct detection-weighted average).
+  we implement the correct detection-weighted average). Every other metric's class
+  combiners, det-averaged included, match upstream and are oracle-checked.
 - Fix non-numeric hazards freely: ID densification uses dicts, never `np.max(ids)+1` arrays.
 - Masks are pycocotools RLE; encode from Fortran-contiguous `(h, w, n)` arrays only.
 - Everything converges to `MOTDataset` → frozen frame-major `SequenceData`; metrics consume
@@ -33,14 +34,21 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
   explicit `BENCHMARKS` dict + `load_dataset(name, root, split)` (no registration —
   custom data loads by path via `load_motchallenge`/`load_mots` or builds a `MOTDataset`
   directly); see that directory's `README.md` for loader conventions
-- `moteval/eval.py` (`evaluate`), `moteval/results.py`, `moteval/cli.py`
+- `moteval/eval.py` (`evaluate`), `moteval/results.py`, `moteval/cli.py`. `evaluate`
+  scores each class in `protocol.eval_classes`. A single-class run fills
+  `EvaluationResult.per_sequence`/`combined`; a multi-class run fills `per_class`,
+  `class_averaged` and `det_averaged` instead (the class combiners take the raw per-class
+  state, because TrackMAP weights by private `_num_dt_*` fields). Box predictions give
+  their class in column 8, read (`read_mot(class_column=True)`) only for multi-class
+  protocols. Single-class JSON, CSV and table output must not change.
 - `scripts/download_benchmarks.py` — dev-only benchmark downloader (`list/status/download`)
 - `tests/` — flat suite (test_metrics.py, test_parity.py, test_parity_real.py, test_data.py,
   test_loaders.py, test_masks.py, test_cli.py, test_download.py), `tests/fixtures/*.json`
   (frozen TrackEval oracle numbers), `tests/scenarios.py` (shared scenario definitions),
   `tests/perturb.py` (seeded perturbed predictions), `tests/rle.py` (RLE encoding for mask
-  fixtures), `tests/conftest.py` (in-memory toy dataset; the `toy_benchmark` fixture
-  registers it by name for a single test). `tests/temp/` is gitignored scratch
+  fixtures), `tests/conftest.py` (in-memory toy dataset and a two-class dataset; the
+  `toy_benchmark` and `two_class_benchmark` fixtures register them by name for a single
+  test). `tests/temp/` is gitignored scratch
   for data, not tests (see Gotchas).
 
 ## Commands
@@ -58,7 +66,10 @@ All three must pass before any PR.
 
 - Parity fixtures (`tests/fixtures/*.json`) are never hand-edited — regenerate with
   `scripts/regen_parity_fixtures.py`, which clones TrackEval @ `12c8791b`, applies
-  numpy>=2 alias patches, and rewrites the JSONs.
+  numpy>=2 alias patches, and rewrites the JSONs. The oracle datasets score one class,
+  so the class-combination entries score one single-class view per class
+  (`tests.scenarios.class_views`). The box entry treats a scenario's sequences as
+  classes. The mask entry splits one sequence by track id (`MOTS_MULTI_CLASS_TRACKS`).
 - `data/benchmarks` is a symlink to external storage holding one dir per dataset.
   `moteval.benchmarks.default_data_root()` owns the data-root rule: `MOTEVAL_DATA_ROOT`
   if set (an empty value raises), else `data/benchmarks` relative to the working

@@ -8,9 +8,9 @@ results are bit-identical to the oracle.
 """
 
 import numpy as np
+from scipy.optimize import linear_sum_assignment
 
 from moteval.data.model import SequenceData
-from moteval.metrics._matching import linear_sum_assignment
 from moteval.metrics.base import Metric, Scores
 
 THRESHOLD = 0.5

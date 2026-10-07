@@ -56,9 +56,9 @@ from moteval.formats import Track
 _KEYFRAME_STRIDE = 10
 _UNNAMED_BBOX_ID = 23
 # ChimpACT's single foreground class ("Chimpanzee"). Predictions are read back
-# through the standard MOTChallenge txt format (`read_mot`), which parses no
-# class column and always yields `class_id=1` -- so this must be 1 for any
-# prediction to ever survive the class filter, regardless of the raw COCO
+# through the standard MOTChallenge txt format (`read_mot`), which reads no class
+# column for a single-class protocol and always yields `class_id=1` -- so this
+# must be 1 for any prediction to ever survive the class filter, regardless of the raw COCO
 # `category_id` (0) each annotation carries; that field is intentionally never
 # read.
 _CLASS_ID = 1

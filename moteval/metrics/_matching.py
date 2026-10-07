@@ -1,16 +1,11 @@
-"""Shared matching primitives reused by HOTA, CLEAR, and Identity.
+"""The machine-epsilon guard shared by every metric.
 
-Mirrors TrackEval's use of scipy's Hungarian solver with an eps-guarded
-threshold comparison (``np.finfo('float').eps``), so alpha/threshold
-comparisons match upstream bit-for-bit.
+TrackEval compares similarities against thresholds with an ``np.finfo('float').eps``
+guard (``>= alpha - eps`` in HOTA, ``< threshold - eps`` in CLEAR, and so on).
+Every metric imports this one constant, so those comparisons match upstream
+bit-for-bit. Metrics call scipy's ``linear_sum_assignment`` directly.
 """
 
 import numpy as np
-from scipy.optimize import linear_sum_assignment as _linear_sum_assignment
 
 EPS = np.finfo(float).eps
-
-
-def linear_sum_assignment(cost_matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Solve the assignment problem; thin wrapper kept for a single import site."""
-    return _linear_sum_assignment(cost_matrix)

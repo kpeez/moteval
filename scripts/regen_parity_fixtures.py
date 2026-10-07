@@ -28,11 +28,23 @@ Modes:
 
 Fixture JSON format: ``{scenario_name: {metric: {field: scalar-or-list}}}``. Floats
 go through plain ``json`` (Python round-trips doubles exactly); arrays become lists.
-synthetic_box.json additionally holds a ``combine_classes_class_averaged`` entry:
-moteval's per-sequence HOTA results for the combine_classes scenario fed to the
-oracle HOTA ``combine_classes_class_averaged`` combiner. ``det_averaged`` is NOT
-frozen — upstream's is a copy-paste bug and moteval's corrected version is the sole
-intentional numeric divergence (ADR-0001).
+
+Class-combination entries (same format, keyed by entry name instead of scenario):
+
+- synthetic_box.json ``combine_classes_class_averaged``: moteval's per-sequence HOTA
+  results for the combine_classes scenario fed to the oracle HOTA
+  ``combine_classes_class_averaged`` combiner (the original, HOTA-only check).
+- synthetic_box.json ``multi_class_class_averaged`` / ``multi_class_det_averaged``
+  and synthetic_mots.json entries of the same names: oracle-only. An existing
+  scenario's rows are split into two classes (`tests.scenarios.class_views`); each
+  class view is scored through the oracle (its MOTChallenge/MOTS runner, plus the
+  oracle TrackMAP metric for boxes), and the oracle class combiners combine those
+  per-class results, as upstream's evaluator does for a multi-class dataset. Boxes
+  split combine_classes by sequence; masks split jf_perturbed_predictions by track id.
+  TrackMAP's det-averaged result is NOT frozen: upstream's
+  ``combine_classes_det_averaged`` is a copy-paste of its class-averaged combiner (an
+  upstream bug), and moteval's detection-weighted version is the sole intentional
+  numeric divergence (ADR-0001). Every other metric's det-averaged result is frozen.
 """
 
 import argparse
@@ -57,15 +69,23 @@ from tests.scenarios import (
     BOX_SCENARIOS,
     COMBINE_CLASSES_SCENARIO,
     DATA_ROOT,
+    MOTS_MULTI_CLASS_SCENARIO,
+    MULTI_CLASS_BOX_PROTOCOL,
+    MULTI_CLASS_MOTS_PROTOCOL,
     TRACKMAP_SCENARIOS,
     GtTracks,
     PredTracks,
+    Scenario,
+    box_rows_to_trackmap_spec,
     build_box_dataset,
     build_mots_scenarios,
+    class_views,
+    mots_track_classes,
     predictions_dir,
     prepare_dancetrack_val,
     prepare_mots20_sequence,
     prepare_sportsmot_val,
+    sequence_classes,
     write_mot_scenario,
     write_mots_scenario,
 )
@@ -277,6 +297,7 @@ def gen_synthetic_box(oracle: SimpleNamespace) -> dict:
             )
         fixture[scenario.name] = to_jsonable(result)
     fixture["combine_classes_class_averaged"] = {"HOTA": to_jsonable(freeze_hota_class_avg(oracle))}
+    fixture |= freeze_box_class_combinations(oracle)
     return fixture
 
 
@@ -299,6 +320,66 @@ def freeze_hota_class_avg(oracle: SimpleNamespace) -> dict:
     return oracle.metrics.HOTA().combine_classes_class_averaged(all_res)
 
 
+def _oracle_trackmap_combined(oracle: SimpleNamespace, scenario: Scenario) -> dict:
+    """Oracle TrackMAP over a box scenario's sequences, combined across sequences."""
+    per_seq = {
+        name: oracle.metrics.TrackMAP().eval_sequence(
+            _oracle_trackmap_data(*box_rows_to_trackmap_spec(gt_rows, pred_rows))
+        )
+        for name, _, gt_rows, pred_rows in scenario.sequences
+    }
+    return oracle.metrics.TrackMAP().combine_sequences(per_seq)
+
+
+def _oracle_class_combinations(
+    oracle: SimpleNamespace, per_class: list[dict[str, dict]], det_averaged_metrics: tuple
+) -> dict:
+    """Combine per-class oracle results with the oracle class combiners.
+
+    Classes enter in ``per_class`` order, the order moteval's protocol lists them.
+    """
+    class_averaged = {}
+    det_averaged = {}
+    for name in per_class[0]:
+        cls_res = {str(cls): res[name] for cls, res in enumerate(per_class, start=1)}
+        metric = getattr(oracle.metrics, name)()
+        class_averaged[name] = to_jsonable(metric.combine_classes_class_averaged(cls_res))
+        if name in det_averaged_metrics:
+            det_averaged[name] = to_jsonable(metric.combine_classes_det_averaged(cls_res))
+    return {"multi_class_class_averaged": class_averaged, "multi_class_det_averaged": det_averaged}
+
+
+def freeze_box_class_combinations(oracle: SimpleNamespace) -> dict:
+    """Oracle class_averaged/det_averaged for every box metric on combine_classes."""
+    scenario = next(s for s in BOX_SCENARIOS if s.name == COMBINE_CLASSES_SCENARIO)
+    per_class = []
+    classes = MULTI_CLASS_BOX_PROTOCOL.eval_classes
+    for view in class_views(scenario, sequence_classes(scenario), classes):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            seq_lengths = write_mot_scenario(tmp, view)
+            result = run_mot_challenge(
+                oracle, tmp / "gt", tmp / "trackers", seq_lengths, do_preproc=False
+            )
+        result["TrackMAP"] = _oracle_trackmap_combined(oracle, view)
+        per_class.append(result)
+    # TrackMAP det_averaged is the permitted divergence: never frozen.
+    return _oracle_class_combinations(oracle, per_class, det_averaged_metrics=BOX_METRICS)
+
+
+def freeze_mots_class_combinations(oracle: SimpleNamespace) -> dict:
+    """Oracle class_averaged/det_averaged for every mask metric on the MOTS scenario."""
+    scenario = next(s for s in build_mots_scenarios() if s.name == MOTS_MULTI_CLASS_SCENARIO)
+    per_class = []
+    classes = MULTI_CLASS_MOTS_PROTOCOL.eval_classes
+    for view in class_views(scenario, mots_track_classes, classes):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            seq_lengths = write_mots_scenario(tmp, view)
+            per_class.append(run_mots_challenge(oracle, tmp / "gt", tmp / "trackers", seq_lengths))
+    return _oracle_class_combinations(oracle, per_class, det_averaged_metrics=tuple(per_class[0]))
+
+
 def gen_synthetic_mots(oracle: SimpleNamespace) -> dict:
     fixture = {}
     for scenario in build_mots_scenarios():
@@ -307,6 +388,7 @@ def gen_synthetic_mots(oracle: SimpleNamespace) -> dict:
             seq_lengths = write_mots_scenario(tmp, scenario)
             result = run_mots_challenge(oracle, tmp / "gt", tmp / "trackers", seq_lengths)
         fixture[scenario.name] = to_jsonable(result)
+    fixture |= freeze_mots_class_combinations(oracle)
     return fixture
 
 

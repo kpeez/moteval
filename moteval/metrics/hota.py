@@ -7,9 +7,10 @@ exactly, so per-field results are bit-identical to the oracle.
 """
 
 import numpy as np
+from scipy.optimize import linear_sum_assignment
 
 from moteval.data.model import SequenceData
-from moteval.metrics._matching import EPS, linear_sum_assignment
+from moteval.metrics._matching import EPS
 from moteval.metrics.base import Metric, Scores
 
 ALPHAS = np.arange(0.05, 0.99, 0.05)

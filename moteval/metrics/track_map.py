@@ -26,9 +26,8 @@ actually weights by detections). moteval implements the intended behavior instea
 import numpy as np
 
 from moteval.data.model import SequenceData
+from moteval.metrics._matching import EPS
 from moteval.metrics.base import Metric, Scores
-
-EPS = np.finfo(float).eps
 
 IOU_THRESHOLDS = np.arange(0.5, 0.96, 0.05)
 RECALL_THRESHOLDS = np.linspace(0.0, 1.00, int(np.round((1.00 - 0.0) / 0.01) + 1), endpoint=True)
