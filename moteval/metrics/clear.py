@@ -137,7 +137,7 @@ class CLEAR(Metric):
         for field in _INTEGER_FIELDS:
             res[field] = self._combine_sum(all_res, field)
         for field in _FLOAT_FIELDS:
-            res[field] = float(np.mean([scores[field] for scores in all_res.values()]))
+            res[field] = float(np.mean(np.asarray([scores[field] for scores in all_res.values()])))
         return res
 
     @staticmethod

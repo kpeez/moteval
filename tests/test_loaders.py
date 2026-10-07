@@ -389,7 +389,7 @@ def test_chimpact_birth_death_boundaries(tmp_path):
     assert seq.num_timesteps == 30
 
     track5_frames = sorted(t.frame for t in seq.tracks if t.track_id == 5)
-    assert track5_frames == list(range(0, 20))
+    assert track5_frames == list(range(20))
     held = [t for t in seq.tracks if t.track_id == 5 and 11 <= t.frame <= 19]
     assert all((t.x, t.y, t.w, t.h) == (10.0, 10.0, 10.0, 10.0) for t in held)
 
@@ -420,7 +420,7 @@ def test_chimpact_missing_intervening_keyframe_block_yields_zero_rows_for_that_w
     assert {t.frame for t in seq.tracks}.isdisjoint(range(10, 20))
 
     track5 = [t for t in seq.tracks if t.track_id == 5]
-    assert sorted(t.frame for t in track5) == list(range(0, 10))
+    assert sorted(t.frame for t in track5) == list(range(10))
     assert all((t.x, t.y, t.w, t.h) == (1.0, 1.0, 2.0, 2.0) for t in track5)
 
     track9 = [t for t in seq.tracks if t.track_id == 9]
@@ -451,7 +451,7 @@ def test_chimpact_multi_block_gap_then_reappearance_has_no_back_connection(tmp_p
     assert seq.num_timesteps == 40
 
     track5_frames = sorted(t.frame for t in seq.tracks if t.track_id == 5)
-    assert track5_frames == list(range(0, 10)) + list(range(30, 40))
+    assert track5_frames == list(range(10)) + list(range(30, 40))
     before_gap = [t for t in seq.tracks if t.track_id == 5 and t.frame < 10]
     assert all((t.x, t.y, t.w, t.h) == (1.0, 1.0, 2.0, 2.0) for t in before_gap)
     after_gap = [t for t in seq.tracks if t.track_id == 5 and t.frame >= 30]

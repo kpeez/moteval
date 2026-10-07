@@ -151,11 +151,13 @@ class HOTA(Metric):
         for field in _INTEGER_ARRAY_FIELDS:
             arrays[field] = np.asarray(self._combine_sum(all_res, field))
         for field in _FLOAT_ARRAY_FIELDS:
-            arrays[field] = np.mean([scores[field] for scores in all_res.values()], axis=0)
+            arrays[field] = np.mean(
+                np.asarray([scores[field] for scores in all_res.values()]), axis=0
+            )
         scores_out: Scores = dict(arrays)
         for field in _FLOAT_FIELDS:
             scores_out[field] = float(
-                np.mean([scores[field] for scores in all_res.values()], axis=0)
+                np.mean(np.asarray([scores[field] for scores in all_res.values()]), axis=0)
             )
         return scores_out
 

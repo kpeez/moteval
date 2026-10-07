@@ -16,9 +16,9 @@ moteval = "moteval.cli:main"
 [dependency-groups]
 dev = [
     "prek>=0.4.10",
+    "pyrefly>=1.3.2,<2",
     "pytest>=8",
     "ruff>=0.6",
-    "ty>=0.0.1a1",
 ]
 
 [build-system]
@@ -34,6 +34,11 @@ include = ["/moteval", "/README.md"]
 [tool.ruff]
 target-version = "py310"
 line-length = 100
+
+[tool.pyrefly]
+project-includes = ["moteval", "scripts", "tests"]
+# Check against the requires-python floor, not whichever interpreter is on PATH.
+python-version = "3.10"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

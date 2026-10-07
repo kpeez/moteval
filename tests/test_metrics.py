@@ -322,7 +322,7 @@ def test_multi_sequence_combine_is_detection_weighted(tmp_path) -> None:
     )
     assert np.all(_alphas(0.0) < combined["HOTA"]["HOTA"])
     assert np.all(combined["HOTA"]["HOTA"] < _alphas(1.0))
-    assert combined["HOTA"]["HOTA"][0] == SQRT_HALF
+    assert np.asarray(combined["HOTA"]["HOTA"])[0] == SQRT_HALF
 
     # CLR_Frames quirk: the empty-preds early return never sets CLR_Frames, so
     # "missed" contributes 0 frames and the combined count stays 5, not 10.

@@ -50,8 +50,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from moteval import HOTA, TrackMAP, evaluate  # noqa: E402
-from tests.scenarios import (  # noqa: E402
+from moteval import HOTA, TrackMAP, evaluate
+from tests.scenarios import (
     BOX_METRICS,
     BOX_SCENARIOS,
     COMBINE_CLASSES_SCENARIO,

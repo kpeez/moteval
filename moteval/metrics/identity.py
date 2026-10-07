@@ -88,7 +88,7 @@ class Identity(Metric):
         # directly here, not recomputed from summed counts (same quirk as CLEAR).
         res: Scores = {field: self._combine_sum(all_res, field) for field in _INTEGER_FIELDS}
         for field in _FLOAT_FIELDS:
-            res[field] = float(np.mean([scores[field] for scores in all_res.values()]))
+            res[field] = float(np.mean(np.asarray([scores[field] for scores in all_res.values()])))
         return res
 
     @staticmethod

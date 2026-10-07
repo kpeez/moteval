@@ -44,7 +44,7 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
 
 ```sh
 just install   # uv sync --locked + prek hooks
-just check     # ruff format, ruff check --fix, ty check
+just check     # ruff format, ruff check --fix, pyrefly check
 just test      # pytest (testpaths: tests/; real-data gate deselected by default)
 just test-real # slow real-data parity gate (needs data/benchmarks + fixtures)
 ```

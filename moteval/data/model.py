@@ -6,7 +6,7 @@ plus precomputed per-frame similarity matrices (box IoU or mask IoU).
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypedDict, TypeVar
 
 import numpy as np
 
@@ -15,8 +15,17 @@ from moteval.formats import MaskTrack, Track
 if TYPE_CHECKING:
     from moteval.data.protocol import Protocol
 
-# pycocotools compressed RLE: {"size": [height, width], "counts": bytes}.
-RleMask = dict[str, object]
+
+class RleMask(TypedDict):
+    """pycocotools compressed RLE: ``{"size": [height, width], "counts": bytes}``.
+
+    moteval always stores ``bytes`` counts; ``str`` is admitted only so this type
+    stays assignable to the pycocotools stub's RLE type (TypedDict fields are
+    invariant).
+    """
+
+    size: list[int]
+    counts: str | bytes
 
 
 @dataclass(frozen=True)

@@ -37,8 +37,7 @@ class EvaluationResult:
 
 def _to_json_value(value: float | np.ndarray) -> JsonValue:
     if isinstance(value, np.ndarray):
-        array = cast(np.ndarray, value)
-        return cast(JsonValue, array.tolist())
+        return cast(JsonValue, value.tolist())
     if isinstance(value, np.generic):
         return cast(int | float, value.item())
     return value

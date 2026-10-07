@@ -19,7 +19,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from moteval.data.model import FrameConvention
+from moteval.data.model import FrameConvention, RleMask
 from moteval.data.similarity import decode_mask, encode_mask, masks_overlap
 from moteval.formats import MaskTrack, Track
 
@@ -94,12 +94,12 @@ def perturb_box_tracks(
     return preds
 
 
-def _translate_rle(rle_dict: dict, dy: int, dx: int) -> dict:
+def _translate_rle(rle_dict: RleMask, dy: int, dx: int) -> RleMask:
     mask = np.roll(decode_mask(rle_dict), (dy, dx), axis=(0, 1))
     return encode_mask(mask)
 
 
-def _overlaps(rle_dict: dict, occupied: list[dict]) -> bool:
+def _overlaps(rle_dict: RleMask, occupied: list[RleMask]) -> bool:
     # occupied masks are pairwise disjoint, so any overlap involves the candidate
     return bool(occupied) and masks_overlap([rle_dict, *occupied])
 
@@ -140,7 +140,7 @@ def perturb_mask_tracks(
     preds: list[MaskTrack] = []
     for t_index in range(num_timesteps):
         frame = convention.first_frame + t_index
-        occupied: list[dict] = []
+        occupied: list[RleMask] = []
         for gt_row in by_timestep.get(t_index, []):
             if rng.random() < drop_rate:
                 continue
@@ -150,7 +150,10 @@ def perturb_mask_tracks(
                 next_fresh += 1
             pred_id = switched.get(raw, id_map[raw])
 
-            original = {"size": [gt_row.img_h, gt_row.img_w], "counts": gt_row.rle.encode()}
+            original: RleMask = {
+                "size": [gt_row.img_h, gt_row.img_w],
+                "counts": gt_row.rle.encode(),
+            }
             dy, dx = (int(v) for v in rng.integers(-max_shift, max_shift + 1, size=2))
             candidate = _translate_rle(original, dy, dx)
             if _overlaps(candidate, occupied):
