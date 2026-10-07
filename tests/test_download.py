@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from moteval.benchmarks import BENCHMARKS
+
 _SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "download_benchmarks.py"
 _spec = importlib.util.spec_from_file_location("download_benchmarks", _SCRIPT_PATH)
 assert _spec is not None and _spec.loader is not None
@@ -190,17 +192,8 @@ def test_unfetchable_benchmark_fails_before_creating_a_directory(tmp_path: Path)
     assert not (tmp_path / "chimpact").exists()
 
 
-_EXPECTED_BENCHMARKS = (
-    "animaltrack",
-    "bft",
-    "chimpact",
-    "dancetrack",
-    "gmot40",
-    "mots20",
-    "panaf500",
-    "sportsmot",
-    "uavdt",
-)
+# Every loadable benchmark must have a download spec, listed in name order.
+_EXPECTED_BENCHMARKS = tuple(sorted(BENCHMARKS))
 
 
 def test_script_list_reports_every_supported_benchmark(capsys):

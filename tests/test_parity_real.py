@@ -27,8 +27,6 @@ from tests.scenarios import (
     prepare_sportsmot_val,
 )
 
-pytestmark = pytest.mark.real_data
-
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "real_data.json"
 REAL_DATA = json.loads(FIXTURE_PATH.read_text()) if FIXTURE_PATH.is_file() else {}
 BOX_METRICS = (HOTA, CLEAR, Identity, Count)
@@ -66,8 +64,7 @@ def _assert_metrics_equal(ours: dict, frozen: dict, metrics: tuple[type, ...]) -
     for metric in metrics:
         name = metric.__name__
         for field, frozen_value in frozen[name].items():
-            if field not in ours[name]:
-                continue
+            assert field in ours[name], f"{name}.{field} missing from moteval output"
             assert np.array_equal(
                 np.asarray(ours[name][field], dtype=float),
                 np.asarray(frozen_value, dtype=float),
@@ -75,6 +72,7 @@ def _assert_metrics_equal(ours: dict, frozen: dict, metrics: tuple[type, ...]) -
             ), f"{name}.{field}: {ours[name][field]} != {frozen_value}"
 
 
+@pytest.mark.real_data
 def test_real_data_parity_dancetrack_val(tmp_path):
     _require(DATA_ROOT / "dancetrack" / "val", "dancetrack", expected_sequences=25)
     dataset, _, _ = prepare_dancetrack_val(tmp_path)
@@ -83,6 +81,7 @@ def test_real_data_parity_dancetrack_val(tmp_path):
     _assert_metrics_equal(ours, REAL_DATA["dancetrack_val"], BOX_METRICS)
 
 
+@pytest.mark.real_data
 def test_real_data_parity_sportsmot_val(tmp_path):
     _require(DATA_ROOT / "sportsmot" / "val", "sportsmot", expected_sequences=45)
     dataset, _, _ = prepare_sportsmot_val(tmp_path)
@@ -91,6 +90,7 @@ def test_real_data_parity_sportsmot_val(tmp_path):
     _assert_metrics_equal(ours, REAL_DATA["sportsmot_val"], BOX_METRICS)
 
 
+@pytest.mark.real_data
 def test_real_data_parity_mots20_mask_sequence(tmp_path):
     _require(DATA_ROOT / "mots20" / "train", "mots20", expected_sequences=4)
     dataset, _, _ = prepare_mots20_sequence(tmp_path)
