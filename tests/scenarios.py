@@ -27,7 +27,7 @@ old tests/parity/test_real_data.py setup exactly.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -57,6 +57,8 @@ BOX_PROTOCOL = Protocol(
 )
 BOX_METRICS = ("HOTA", "CLEAR", "Identity", "Count")
 COMBINE_CLASSES_SCENARIO = "combine_classes"
+# The MOTS scenario that the multi-class mask check reuses (see `class_views`).
+MOTS_MULTI_CLASS_SCENARIO = "jf_multi_sequence_combine"
 
 DATA_ROOT = default_data_root()
 REAL_DATA_SEED = 20260718
@@ -226,9 +228,10 @@ BOX_SCENARIOS: tuple[Scenario, ...] = (
             ("FP01", 2, _FP_GT, _FP_PRED),
         ),
     ),
-    # Two sequences with deliberately different det/FN counts; also reused by the
-    # regen script as the two pseudo-classes fed to the oracle HOTA
-    # combine_classes_class_averaged combiner (see COMBINE_CLASSES_SCENARIO).
+    # Two sequences with deliberately different det/FN counts. The class-combination
+    # checks reuse them as two classes: the original HOTA-only
+    # combine_classes_class_averaged entry, and the multi-class entries built from
+    # `class_views` (see the regen script).
     Scenario(
         COMBINE_CLASSES_SCENARIO,
         (
@@ -383,6 +386,72 @@ def build_box_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDataset:
 
 
 # ---------------------------------------------------------------------------
+# Multi-class views of a two-sequence scenario
+# ---------------------------------------------------------------------------
+#
+# The oracle's MOTChallenge and MOTS datasets score one class only, so a scenario's
+# sequences stand in for classes: sequence ``i`` holds every row of class ``i + 1``.
+# moteval scores that layout as one multi-class run (`write_multi_class_*` +
+# `build_multi_class_*`). The regen script scores each class through the oracle as
+# `class_views`: the same sequences with every other class's rows removed, which is
+# exactly the per-class view TrackEval's evaluator combines before it combines classes.
+
+MULTI_CLASS_BOX_PROTOCOL = replace(BOX_PROTOCOL, name="parity-multi-class", eval_classes=(1, 2))
+MULTI_CLASS_MOTS_PROTOCOL = replace(
+    MOTS20_PROTOCOL, name="parity-mots-multi-class", eval_classes=(1, 2)
+)
+
+
+def class_views(scenario: Scenario) -> tuple[Scenario, ...]:
+    """One scenario per class: sequence ``i`` keeps its rows, every other one is empty."""
+    return tuple(
+        Scenario(
+            f"{scenario.name}-class-{kept + 1}",
+            tuple(
+                (name, num_timesteps, gt_rows if i == kept else [], pred_rows if i == kept else [])
+                for i, (name, num_timesteps, gt_rows, pred_rows) in enumerate(scenario.sequences)
+            ),
+        )
+        for kept in range(len(scenario.sequences))
+    )
+
+
+def write_multi_class_box_scenario(tmp_dir: Path, scenario: Scenario) -> None:
+    """Write a box scenario with class ``i + 1`` in column 8 of sequence ``i``'s rows.
+
+    GT rows already have a class column (index 7), which is replaced. Prediction rows
+    are ``frame,id,x,y,w,h,conf``, so the class is appended as column 8.
+    """
+    for i, (name, _, gt_rows, pred_rows) in enumerate(scenario.sequences):
+        cls = i + 1
+        _write_box_rows(
+            tmp_dir / "gt" / name / "gt" / "gt.txt",
+            [[*row[:7], cls, *row[8:]] for row in gt_rows],
+        )
+        _write_box_rows(
+            predictions_dir(tmp_dir) / f"{name}.txt", [[*row, cls] for row in pred_rows]
+        )
+
+
+def build_multi_class_box_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDataset:
+    """Build the two-class `MOTDataset` from what `write_multi_class_box_scenario` wrote."""
+    gt_sequences = tuple(
+        GtSequence(
+            name=name,
+            num_timesteps=num_timesteps,
+            tracks=tuple(read_mot(tmp_dir / "gt" / name / "gt" / "gt.txt", class_column=True)),
+        )
+        for name, num_timesteps, _, _ in scenario.sequences
+    )
+    return MOTDataset(
+        name="synthetic-multi-class",
+        split="val",
+        sequences=gt_sequences,
+        protocol=MULTI_CLASS_BOX_PROTOCOL,
+    )
+
+
+# ---------------------------------------------------------------------------
 # MOTS scenarios (J&F plus mask HOTA/CLEAR/Identity/Count)
 # ---------------------------------------------------------------------------
 
@@ -505,12 +574,66 @@ def build_mots_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDataset:
     )
 
 
+def write_multi_class_mots_scenario(tmp_dir: Path, scenario: Scenario) -> None:
+    """Write a MOTS scenario with every row of sequence ``i`` relabelled to class ``i + 1``.
+
+    The scenario must hold no ignore-region rows: relabelling would turn them into tracks.
+    """
+    for i, (name, _, gt_rows, pred_rows) in enumerate(scenario.sequences):
+        if any(t.class_id == MOTS20_IGNORE_CLASS for t in gt_rows):
+            raise ValueError(f"{scenario.name}/{name}: ignore rows cannot be relabelled")
+        write_mots(
+            tmp_dir / "gt" / name / "gt" / "gt.txt", [replace(t, class_id=i + 1) for t in gt_rows]
+        )
+        write_mots(
+            predictions_dir(tmp_dir) / f"{name}.txt",
+            [replace(t, class_id=i + 1) for t in pred_rows],
+        )
+
+
+def build_multi_class_mots_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDataset:
+    """Build the two-class mask `MOTDataset` from `write_multi_class_mots_scenario` output."""
+    gt_sequences = tuple(
+        MaskGtSequence(
+            name=name,
+            num_timesteps=num_timesteps,
+            tracks=tuple(read_mots(tmp_dir / "gt" / name / "gt" / "gt.txt")),
+        )
+        for name, num_timesteps, _, _ in scenario.sequences
+    )
+    return MOTDataset(
+        name="parity-mots-multi-class",
+        split="train",
+        sequences=gt_sequences,
+        protocol=MULTI_CLASS_MOTS_PROTOCOL,
+    )
+
+
 # ---------------------------------------------------------------------------
 # TrackMAP scenarios (pure Python specs)
 # ---------------------------------------------------------------------------
 
 GtTracks = dict[int, dict[int, Sequence[float]]]
 PredTracks = dict[int, dict[int, tuple[Sequence[float], float]]]
+
+
+def box_rows_to_trackmap_spec(gt_rows: list, pred_rows: list) -> tuple[GtTracks, PredTracks]:
+    """Convert MOT-txt value lists to the TrackMAP spec form (0-based frame keys).
+
+    Frames are 1-indexed in the rows (`BOX_PROTOCOL`); values become floats, as a
+    file reader produces them.
+    """
+    gt_tracks: GtTracks = {}
+    for row in gt_rows:
+        gt_tracks.setdefault(row[1], {})[row[0] - 1] = [float(v) for v in row[2:6]]
+    pred_tracks: PredTracks = {}
+    for row in pred_rows:
+        pred_tracks.setdefault(row[1], {})[row[0] - 1] = (
+            [float(v) for v in row[2:6]],
+            float(row[6]),
+        )
+    return gt_tracks, pred_tracks
+
 
 # name -> {seq_name: (num_timesteps, gt_tracks, pred_tracks)}. Ids here are moteval's
 # view; the regen script offsets all ids by +1 on the oracle side so upstream's

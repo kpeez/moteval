@@ -11,7 +11,13 @@ from moteval.data.protocol import Protocol, RawFrame, preprocess_frame
 from moteval.data.similarity import box_ioa, box_iou
 from moteval.formats import Track, read_mot, write_mot
 from moteval.metrics.count import Count
-from tests.conftest import load_toy, write_perfect_predictions
+from tests.conftest import (
+    TWO_CLASS_SEQUENCE,
+    load_toy,
+    load_two_class,
+    write_perfect_predictions,
+    write_two_class_predictions,
+)
 from tests.scenarios import (
     build_mots_dataset,
     build_mots_scenarios,
@@ -254,6 +260,14 @@ def test_read_mot_malformed_numeric_row_names_file_and_line(tmp_path):
     assert ":2" in message
 
 
+def test_read_mot_reads_the_class_column_only_when_asked(tmp_path):
+    path = tmp_path / "seq.txt"
+    path.write_text("1,1,10,10,20,20,1,3\n1,2,10,10,20,20,1,-1\n")
+    assert [t.class_id for t in read_mot(path)] == [1, 1]
+    path.write_text("1,1,10,10,20,20,1,3\n")
+    assert [t.class_id for t in read_mot(path, class_column=True)] == [3]
+
+
 # ------------------------------------------------------------ frame indexing
 #
 # Regression proof for the frame-indexing contract (issue #4). Historically
@@ -427,11 +441,80 @@ def test_evaluate_rejects_duplicate_metric_classes(tmp_path):
     assert "Count" in str(exc.value)
 
 
-def test_evaluate_rejects_multi_class_protocol(tmp_path):
-    toy = load_toy()
-    multi = replace(toy, protocol=replace(toy.protocol, eval_classes=(1, 2)))
-    with pytest.raises(ValueError, match="single-class"):
-        evaluate(multi, tmp_path, [Count()])
+def test_evaluate_scores_each_class_and_both_class_combinations(tmp_path):
+    write_two_class_predictions(tmp_path)
+    result = evaluate(load_two_class(), tmp_path, [HOTA(), Count()])
+
+    # A multi-class run reports through per_class and the two class combinations.
+    assert result.per_sequence == {}
+    assert result.combined == {}
+    assert list(result.per_class) == [1, 2]
+    # Hand derivation. Every IoU is 1 or 0, so every HOTA alpha agrees.
+    # Class 1: TP 2, FN 0, FP 1 (track 300 on a class-2 box) -> DetA 2/3.
+    # Class 2: TP 2, FN 2 (GT 30), FP 0 -> DetA 1/2.
+    class_1, class_2 = result.per_class[1], result.per_class[2]
+    assert class_1.combined["Count"] == {"Dets": 3.0, "GT_Dets": 2.0, "IDs": 2.0, "GT_IDs": 1.0}
+    assert class_2.combined["Count"] == {"Dets": 2.0, "GT_Dets": 4.0, "IDs": 1.0, "GT_IDs": 2.0}
+    assert class_2.per_sequence[TWO_CLASS_SEQUENCE]["Count"] == class_2.combined["Count"]
+    np.testing.assert_allclose(class_1.combined["HOTA"]["DetA"], 2 / 3)
+    np.testing.assert_allclose(class_2.combined["HOTA"]["DetA"], 1 / 2)
+    # Count sums over the classes in both combinations.
+    totals = {"Dets": 5.0, "GT_Dets": 6.0, "IDs": 3.0, "GT_IDs": 3.0}
+    assert result.class_averaged["Count"] == totals
+    assert result.det_averaged["Count"] == totals
+    # Class-averaged DetA is the mean of the class values: (2/3 + 1/2) / 2 = 7/12.
+    # Det-averaged DetA pools the detections: 4 TP / (4 TP + 2 FN + 1 FP) = 4/7.
+    np.testing.assert_allclose(result.class_averaged["HOTA"]["DetA"], 7 / 12)
+    np.testing.assert_allclose(result.det_averaged["HOTA"]["DetA"], 4 / 7)
+    for combination in (result.class_averaged, result.det_averaged):
+        assert set(combination["HOTA"]) == set(HOTA.fields)
+
+
+@pytest.mark.parametrize(
+    ("row", "message"),
+    [("1,100,0,0,10,10,1,-1", "without a class"), ("1,100,0,0,10,10,1", "malformed")],
+    ids=["unset-class", "no-class-column"],
+)
+def test_multi_class_predictions_must_give_a_class(tmp_path, row, message):
+    (tmp_path / f"{TWO_CLASS_SEQUENCE}.txt").write_text(row + "\n")
+    with pytest.raises(ValueError, match=message):
+        evaluate(load_two_class(), tmp_path, [Count()])
+
+
+def test_trackmap_det_averaged_weights_classes_by_detection_tracks(tmp_path):
+    # Every track is a 10x10 box over 2 frames, so all are in area_s and time_s.
+    # Class 1: GT 1 and one matching prediction track 101.
+    # Class 2: GT 2, a far-away false-positive track 201 with the higher score (0.9),
+    # and a matching track 202 (score 0.5).
+    tracks = (
+        Track(frame=f, track_id=tid, x=x, y=x, w=10, h=10, conf=1.0, class_id=cls)
+        for tid, x, cls in [(1, 0.0, 1), (2, 100.0, 2)]
+        for f in (1, 2)
+    )
+    dataset = MOTDataset(
+        name="trackmap-two-class",
+        split="val",
+        sequences=(GtSequence(name="s", num_timesteps=2, tracks=tuple(tracks)),),
+        protocol=Protocol("p", CONVENTION, eval_classes=(1, 2)),
+    )
+    rows = [
+        f"{f},{tid},{x},{x},10,10,{score},{cls}"
+        for tid, x, score, cls in [(101, 0, 0.9, 1), (201, 500, 0.9, 2), (202, 100, 0.5, 2)]
+        for f in (1, 2)
+    ]
+    (tmp_path / "s.txt").write_text("\n".join(rows) + "\n")
+
+    result = evaluate(dataset, tmp_path, [TrackMAP()])
+
+    # At every IoU threshold, class 1 has one true positive: precision 1 at every
+    # recall threshold, so AP = 1 (up to TrackEval's np.spacing(1) in the precision
+    # denominator). Class 2 ranks the false positive first: precision is 0 then 1/2,
+    # which the right-to-left maximum makes 1/2 at every recall threshold, so AP = 1/2.
+    # The detection weights are the non-ignored prediction tracks: 1 and 2.
+    # Class-averaged AP = (1 + 1/2) / 2 = 3/4.
+    # Det-averaged AP = (1 * 1 + 1/2 * 2) / (1 + 2) = 2/3.
+    np.testing.assert_allclose(result.class_averaged["TrackMAP"]["AP_all"], np.full(10, 3 / 4))
+    np.testing.assert_allclose(result.det_averaged["TrackMAP"]["AP_all"], np.full(10, 2 / 3))
 
 
 # ---------------------------------------------------------- extensibility

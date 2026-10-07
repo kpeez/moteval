@@ -22,7 +22,14 @@ from moteval import (
     load_motchallenge,
     load_mots,
 )
-from moteval.results import EvaluationResult, iter_csv_rows, to_json_dict
+from moteval.results import (
+    EvaluationResult,
+    csv_header,
+    iter_csv_rows,
+    iter_scored_rows,
+    row_label_names,
+    to_json_dict,
+)
 
 _DEFAULT_METRICS = "hota,clear,identity,count"
 _METRICS: dict[str, type[Metric]] = {
@@ -107,12 +114,18 @@ def _format_headline(value: float, label: str) -> str:
 
 
 def _table(result: EvaluationResult) -> str:
-    columns = [column for column in _HEADLINES if column[0] in result.combined]
-    headers = ["seq", *(label for _metric, _field, label in columns)]
+    """Headline table: one row per sequence plus ``COMBINED``.
+
+    A multi-class run adds a leading ``class`` column, repeats the rows for each
+    class id, and ends with ``class_averaged`` and ``det_averaged`` rows.
+    """
+    available = result.class_averaged if result.is_multi_class else result.combined
+    columns = [column for column in _HEADLINES if column[0] in available]
+    label_names = row_label_names(result)
+    headers = [*label_names, *(label for _metric, _field, label in columns)]
     rows: list[list[str]] = []
-    all_scores = (*result.per_sequence.items(), ("COMBINED", result.combined))
-    for sequence, scores in all_scores:
-        values = [sequence]
+    for labels, scores in iter_scored_rows(result):
+        values = list(labels)
         for metric, field, label in columns:
             value = _scalar(scores[metric][field])
             values.append(_format_headline(value, label))
@@ -123,7 +136,8 @@ def _table(result: EvaluationResult) -> str:
         for index in range(len(headers))
     ]
     template = "  ".join(
-        f"{{:{'<' if index == 0 else '>'}{width}}}" for index, width in enumerate(widths)
+        f"{{:{'<' if index < len(label_names) else '>'}{width}}}"
+        for index, width in enumerate(widths)
     )
     return "\n".join([template.format(*headers), *(template.format(*row) for row in rows)])
 
@@ -132,7 +146,7 @@ def _write_csv(path: Path, result: EvaluationResult) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(("seq", "metric", "field", "value"))
+        writer.writerow(csv_header(result))
         writer.writerows(iter_csv_rows(result))
 
 
