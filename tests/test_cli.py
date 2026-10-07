@@ -1,8 +1,8 @@
 """CLI tests: run in-process via `moteval.cli.main(argv)` -- the installed
-console script isn't used because "toy" is inserted into `BENCHMARKS` only
-inside the test suite (tests/conftest.py) and a subprocess entry point never
-sees it, and because a nested `uv run` under `uv run pytest` deadlocks on uv's
-project lock.
+console script isn't used because "toy" is registered in `BENCHMARKS` only
+inside the test process (the `toy_benchmark` fixture in tests/conftest.py) and
+a subprocess entry point never sees it, and because a nested `uv run` under
+`uv run pytest` deadlocks on uv's project lock.
 """
 
 import csv
@@ -11,15 +11,16 @@ import json
 import numpy as np
 import pytest
 
-from moteval import GtSequence, evaluate, load_dataset
+from moteval import GtSequence, evaluate
 from moteval.cli import main
 from moteval.formats import write_mot
 from moteval.results import EvaluationResult
+from tests.conftest import load_toy
 
 
 @pytest.fixture
-def toy_predictions(tmp_path):
-    dataset = load_dataset("toy")
+def toy_predictions(tmp_path, toy_benchmark):
+    dataset = load_toy()
     pred_dir = tmp_path / "predictions"
     for sequence in dataset.sequences:
         assert isinstance(sequence, GtSequence)
@@ -205,7 +206,6 @@ def test_unknown_dataset_lists_registered_names(toy_predictions, capsys):
     assert "unknown dataset 'not-a-dataset'" in err
     assert "available:" in err
     assert "dancetrack" in err
-    assert "toy" in err
     assert "Traceback" not in err
 
 

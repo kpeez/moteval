@@ -9,6 +9,7 @@ from moteval.benchmarks.mots20 import MOTS20_PROTOCOL, load_mots, load_mots20
 from moteval.data.model import BoxGeometry, GtSequence, MaskGeometry
 from moteval.data.similarity import mask_ioa, mask_iou
 from moteval.formats import MaskTrack, read_mots, write_mots
+from tests.conftest import load_toy
 from tests.rle import encode_mask
 
 
@@ -226,10 +227,9 @@ def test_mots20_out_of_range_prediction_frame_raises(tmp_path):
 
 
 def test_geometry_accessors_fail_loudly_across_kinds(tmp_path):
-    from moteval import load_dataset
     from moteval.data.convert import build_mask_sequence_data, build_sequence_data
 
-    toy = load_dataset("toy")
+    toy = load_toy()
     box_seq = toy.sequences[0]
     assert isinstance(box_seq, GtSequence)
     box_data = build_sequence_data(box_seq, (), toy.protocol, 1)

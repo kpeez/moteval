@@ -11,6 +11,7 @@ from moteval.data.protocol import Protocol, RawFrame, preprocess_frame
 from moteval.data.similarity import box_ioa, box_iou
 from moteval.formats import Track, read_mot, write_mot
 from moteval.metrics.count import Count
+from tests.conftest import load_toy
 
 CONVENTION = FrameConvention("1-indexed", 1)
 _PROTOCOL = Protocol(name="t", frame_convention=CONVENTION, eval_classes=(1,))
@@ -260,7 +261,7 @@ def test_read_mot_malformed_numeric_row_names_file_and_line(tmp_path):
 
 
 def test_zero_indexed_predictions_against_one_indexed_benchmark_raise_on_frame_0(tmp_path):
-    dataset = load_dataset("toy")
+    dataset = load_toy()
     seq = dataset.sequences[0]
     pred_tracks = [Track(frame=f, track_id=999, x=0, y=0, w=10, h=10, conf=1.0) for f in range(5)]
     write_mot(tmp_path / f"{seq.name}.txt", pred_tracks)
@@ -274,7 +275,7 @@ def test_zero_indexed_predictions_against_one_indexed_benchmark_raise_on_frame_0
 
 
 def test_predictions_beyond_sequence_length_raise_loud_error(tmp_path):
-    dataset = load_dataset("toy")
+    dataset = load_toy()
     seq = dataset.sequences[0]
     pred_tracks = [Track(frame=6, track_id=999, x=0, y=0, w=10, h=10, conf=1.0)]
     write_mot(tmp_path / f"{seq.name}.txt", pred_tracks)
@@ -348,7 +349,7 @@ def _write_predictions_matching_gt(dataset, pred_dir):
 
 
 def test_evaluate_returns_per_sequence_and_combined_count(tmp_path):
-    dataset = load_dataset("toy")
+    dataset = load_toy()
     _write_predictions_matching_gt(dataset, tmp_path)
 
     result = evaluate(dataset, tmp_path, [Count()])
@@ -367,7 +368,7 @@ def test_evaluate_returns_per_sequence_and_combined_count(tmp_path):
 
 
 def test_evaluate_with_missing_prediction_file_reports_zero_preds(tmp_path):
-    dataset = load_dataset("toy")
+    dataset = load_toy()
     # No prediction files written at all.
     result = evaluate(dataset, tmp_path, [Count()])
     assert result.combined["Count"]["Dets"] == 0.0
@@ -375,14 +376,14 @@ def test_evaluate_with_missing_prediction_file_reports_zero_preds(tmp_path):
 
 
 def test_evaluate_rejects_duplicate_metric_classes(tmp_path):
-    dataset = load_dataset("toy")
+    dataset = load_toy()
     with pytest.raises(ValueError) as exc:
         evaluate(dataset, tmp_path, [Count(), Count()])
     assert "Count" in str(exc.value)
 
 
 def test_evaluate_rejects_multi_class_protocol(tmp_path):
-    toy = load_dataset("toy")
+    toy = load_toy()
     multi = replace(toy, protocol=replace(toy.protocol, eval_classes=(1, 2)))
     with pytest.raises(ValueError, match="single-class"):
         evaluate(multi, tmp_path, [Count()])
@@ -503,4 +504,3 @@ def test_unknown_dataset_lists_available_names():
     message = str(exc_info.value)
     assert "available:" in message
     assert "dancetrack" in message
-    assert "toy" in message
