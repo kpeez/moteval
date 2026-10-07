@@ -4,9 +4,9 @@ Two tiny 1-indexed MOTChallenge-style sequences, two tracks each over five
 frames. Ground truth is generated in memory so tests stay hermetic;
 predictions are read from a ``<seq>.txt`` directory by ``evaluate``. Tests that
 resolve the dataset by name (CLI ``--dataset toy``) request the ``toy_benchmark``
-fixture, which registers the loader in `BENCHMARKS` for that test only
-(``root``/``split`` are accepted and ignored — the data is synthesized, not read
-from disk).
+fixture, which registers a loader in `BENCHMARKS` for that test only. That loader
+takes the required ``root`` and the ``split`` keyword like every benchmark loader, and
+ignores both — the data is synthesized, not read from disk.
 """
 
 from pathlib import Path
@@ -35,7 +35,7 @@ def _linear_track(
     ]
 
 
-def load_toy(root: str | Path | None = None, split: str = "val") -> MOTDataset[GtSequence]:
+def load_toy() -> MOTDataset[GtSequence]:
     seq1 = GtSequence(
         name="toy-0001",
         num_timesteps=5,
@@ -54,6 +54,10 @@ def load_toy(root: str | Path | None = None, split: str = "val") -> MOTDataset[G
     )
 
 
+def _toy_loader(root: str | Path, split: str = "val") -> MOTDataset[GtSequence]:
+    return load_toy()
+
+
 @pytest.fixture
 def toy_benchmark(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(BENCHMARKS, "toy", load_toy)
+    monkeypatch.setitem(BENCHMARKS, "toy", _toy_loader)

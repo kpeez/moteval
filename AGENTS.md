@@ -48,7 +48,7 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
 just install   # uv sync --locked + prek hooks
 just check     # ruff format, ruff check --fix, pyrefly check
 just test      # pytest (testpaths: tests/; real-data gate deselected by default)
-just test-real # slow real-data parity gate (needs data/benchmarks + fixtures)
+just test-real # slow real-data parity gate (needs the data root + fixtures)
 ```
 
 All three must pass before any PR.
@@ -58,10 +58,13 @@ All three must pass before any PR.
 - Parity fixtures (`tests/fixtures/*.json`) are never hand-edited — regenerate with
   `scripts/regen_parity_fixtures.py`, which clones TrackEval @ `12c8791b`, applies
   numpy>=2 alias patches, and rewrites the JSONs.
-- `data/benchmarks` is a symlink to external storage holding one dir per dataset;
-  `uv run scripts/download_benchmarks.py download <name>` targets
-  `data/benchmarks/<dataset>` by default. Parity tests needing real data skip loudly
-  when it's absent.
+- `data/benchmarks` is a symlink to external storage holding one dir per dataset.
+  `moteval.benchmarks.default_data_root()` owns the data-root rule: `MOTEVAL_DATA_ROOT`
+  if set (an empty value raises), else `data/benchmarks` relative to the working
+  directory. `load_dataset(name)` reads `<data root>/<name>`, `uv run
+  scripts/download_benchmarks.py download <name>` writes there (`--root` overrides),
+  and `just test-real` reads from it. Individual loaders take a required `root` and hold
+  no default path. Parity tests needing real data skip loudly when it's absent.
 - GMOT-40 and ChimpACT are natively 0-indexed. Both loaders keep raw 0-indexed frame
   numbers and declare `FrameConvention(first_frame=0)` rather than shifting.
 - BFT, AnimalTrack, and GMOT-40 have no `seqinfo.ini` source, so their loaders derive

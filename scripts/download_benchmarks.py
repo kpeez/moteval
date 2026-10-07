@@ -1,15 +1,16 @@
 """Declarative benchmark downloads executed by one shared engine.
 
-Dev tooling, not part of the installed package: populates ``data/benchmarks/<name>``
-so loaders and the real-data parity gate have ground truth to read. External fetch
+Dev tooling, not part of the installed package: populates ``<data root>/<name>`` so
+`moteval.load_dataset` and the real-data parity gate have ground truth to read. External fetch
 tools (``curl``, ``gdown``, ``hf``) must be on PATH for the sources that need them.
 
     uv run scripts/download_benchmarks.py list
     uv run scripts/download_benchmarks.py status [--root DIR]
     uv run scripts/download_benchmarks.py download <benchmark> [--root DIR]
 
-``--root`` overrides the target root, else ``MOTEVAL_DATA_ROOT``, else
-``data/benchmarks``.
+``--root`` overrides the target root; otherwise the root is
+`moteval.benchmarks.default_data_root` (``MOTEVAL_DATA_ROOT``, else ``data/benchmarks``),
+the same root `moteval.load_dataset` reads.
 """
 
 import argparse
@@ -29,7 +30,8 @@ from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
-DEFAULT_DATA_ROOT = Path("data/benchmarks")
+from moteval.benchmarks import default_data_root
+
 _CHIMPACT_REPOSITORY = "https://github.com/ShirleyMaxx/ChimpACT"
 _MOTS20_URL = "https://motchallenge.net/data/MOTS.zip"
 _PANAF500_URL = "https://data.bris.ac.uk/datasets/1h73erszj3ckn2qjwm4sqmr2wt/PanAf500"
@@ -722,14 +724,7 @@ def download_benchmark(name: str, root: Path) -> Path:
 
 
 def _resolve_root(root: Path | None) -> Path:
-    if root is not None:
-        return root
-    if "MOTEVAL_DATA_ROOT" not in os.environ:
-        return DEFAULT_DATA_ROOT
-    raw_root = os.environ["MOTEVAL_DATA_ROOT"]
-    if not raw_root.strip():
-        raise ValueError("MOTEVAL_DATA_ROOT must not be empty")
-    return Path(raw_root)
+    return root if root is not None else default_data_root()
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -75,7 +75,6 @@ def _uavdt_seq_length(base: Path, split: str, seq_name: str, tracks: tuple[Track
 
 UAVDT_CONFIG = MOTChallengeConfig(
     name="uavdt",
-    default_root=Path("data/benchmarks/uavdt"),
     protocol=UAVDT_PROTOCOL,
     seq_names=_uavdt_seq_names,
     gt_path=_uavdt_gt_path,
@@ -84,5 +83,5 @@ UAVDT_CONFIG = MOTChallengeConfig(
 )
 
 
-def load_uavdt(root: str | Path | None = None, split: str = "all") -> MOTDataset[GtSequence]:
+def load_uavdt(root: str | Path, split: str = "all") -> MOTDataset[GtSequence]:
     return load_layout(UAVDT_CONFIG, root=root, split=split)

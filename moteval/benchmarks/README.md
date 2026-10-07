@@ -6,9 +6,13 @@ dataset table (sources, download tooling, on-disk layouts) see
 
 - Each benchmark module (`dancetrack.py`, `sportsmot.py`, `mots20.py`, `bft.py`,
   `animaltrack.py`, `gmot40.py`, `chimpact.py`, `panaf500.py`, `uavdt.py`) defines a
-  `load_<name>(root=None, split=...)` loader that reads the on-disk ground truth into a
-  `MOTDataset`. `__init__.py` indexes them all in the explicit `BENCHMARKS` dict, which
-  backs the public `load_dataset(name, root, split)` and the CLI's `--dataset` names.
+  `load_<name>(root, split=...)` loader that reads the on-disk ground truth into a
+  `MOTDataset`. `root` is required; loaders hold no default path. `__init__.py` indexes
+  them all in the explicit `BENCHMARKS` dict, which backs the public
+  `load_dataset(name, root, split)` and the CLI's `--dataset` names.
+- `__init__.py` also owns `default_data_root()`: `MOTEVAL_DATA_ROOT` if set (an empty
+  value raises), else `data/benchmarks`. `load_dataset` reads `default_data_root() / name`
+  when the caller passes no `root`.
 - `motchallenge.py` holds the shared MOTChallenge-layout reader (`load_layout` +
   `MOTChallengeConfig`) that several loaders build on, plus the generic
   `load_motchallenge(root, split)` for custom standard-layout box data; `mots20.py`
@@ -16,12 +20,12 @@ dataset table (sources, download tooling, on-disk layouts) see
   data never registers anything — it loads by path, or constructs a `MOTDataset`
   directly.
 - Benchmark downloads are dev tooling in `scripts/download_benchmarks.py` (declarative
-  `SPECS` + `list/status/download` subcommands), targeting `data/benchmarks/<name>` by
-  default (`MOTEVAL_DATA_ROOT` or `--root` overrides).
+  `SPECS` + `list/status/download` subcommands), targeting `default_data_root() / <name>`
+  unless `--root` overrides it, so downloads land where `load_dataset` reads.
 
 ## Adding a benchmark
 
-1. Write `moteval/benchmarks/<name>.py` with a `load_<name>(root=None, split=...)`
+1. Write `moteval/benchmarks/<name>.py` with a `load_<name>(root, split=...)`
    loader that returns a `MOTDataset` and declares its `Protocol` (frame convention,
    eval classes, preprocessing) — never subclass-hook preprocessing.
 2. Add it to the `BENCHMARKS` dict in `moteval/benchmarks/__init__.py`.

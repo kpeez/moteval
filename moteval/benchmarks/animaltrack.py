@@ -60,7 +60,6 @@ def _animaltrack_seq_length(
 
 ANIMALTRACK_CONFIG = MOTChallengeConfig(
     name="animaltrack",
-    default_root=Path("data/benchmarks/animaltrack"),
     protocol=ANIMALTRACK_PROTOCOL,
     seq_names=_animaltrack_seq_names,
     gt_path=_animaltrack_gt_path,
@@ -68,5 +67,5 @@ ANIMALTRACK_CONFIG = MOTChallengeConfig(
 )
 
 
-def load_animaltrack(root: str | Path | None = None, split: str = "all") -> MOTDataset[GtSequence]:
+def load_animaltrack(root: str | Path, split: str = "all") -> MOTDataset[GtSequence]:
     return load_layout(ANIMALTRACK_CONFIG, root=root, split=split)

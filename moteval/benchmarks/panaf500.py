@@ -24,7 +24,6 @@ PANAF500_PROTOCOL = Protocol(
     eval_classes=(1,),
 )
 _CLASS_ID = 1
-_DEFAULT_ROOT = Path("data/benchmarks/panaf500")
 
 
 def _xyxy_to_xywh(bbox: list[float]) -> tuple[float, float, float, float]:
@@ -57,10 +56,8 @@ def _load_sequence(ann_path: Path) -> GtSequence:
     return GtSequence(name=ann_path.stem, num_timesteps=num_timesteps, tracks=tuple(tracks))
 
 
-def load_panaf500(
-    root: str | Path | None = None, split: str = "validation"
-) -> MOTDataset[GtSequence]:
-    base = Path(root) if root is not None else _DEFAULT_ROOT
+def load_panaf500(root: str | Path, split: str = "validation") -> MOTDataset[GtSequence]:
+    base = Path(root)
     ann_dir = base / "annotations" / split
     if not ann_dir.is_dir():
         raise ValueError(f"split directory not found: {ann_dir}")

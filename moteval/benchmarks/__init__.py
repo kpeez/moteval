@@ -1,12 +1,14 @@
 """Built-in benchmark loaders, keyed by name.
 
 `BENCHMARKS` is the explicit index the CLI resolves ``--dataset`` names against;
-`load_dataset` is the public by-name entry point. Custom data never registers
+`load_dataset` is the public by-name entry point; it reads
+``default_data_root() / name`` unless the caller passes ``root``. Custom data never registers
 anything: standard-layout directories load through `load_motchallenge` /
 `load_mots` (see `motchallenge.py` / `mots20.py`), and any other source format
 just constructs a `MOTDataset` directly and calls `evaluate`.
 """
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -21,7 +23,7 @@ from moteval.benchmarks.sportsmot import load_sportsmot
 from moteval.benchmarks.uavdt import load_uavdt
 from moteval.data.model import GtSequence, MaskGtSequence, MOTDataset
 
-# Every loader accepts (root=None, split=<benchmark default>) keywords.
+# Every loader takes a required root and a split keyword with a benchmark default.
 DatasetLoader = Callable[..., MOTDataset[GtSequence | MaskGtSequence]]
 
 BENCHMARKS: dict[str, DatasetLoader] = {
@@ -37,17 +39,34 @@ BENCHMARKS: dict[str, DatasetLoader] = {
 }
 
 
+def default_data_root() -> Path:
+    """Return the directory that holds one subdirectory per built-in benchmark.
+
+    ``MOTEVAL_DATA_ROOT`` wins when set; otherwise ``data/benchmarks``, relative to the
+    working directory. This is also where ``scripts/download_benchmarks.py`` puts data.
+    """
+    raw_root = os.environ.get("MOTEVAL_DATA_ROOT")
+    if raw_root is None:
+        return Path("data/benchmarks")
+    if not raw_root.strip():
+        raise ValueError("MOTEVAL_DATA_ROOT must not be empty")
+    return Path(raw_root)
+
+
 def load_dataset(
     name: str, root: str | Path | None = None, split: str | None = None
 ) -> MOTDataset[GtSequence | MaskGtSequence]:
     """Load a built-in benchmark by name, optionally overriding root and split.
 
-    ``root``/``split`` fall back to the benchmark's defaults when omitted.
+    ``root`` defaults to ``default_data_root() / name``; ``split`` defaults to the
+    benchmark's own default split.
     """
     if name not in BENCHMARKS:
         known = ", ".join(sorted(BENCHMARKS))
         raise ValueError(f"unknown dataset {name!r}; available: {known}")
     loader = BENCHMARKS[name]
+    if root is None:
+        root = default_data_root() / name
     if split is None:
         return loader(root=root)
     return loader(root=root, split=split)

@@ -3,7 +3,9 @@
 Ground-truth annotations for every benchmark moteval can score. The dev script
 `uv run scripts/download_benchmarks.py download <name>` fetches a dataset into
 `data/benchmarks/<name>` (override with `--root` or `MOTEVAL_DATA_ROOT`); its `list` /
-`status` subcommands show availability and on-disk state. Downloads are **annotations
+`status` subcommands show availability and on-disk state. `moteval.load_dataset(name)`
+and `moteval run --dataset <name>` read the same `MOTEVAL_DATA_ROOT`-or-`data/benchmarks`
+root, so downloaded data loads by name with no extra path. Downloads are **annotations
 only** — frames/videos are never needed for scoring. Some sources shell out to external
 tools (`curl`, `gdown`, `hf`), which must be on PATH.
 

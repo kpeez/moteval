@@ -89,7 +89,10 @@ calling `evaluate` on it.
 | [UAVDT](https://sites.google.com/view/grli-uavdt/%E9%A6%96%E9%A1%B5) | vehicles | MOT boxes + ignore regions | `all` | ✓ |
 
 `uv run scripts/download_benchmarks.py download <name>` fetches annotations into
-`data/benchmarks/<name>` (frames/videos are never needed for scoring). Sources and
+`data/benchmarks/<name>` (frames/videos are never needed for scoring), and
+`moteval.load_dataset(name)` / `moteval run --dataset <name>` read from the same place.
+Set `MOTEVAL_DATA_ROOT` to move that root for both; `--root` (download script),
+`--gt` (CLI) or `root=` (Python) overrides it for one call. Sources and
 on-disk layouts: [docs/DATASETS.md](docs/DATASETS.md).
 
 ## Parity with TrackEval

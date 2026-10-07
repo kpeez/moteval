@@ -18,7 +18,8 @@ moteval itself needs neither.)
 Modes:
   default            regenerate the synthetic fixtures: synthetic_box.json,
                      synthetic_mots.json, synthetic_trackmap.json
-  --real-data        additionally regenerate real_data.json from data/benchmarks/
+  --real-data        additionally regenerate real_data.json from the data root
+                     ($MOTEVAL_DATA_ROOT, else data/benchmarks/)
                      (DanceTrack val, SportsMOT val, one MOTS20 sequence) using
                      tests/perturb.py seeded predictions
   --trackeval-dir    use an existing TrackEval checkout (package dir ``trackeval``)
@@ -377,7 +378,7 @@ def main() -> None:
     parser.add_argument(
         "--real-data",
         action="store_true",
-        help="also regenerate real_data.json from data/benchmarks/",
+        help="also regenerate real_data.json from $MOTEVAL_DATA_ROOT, else data/benchmarks/",
     )
     args = parser.parse_args()
 

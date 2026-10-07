@@ -14,10 +14,9 @@ DANCETRACK_PROTOCOL = Protocol(
 )
 DANCETRACK_CONFIG = MOTChallengeConfig(
     name="dancetrack",
-    default_root=Path("data/benchmarks/dancetrack"),
     protocol=DANCETRACK_PROTOCOL,
 )
 
 
-def load_dancetrack(root: str | Path | None = None, split: str = "val") -> MOTDataset[GtSequence]:
+def load_dancetrack(root: str | Path, split: str = "val") -> MOTDataset[GtSequence]:
     return load_layout(DANCETRACK_CONFIG, root=root, split=split)
