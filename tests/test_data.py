@@ -4,7 +4,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from moteval import evaluate, load_dataset
+from moteval import CLEAR, HOTA, Identity, JAndF, TrackMAP, evaluate, load_dataset
 from moteval.data.convert import build_sequence_data
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol, RawFrame, preprocess_frame
@@ -12,6 +12,12 @@ from moteval.data.similarity import box_ioa, box_iou
 from moteval.formats import Track, read_mot, write_mot
 from moteval.metrics.count import Count
 from tests.conftest import load_toy, write_perfect_predictions
+from tests.scenarios import (
+    build_mots_dataset,
+    build_mots_scenarios,
+    predictions_dir,
+    write_mots_scenario,
+)
 
 CONVENTION = FrameConvention("1-indexed", 1)
 _PROTOCOL = Protocol(name="t", frame_convention=CONVENTION, eval_classes=(1,))
@@ -360,6 +366,50 @@ def test_evaluate_returns_per_sequence_and_combined_count(tmp_path):
         "IDs": 4.0,
         "GT_IDs": 4.0,
     }
+
+
+def _toy_with_offset_id_predictions(tmp_dir):
+    dataset = load_toy()
+    for seq in dataset.sequences:
+        preds = [replace(t, track_id=t.track_id + 100) for t in seq.tracks]
+        write_mot(tmp_dir / f"{seq.name}.txt", preds)
+    return dataset, tmp_dir
+
+
+def _mots_scenario(tmp_dir):
+    scenario = build_mots_scenarios()[0]
+    write_mots_scenario(tmp_dir, scenario)
+    return build_mots_dataset(tmp_dir, scenario), predictions_dir(tmp_dir)
+
+
+@pytest.mark.parametrize(
+    ("metric_cls", "build", "has_per_sequence_entry"),
+    [
+        (HOTA, _toy_with_offset_id_predictions, True),
+        (CLEAR, _toy_with_offset_id_predictions, True),
+        (Identity, _toy_with_offset_id_predictions, True),
+        (Count, _toy_with_offset_id_predictions, True),
+        # TrackMAP pools detections across sequences: it declares no per-sequence field.
+        (TrackMAP, _toy_with_offset_id_predictions, False),
+        (JAndF, _mots_scenario, True),
+    ],
+    ids=["HOTA", "CLEAR", "Identity", "Count", "TrackMAP", "JAndF"],
+)
+def test_evaluate_results_hold_only_declared_fields(
+    metric_cls, build, has_per_sequence_entry, tmp_path
+):
+    dataset, pred_dir = build(tmp_path)
+    name = metric_cls.__name__
+    fields = set(metric_cls.fields)
+
+    result = evaluate(dataset, pred_dir, [metric_cls()])
+
+    assert set(result.per_sequence) == {seq.name for seq in dataset.sequences}
+    for scores in result.per_sequence.values():
+        assert (name in scores) == has_per_sequence_entry
+        if has_per_sequence_entry:
+            assert set(scores[name]) <= fields
+    assert set(result.combined[name]) == fields
 
 
 def test_evaluate_with_missing_prediction_file_reports_zero_preds(tmp_path):
