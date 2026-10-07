@@ -66,7 +66,10 @@ _PERFECT_PRED_IDS = {1: 9, 2: 7}
 
 
 def write_perfect_predictions(dataset: MOTDataset[GtSequence], pred_dir: Path) -> None:
-    """Write each sequence's GT boxes as predictions under their own track ids."""
+    """Write each toy sequence's GT boxes as predictions under their own track ids.
+
+    Only the toy GT ids (1, 2) are mapped; any other id raises `KeyError`.
+    """
     for seq in dataset.sequences:
         preds = [replace(t, track_id=_PERFECT_PRED_IDS[t.track_id]) for t in seq.tracks]
         write_mot(pred_dir / f"{seq.name}.txt", preds)
