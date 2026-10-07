@@ -365,6 +365,20 @@ def test_missing_input_paths_are_actionable(args, message, capsys):
     assert "Traceback" not in err
 
 
+def test_missing_prediction_file_is_reported_without_traceback(tmp_path, toy_benchmark, capsys):
+    pred_dir = tmp_path / "predictions"
+    write_mot(pred_dir / "toy-0001.txt", [])
+
+    with pytest.raises(SystemExit) as exc:
+        main(["run", "--dataset", "toy", "--pred", str(pred_dir)])
+
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert f"prediction directory {pred_dir} has no <seq>.txt file" in err
+    assert "toy-0002" in err
+    assert "Traceback" not in err
+
+
 # ------------------------------------------------------- custom data (no --dataset)
 
 

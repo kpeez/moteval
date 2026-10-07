@@ -915,7 +915,10 @@ def test_load_motchallenge_drops_conf_zero_gt_rows(tmp_path):
     (seq_dir / "seqinfo.ini").write_text("[Sequence]\nseqLength=1\n")
 
     dataset = load_motchallenge(root)
-    result = evaluate(dataset, tmp_path / "no-preds", [Count()])
+    pred_dir = tmp_path / "no-preds"
+    pred_dir.mkdir()
+    (pred_dir / "SEQ01.txt").write_text("")
+    result = evaluate(dataset, pred_dir, [Count()])
 
     # The conf-zero "consider" flag row is excluded from evaluation.
     assert result.combined["Count"]["GT_Dets"] == 1.0
