@@ -25,7 +25,9 @@ from tests.scenarios import (
     build_multi_class_box_dataset,
     build_multi_class_mots_dataset,
     build_trackmap_sequence_data,
+    mots_track_classes,
     predictions_dir,
+    sequence_classes,
     write_mot_scenario,
     write_mots_scenario,
     write_multi_class_box_scenario,
@@ -100,7 +102,7 @@ def _assert_combinations_equal(result, fixtures: dict, expected_metrics: dict) -
 
 def test_box_multi_class_combinations(tmp_path):
     scenario = next(s for s in BOX_SCENARIOS if s.name == COMBINE_CLASSES_SCENARIO)
-    write_multi_class_box_scenario(tmp_path, scenario)
+    write_multi_class_box_scenario(tmp_path, scenario, sequence_classes(scenario))
     dataset = build_multi_class_box_dataset(tmp_path, scenario)
     metrics = (*BOX_METRICS, TrackMAP)
     result = evaluate(dataset, predictions_dir(tmp_path), [m() for m in metrics])
@@ -111,7 +113,7 @@ def test_box_multi_class_combinations(tmp_path):
 
 def test_mots_multi_class_combinations(tmp_path):
     scenario = next(s for s in MOTS_SCENARIOS if s.name == MOTS_MULTI_CLASS_SCENARIO)
-    write_multi_class_mots_scenario(tmp_path, scenario)
+    write_multi_class_mots_scenario(tmp_path, scenario, mots_track_classes)
     dataset = build_multi_class_mots_dataset(tmp_path, scenario)
     result = evaluate(dataset, predictions_dir(tmp_path), [m() for m in MOTS_METRICS])
     names = {m.__name__ for m in MOTS_METRICS}

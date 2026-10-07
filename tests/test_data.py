@@ -466,8 +466,6 @@ def test_evaluate_scores_each_class_and_both_class_combinations(tmp_path):
     # Det-averaged DetA pools the detections: 4 TP / (4 TP + 2 FN + 1 FP) = 4/7.
     np.testing.assert_allclose(result.class_averaged["HOTA"]["DetA"], 7 / 12)
     np.testing.assert_allclose(result.det_averaged["HOTA"]["DetA"], 4 / 7)
-    for combination in (result.class_averaged, result.det_averaged):
-        assert set(combination["HOTA"]) == set(HOTA.fields)
 
 
 @pytest.mark.parametrize(
@@ -515,6 +513,9 @@ def test_trackmap_det_averaged_weights_classes_by_detection_tracks(tmp_path):
     # Det-averaged AP = (1 * 1 + 1/2 * 2) / (1 + 2) = 2/3.
     np.testing.assert_allclose(result.class_averaged["TrackMAP"]["AP_all"], np.full(10, 3 / 4))
     np.testing.assert_allclose(result.det_averaged["TrackMAP"]["AP_all"], np.full(10, 2 / 3))
+    # The weights are private state: per-class results hold only the declared fields.
+    for class_result in result.per_class.values():
+        assert set(class_result.combined["TrackMAP"]) == set(TrackMAP.fields)
 
 
 # ---------------------------------------------------------- extensibility

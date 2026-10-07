@@ -26,9 +26,10 @@ perturbed predictions via `tests.perturb` into a caller-provided tmp dir, mirror
 old tests/parity/test_real_data.py setup exactly.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -58,7 +59,7 @@ BOX_PROTOCOL = Protocol(
 BOX_METRICS = ("HOTA", "CLEAR", "Identity", "Count")
 COMBINE_CLASSES_SCENARIO = "combine_classes"
 # The MOTS scenario that the multi-class mask check reuses (see `class_views`).
-MOTS_MULTI_CLASS_SCENARIO = "jf_multi_sequence_combine"
+MOTS_MULTI_CLASS_SCENARIO = "jf_perturbed_predictions"
 
 DATA_ROOT = default_data_root()
 REAL_DATA_SEED = 20260718
@@ -386,50 +387,69 @@ def build_box_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDataset:
 
 
 # ---------------------------------------------------------------------------
-# Multi-class views of a two-sequence scenario
+# Multi-class runs over existing scenarios
 # ---------------------------------------------------------------------------
 #
-# The oracle's MOTChallenge and MOTS datasets score one class only, so a scenario's
-# sequences stand in for classes: sequence ``i`` holds every row of class ``i + 1``.
-# moteval scores that layout as one multi-class run (`write_multi_class_*` +
-# `build_multi_class_*`). The regen script scores each class through the oracle as
-# `class_views`: the same sequences with every other class's rows removed, which is
-# exactly the per-class view TrackEval's evaluator combines before it combines classes.
+# The oracle's MOTChallenge and MOTS datasets score one class only. So a multi-class
+# check takes an existing scenario plus a ``class_of(sequence name, row) -> class id``
+# rule. moteval scores the scenario as one multi-class run, with each row labelled by
+# that rule (`write_multi_class_*` + `build_multi_class_*`). The regen script scores
+# each class through the oracle as one of the `class_views`: the same sequences with
+# every other class's rows removed. That is exactly the per-class view TrackEval's
+# evaluator combines before it combines classes.
+#
+# Boxes use combine_classes with `sequence_classes` (sequence ``i`` is class ``i + 1``).
+# Masks cannot: a sequence without the class gives J&F NaN (upstream too), and the
+# class combinations would then be NaN as well. So masks split one sequence by track id.
 
 MULTI_CLASS_BOX_PROTOCOL = replace(BOX_PROTOCOL, name="parity-multi-class", eval_classes=(1, 2))
 MULTI_CLASS_MOTS_PROTOCOL = replace(
     MOTS20_PROTOCOL, name="parity-mots-multi-class", eval_classes=(1, 2)
 )
+ClassOf = Callable[[str, Any], int]
 
 
-def class_views(scenario: Scenario) -> tuple[Scenario, ...]:
-    """One scenario per class: sequence ``i`` keeps its rows, every other one is empty."""
+def sequence_classes(scenario: Scenario) -> ClassOf:
+    """Every row of sequence ``i`` is class ``i + 1``."""
+    index = {name: i + 1 for i, (name, _, _, _) in enumerate(scenario.sequences)}
+    return lambda sequence, _row: index[sequence]
+
+
+def class_views(
+    scenario: Scenario, class_of: ClassOf, classes: tuple[int, ...]
+) -> tuple[Scenario, ...]:
+    """One single-class scenario per class: only the rows ``class_of`` gives that class."""
     return tuple(
         Scenario(
-            f"{scenario.name}-class-{kept + 1}",
+            f"{scenario.name}-class-{cls}",
             tuple(
-                (name, num_timesteps, gt_rows if i == kept else [], pred_rows if i == kept else [])
-                for i, (name, num_timesteps, gt_rows, pred_rows) in enumerate(scenario.sequences)
+                (
+                    name,
+                    num_timesteps,
+                    [row for row in gt_rows if class_of(name, row) == cls],
+                    [row for row in pred_rows if class_of(name, row) == cls],
+                )
+                for name, num_timesteps, gt_rows, pred_rows in scenario.sequences
             ),
         )
-        for kept in range(len(scenario.sequences))
+        for cls in classes
     )
 
 
-def write_multi_class_box_scenario(tmp_dir: Path, scenario: Scenario) -> None:
-    """Write a box scenario with class ``i + 1`` in column 8 of sequence ``i``'s rows.
+def write_multi_class_box_scenario(tmp_dir: Path, scenario: Scenario, class_of: ClassOf) -> None:
+    """Write a box scenario with each row's class from ``class_of`` in column 8.
 
     GT rows already have a class column (index 7), which is replaced. Prediction rows
     are ``frame,id,x,y,w,h,conf``, so the class is appended as column 8.
     """
-    for i, (name, _, gt_rows, pred_rows) in enumerate(scenario.sequences):
-        cls = i + 1
+    for name, _, gt_rows, pred_rows in scenario.sequences:
         _write_box_rows(
             tmp_dir / "gt" / name / "gt" / "gt.txt",
-            [[*row[:7], cls, *row[8:]] for row in gt_rows],
+            [[*row[:7], class_of(name, row), *row[8:]] for row in gt_rows],
         )
         _write_box_rows(
-            predictions_dir(tmp_dir) / f"{name}.txt", [[*row, cls] for row in pred_rows]
+            predictions_dir(tmp_dir) / f"{name}.txt",
+            [[*row, class_of(name, row)] for row in pred_rows],
         )
 
 
@@ -574,20 +594,31 @@ def build_mots_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDataset:
     )
 
 
-def write_multi_class_mots_scenario(tmp_dir: Path, scenario: Scenario) -> None:
-    """Write a MOTS scenario with every row of sequence ``i`` relabelled to class ``i + 1``.
+# jf_perturbed_predictions split by track id. Class 1: GT 1 with its jittered,
+# gappy prediction 101 and the drifting false positive 104. Class 2: GT 2 (covered by
+# 102, then 103) and the missed GT 3.
+MOTS_MULTI_CLASS_TRACKS = {1: 1, 101: 1, 104: 1, 2: 2, 3: 2, 102: 2, 103: 2}
+
+
+def mots_track_classes(_sequence: str, row: MaskTrack) -> int:
+    return MOTS_MULTI_CLASS_TRACKS[row.track_id]
+
+
+def write_multi_class_mots_scenario(tmp_dir: Path, scenario: Scenario, class_of: ClassOf) -> None:
+    """Write a MOTS scenario with each row relabelled to its class from ``class_of``.
 
     The scenario must hold no ignore-region rows: relabelling would turn them into tracks.
     """
-    for i, (name, _, gt_rows, pred_rows) in enumerate(scenario.sequences):
+    for name, _, gt_rows, pred_rows in scenario.sequences:
         if any(t.class_id == MOTS20_IGNORE_CLASS for t in gt_rows):
             raise ValueError(f"{scenario.name}/{name}: ignore rows cannot be relabelled")
         write_mots(
-            tmp_dir / "gt" / name / "gt" / "gt.txt", [replace(t, class_id=i + 1) for t in gt_rows]
+            tmp_dir / "gt" / name / "gt" / "gt.txt",
+            [replace(t, class_id=class_of(name, t)) for t in gt_rows],
         )
         write_mots(
             predictions_dir(tmp_dir) / f"{name}.txt",
-            [replace(t, class_id=i + 1) for t in pred_rows],
+            [replace(t, class_id=class_of(name, t)) for t in pred_rows],
         )
 
 

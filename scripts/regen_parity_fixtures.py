@@ -35,12 +35,12 @@ Class-combination entries (same format, keyed by entry name instead of scenario)
   results for the combine_classes scenario fed to the oracle HOTA
   ``combine_classes_class_averaged`` combiner (the original, HOTA-only check).
 - synthetic_box.json ``multi_class_class_averaged`` / ``multi_class_det_averaged``
-  and synthetic_mots.json entries of the same names: oracle-only. The scenario's
-  sequences stand in for classes (`tests.scenarios.class_views`); each class view is
-  scored through the oracle (its MOTChallenge/MOTS runner, plus the oracle TrackMAP
-  metric for boxes), and the oracle class combiners combine those per-class results,
-  as upstream's evaluator does for a multi-class dataset. The box scenario is
-  combine_classes; the mask scenario is jf_multi_sequence_combine.
+  and synthetic_mots.json entries of the same names: oracle-only. An existing
+  scenario's rows are split into two classes (`tests.scenarios.class_views`); each
+  class view is scored through the oracle (its MOTChallenge/MOTS runner, plus the
+  oracle TrackMAP metric for boxes), and the oracle class combiners combine those
+  per-class results, as upstream's evaluator does for a multi-class dataset. Boxes
+  split combine_classes by sequence; masks split jf_perturbed_predictions by track id.
   TrackMAP's det-averaged result is NOT frozen: upstream's
   ``combine_classes_det_averaged`` is a copy-paste of its class-averaged combiner (an
   upstream bug), and moteval's detection-weighted version is the sole intentional
@@ -70,6 +70,8 @@ from tests.scenarios import (
     COMBINE_CLASSES_SCENARIO,
     DATA_ROOT,
     MOTS_MULTI_CLASS_SCENARIO,
+    MULTI_CLASS_BOX_PROTOCOL,
+    MULTI_CLASS_MOTS_PROTOCOL,
     TRACKMAP_SCENARIOS,
     GtTracks,
     PredTracks,
@@ -78,10 +80,12 @@ from tests.scenarios import (
     build_box_dataset,
     build_mots_scenarios,
     class_views,
+    mots_track_classes,
     predictions_dir,
     prepare_dancetrack_val,
     prepare_mots20_sequence,
     prepare_sportsmot_val,
+    sequence_classes,
     write_mot_scenario,
     write_mots_scenario,
 )
@@ -349,7 +353,8 @@ def freeze_box_class_combinations(oracle: SimpleNamespace) -> dict:
     """Oracle class_averaged/det_averaged for every box metric on combine_classes."""
     scenario = next(s for s in BOX_SCENARIOS if s.name == COMBINE_CLASSES_SCENARIO)
     per_class = []
-    for view in class_views(scenario):
+    classes = MULTI_CLASS_BOX_PROTOCOL.eval_classes
+    for view in class_views(scenario, sequence_classes(scenario), classes):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             seq_lengths = write_mot_scenario(tmp, view)
@@ -366,7 +371,8 @@ def freeze_mots_class_combinations(oracle: SimpleNamespace) -> dict:
     """Oracle class_averaged/det_averaged for every mask metric on the MOTS scenario."""
     scenario = next(s for s in build_mots_scenarios() if s.name == MOTS_MULTI_CLASS_SCENARIO)
     per_class = []
-    for view in class_views(scenario):
+    classes = MULTI_CLASS_MOTS_PROTOCOL.eval_classes
+    for view in class_views(scenario, mots_track_classes, classes):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             seq_lengths = write_mots_scenario(tmp, view)
