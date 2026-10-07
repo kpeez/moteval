@@ -18,6 +18,14 @@ Scores = dict[str, float | np.ndarray]
 
 class Metric(ABC):
     fields: tuple[str, ...]
+    """The public result fields: the only keys `evaluate` reports for this metric.
+
+    Combined results hold exactly these fields; per-sequence results hold a subset.
+    ``eval_sequence`` and ``combine_sequences`` may also return private state
+    (TrackMAP's match arrays and ``_num_dt_*`` weights) that only the combine
+    methods consume. A metric with no per-sequence field (TrackMAP) has no
+    per-sequence entry in the results.
+    """
 
     @abstractmethod
     def eval_sequence(self, data: SequenceData) -> Scores: ...
