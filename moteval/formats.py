@@ -78,11 +78,15 @@ def read_mot(path: Path, *, class_column: bool = False) -> list[Track]:
 
 
 def write_mot(path: Path, tracks: list[Track]) -> None:
-    """Write `Track` rows as MOTChallenge predictions (trailing fields = -1)."""
+    """Write `Track` rows as MOTChallenge predictions.
+
+    Column 8 holds ``class_id``, so `read_mot` with ``class_column=True`` reads the
+    classes back. The two trailing fields are ``-1``.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = sorted(tracks, key=lambda t: (t.frame, t.track_id))
     lines = [
-        f"{t.frame},{t.track_id},{t.x:.2f},{t.y:.2f},{t.w:.2f},{t.h:.2f},{t.conf:.4f},-1,-1,-1"
+        f"{t.frame},{t.track_id},{t.x:.2f},{t.y:.2f},{t.w:.2f},{t.h:.2f},{t.conf:.4f},{t.class_id},-1,-1"
         for t in rows
     ]
     path.write_text("\n".join(lines) + ("\n" if lines else ""))

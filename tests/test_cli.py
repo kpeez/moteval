@@ -260,7 +260,13 @@ def test_multi_class_outputs_add_a_class_column_and_both_combinations(
     )
 
     assert exit_code == 0
-    lines = [line.split() for line in capsys.readouterr().out.splitlines()]
+    raw_lines = capsys.readouterr().out.splitlines()
+    lines = [line.split() for line in raw_lines]
+    # Both label columns are left-aligned: every seq label starts under "seq".
+    seq_start = raw_lines[0].index("seq")
+    assert all(
+        raw[seq_start:].startswith(row[1]) for raw, row in zip(raw_lines, lines, strict=True)
+    )
     # Hand derivation (tests/conftest.py `write_two_class_predictions`; every IoU is 1
     # or 0 and each matched pair keeps one id, so AssA = 1 and HOTA = sqrt(DetA)):
     # class 1: TP 2, FN 0, FP 1 -> DetA 2/3 = 66.667, HOTA sqrt(2/3) = 81.65.

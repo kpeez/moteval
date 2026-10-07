@@ -67,8 +67,9 @@ All three must pass before any PR.
 - Parity fixtures (`tests/fixtures/*.json`) are never hand-edited — regenerate with
   `scripts/regen_parity_fixtures.py`, which clones TrackEval @ `12c8791b`, applies
   numpy>=2 alias patches, and rewrites the JSONs. The oracle datasets score one class,
-  so the class-combination entries treat a scenario's sequences as classes
-  (`tests.scenarios.class_views`).
+  so the class-combination entries score one single-class view per class
+  (`tests.scenarios.class_views`). The box entry treats a scenario's sequences as
+  classes. The mask entry splits one sequence by track id (`MOTS_MULTI_CLASS_TRACKS`).
 - `data/benchmarks` is a symlink to external storage holding one dir per dataset.
   `moteval.benchmarks.default_data_root()` owns the data-root rule: `MOTEVAL_DATA_ROOT`
   if set (an empty value raises), else `data/benchmarks` relative to the working
