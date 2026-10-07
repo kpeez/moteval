@@ -2,12 +2,14 @@
 
 import numpy as np
 import pytest
+from pycocotools import mask as mask_utils
 
 from moteval import CLEAR, HOTA, Count, Identity, evaluate
 from moteval.benchmarks.mots20 import MOTS20_PROTOCOL, load_mots, load_mots20
 from moteval.data.model import BoxGeometry, GtSequence, MaskGeometry
-from moteval.data.similarity import decode_mask, encode_mask, mask_ioa, mask_iou
+from moteval.data.similarity import mask_ioa, mask_iou
 from moteval.formats import MaskTrack, read_mots, write_mots
+from tests.rle import encode_mask
 
 
 def _square_mask(h: int, w: int, r0: int, r1: int, c0: int, c1: int) -> np.ndarray:
@@ -31,17 +33,7 @@ def test_rle_round_trip_from_c_order_input():
     assert mask.flags["C_CONTIGUOUS"]
     rle = encode_mask(mask)
     assert rle["size"] == [12, 15]
-    assert np.array_equal(decode_mask(rle), mask)
-
-
-def test_rle_round_trip_from_fortran_order_input():
-    mask = np.asfortranarray(_square_mask(9, 4, 1, 5, 0, 3))
-    assert np.array_equal(decode_mask(encode_mask(mask)), mask)
-
-
-def test_encode_mask_rejects_non_2d_input():
-    with pytest.raises(ValueError, match="single"):
-        encode_mask(np.zeros((3, 4, 2), dtype=np.uint8))
+    assert np.array_equal(mask_utils.decode(rle), mask)
 
 
 # ------------------------------------------------------------------- mask IoU

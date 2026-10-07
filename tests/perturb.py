@@ -18,10 +18,12 @@ masks and fall back to their original position (or are dropped) on conflict.
 from collections import defaultdict
 
 import numpy as np
+from pycocotools import mask as mask_utils
 
 from moteval.data.model import FrameConvention, RleMask
-from moteval.data.similarity import decode_mask, encode_mask, masks_overlap
+from moteval.data.similarity import masks_overlap
 from moteval.formats import MaskTrack, Track
+from tests.rle import encode_mask
 
 _BASE_ID = 1000
 _FRESH_ID = 5000
@@ -95,7 +97,7 @@ def perturb_box_tracks(
 
 
 def _translate_rle(rle_dict: RleMask, dy: int, dx: int) -> RleMask:
-    mask = np.roll(decode_mask(rle_dict), (dy, dx), axis=(0, 1))
+    mask = np.roll(mask_utils.decode(rle_dict), (dy, dx), axis=(0, 1))
     return encode_mask(mask)
 
 
