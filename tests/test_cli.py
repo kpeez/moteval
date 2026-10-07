@@ -7,25 +7,40 @@ a subprocess entry point never sees it, and because a nested `uv run` under
 
 import csv
 import json
+from dataclasses import replace
 
 import numpy as np
 import pytest
 
-from moteval import GtSequence, evaluate
+from moteval import evaluate
 from moteval.cli import main
-from moteval.formats import write_mot
+from moteval.formats import Track, write_mot
 from moteval.results import EvaluationResult
-from tests.conftest import load_toy
+from tests.conftest import load_toy, write_perfect_predictions
 
 
 @pytest.fixture
 def toy_predictions(tmp_path, toy_benchmark):
     dataset = load_toy()
     pred_dir = tmp_path / "predictions"
-    for sequence in dataset.sequences:
-        assert isinstance(sequence, GtSequence)
-        write_mot(pred_dir / f"{sequence.name}.txt", list(sequence.tracks))
+    write_perfect_predictions(dataset, pred_dir)
     return dataset, pred_dir
+
+
+def _write_flawed_predictions(dataset, pred_dir):
+    """Per sequence: GT 1 -> ids 11 (frames 1-2), 12 (frames 3-5); GT 2 -> ids 13
+    (frames 1-2), 14 (frames 3-4), frame 5 dropped; id 15 is a far-away box in
+    frames 1-2. Every kept box copies its GT box, so each IoU is exactly 1 or 0."""
+    pred_ids = {(1, 1): 11, (1, 2): 11, (1, 3): 12, (1, 4): 12, (1, 5): 12}
+    pred_ids |= {(2, 1): 13, (2, 2): 13, (2, 3): 14, (2, 4): 14}
+    for sequence in dataset.sequences:
+        preds = [
+            replace(t, track_id=pred_ids[t.track_id, t.frame])
+            for t in sequence.tracks
+            if (t.track_id, t.frame) in pred_ids
+        ]
+        preds += [Track(frame=f, track_id=15, x=500, y=500, w=10, h=10, conf=1.0) for f in (1, 2)]
+        write_mot(pred_dir / f"{sequence.name}.txt", preds)
 
 
 def _python_scores(scores):
@@ -42,8 +57,9 @@ def _python_scores(scores):
     }
 
 
-def test_toy_run_prints_sequence_and_combined_headlines(toy_predictions, capsys):
-    _dataset, pred_dir = toy_predictions
+def test_toy_run_prints_sequence_and_combined_headlines(tmp_path, toy_benchmark, capsys):
+    pred_dir = tmp_path / "predictions"
+    _write_flawed_predictions(load_toy(), pred_dir)
 
     exit_code = main(["run", "--dataset", "toy", "--pred", str(pred_dir)])
 
@@ -61,42 +77,19 @@ def test_toy_run_prints_sequence_and_combined_headlines(toy_predictions, capsys)
         "Dets",
         "GT_Dets",
     ]
-    assert lines[1].split() == [
-        "toy-0001",
-        "100",
-        "100",
-        "100",
-        "100",
-        "100",
-        "0",
-        "100",
-        "10",
-        "10",
-    ]
-    assert lines[2].split() == [
-        "toy-0002",
-        "100",
-        "100",
-        "100",
-        "100",
-        "100",
-        "0",
-        "100",
-        "10",
-        "10",
-    ]
-    assert lines[3].split() == [
-        "COMBINED",
-        "100",
-        "100",
-        "100",
-        "100",
-        "100",
-        "0",
-        "100",
-        "20",
-        "20",
-    ]
+    # Hand derivation per sequence (10 GT dets, 11 predictions, IoU 1 or 0, so every
+    # HOTA alpha agrees): TP = 9, FN = 1 (GT 2 frame 5), FP = 2 (id 15).
+    # DetA = 9 / (9 + 1 + 2) = 3/4. AssA = sum(TPA * TPA / (gt + pred - TPA)) / TP over
+    # (GT, pred) pairs (1,11) 2/5, (1,12) 3/5, (2,13) 2/5, (2,14) 2/5 = (4+9+4+4)/45 = 7/15.
+    # HOTA = sqrt(3/4 * 7/15) = sqrt(0.35) = 0.59161.
+    # IDSW = 2 (GT 1 and GT 2 change id at frame 3). MOTA = (9 - 2 - 2) / 10 = 1/2.
+    # MOTP = 1 (every match has IoU 1). IDF1: best id pairs (1,12) 3 + (2,13) 2 give
+    # IDTP = 5, so IDF1 = 2 * 5 / (10 + 11) = 10/21 = 0.47619.
+    # Both sequences repeat the pattern, so COMBINED keeps every ratio and doubles counts.
+    ratios = ["59.161", "75", "46.667", "50", "100"]
+    assert lines[1].split() == ["toy-0001", *ratios, "2", "47.619", "11", "10"]
+    assert lines[2].split() == ["toy-0002", *ratios, "2", "47.619", "11", "10"]
+    assert lines[3].split() == ["COMBINED", *ratios, "4", "47.619", "22", "20"]
 
 
 def test_result_serializers_follow_stable_schemas(toy_predictions):
