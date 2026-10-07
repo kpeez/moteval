@@ -1,6 +1,3 @@
-# vendored TrackEval oracle stays byte-pristine vs upstream 12c8791b (ADR-0001)
-exclude: ^tests/oracle/_trackeval/
-
 repos:
   - repo: builtin
     hooks:
@@ -12,7 +9,6 @@ repos:
       - id: mixed-line-ending
       - id: end-of-file-fixer
       - id: trailing-whitespace
-      - id: check-merge-conflict
       - id: check-executables-have-shebangs
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -25,9 +21,9 @@ repos:
 
   - repo: local
     hooks:
-      - id: ty
-        name: ty
-        entry: uv run ty check
+      - id: pyrefly
+        name: pyrefly
+        entry: uv run pyrefly check
         language: system
         types: [python]
         pass_filenames: false

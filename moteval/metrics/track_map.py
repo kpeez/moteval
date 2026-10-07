@@ -300,8 +300,7 @@ class TrackMAP(Metric):
 
                 pr = (tp / (fp + tp + np.spacing(1))).tolist()
                 for i in range(num_tp - 1, 0, -1):
-                    if pr[i] > pr[i - 1]:
-                        pr[i - 1] = pr[i]
+                    pr[i - 1] = max(pr[i - 1], pr[i])
 
                 rec_thrs_insert_idx = np.searchsorted(rc, RECALL_THRESHOLDS, side="left")
                 pr_at_recall = [0.0] * num_recalls

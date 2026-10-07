@@ -698,7 +698,7 @@ def _execute_step(step: FetchStep, destination: Path) -> None:
     elif isinstance(step, NormalizeFolder):
         _normalize_folder(step, destination)
     else:
-        raise AssertionError(f"unhandled fetch step: {step!r}")
+        raise TypeError(f"unhandled fetch step: {step!r}")
 
 
 def download_benchmark(name: str, root: Path) -> Path:

@@ -290,9 +290,7 @@ def test_read_mot_malformed_numeric_row_names_file_and_line(tmp_path):
 def test_zero_indexed_predictions_against_one_indexed_benchmark_raise_on_frame_0(tmp_path):
     dataset = load_dataset("toy")
     seq = dataset.sequences[0]
-    pred_tracks = [
-        Track(frame=f, track_id=999, x=0, y=0, w=10, h=10, conf=1.0) for f in range(0, 5)
-    ]
+    pred_tracks = [Track(frame=f, track_id=999, x=0, y=0, w=10, h=10, conf=1.0) for f in range(5)]
     write_mot(tmp_path / f"{seq.name}.txt", pred_tracks)
 
     with pytest.raises(ValueError) as exc:
@@ -330,7 +328,7 @@ def _predictions_zero_indexed() -> list[Track]:
     return [
         Track(frame=f, track_id=tid, x=0, y=0, w=10, h=10, conf=1.0)
         for tid in (100, 200)
-        for f in range(0, 5)
+        for f in range(5)
     ]
 
 
