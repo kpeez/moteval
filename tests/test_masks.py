@@ -209,6 +209,7 @@ def test_mots20_overlapping_gt_masks_raise(tmp_path):
     ]
     _write_mots20_layout(tmp_path / "data", overlapping)
     dataset = load_mots20(root=tmp_path / "data", split="train")
+    write_mots(tmp_path / "preds" / "MOTS20-02.txt", [])
     with pytest.raises(ValueError, match="overlapping GT masks"):
         evaluate(dataset, tmp_path / "preds", [Count()])
 

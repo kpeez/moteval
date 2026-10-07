@@ -26,9 +26,11 @@ just test      # pytest
 
 ## Quick start
 
-Tracker predictions are MOTChallenge `<sequence>.txt` files in one directory. Evaluate a
-built-in benchmark by name, or point `--gt` at any directory in the standard MOTChallenge
-layout (`<root>/<split>/<seq>/gt/gt.txt` + `seqinfo.ini`):
+Tracker predictions are MOTChallenge `<sequence>.txt` files in one directory. Every
+sequence needs a file; an empty file means no predictions for that sequence. If a file is
+missing, moteval stops before it scores anything and names every missing sequence.
+Evaluate a built-in benchmark by name, or point `--gt` at any directory in the standard
+MOTChallenge layout (`<root>/<split>/<seq>/gt/gt.txt` + `seqinfo.ini`):
 
 ```sh
 moteval run --dataset dancetrack --split val --pred path/to/tracker/output

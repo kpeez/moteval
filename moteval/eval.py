@@ -1,7 +1,9 @@
 """Top-level evaluation: score a loaded `MOTDataset` against prediction files.
 
 `evaluate(dataset, predictions, metrics)` reads ``<seq>.txt`` MOTChallenge (or
-MOTS) predictions from a directory and returns typed results. It is the whole
+MOTS) predictions from a directory and returns typed results. Every sequence
+needs a file; an empty file means no predictions. A missing file raises
+``ValueError`` before any sequence is scored. It is the whole
 public scoring seam: any `MOTDataset` — built-in benchmark, generic-layout load,
 or hand-constructed — evaluates through it.
 
@@ -86,17 +88,26 @@ def evaluate(
         raise ValueError(f"protocol {dataset.protocol.name!r} repeats a class in {classes}")
     multi_class = len(classes) > 1
 
+    # Every sequence needs a prediction file, as in TrackEval; an empty file means
+    # no predictions. Name every missing sequence before scoring any of them.
+    missing = [
+        seq.name for seq in dataset.sequences if not (pred_dir / f"{seq.name}.txt").is_file()
+    ]
+    if missing:
+        raise ValueError(
+            f"prediction directory {pred_dir} has no <seq>.txt file for {len(missing)} "
+            f"sequence(s): {', '.join(missing)} (an empty file means no predictions)"
+        )
+
     # Read each prediction file once; every class view filters the same rows.
     box_preds: dict[str, tuple[Track, ...]] = {}
     mask_preds: dict[str, tuple[MaskTrack, ...]] = {}
     for seq in dataset.sequences:
         pred_file = pred_dir / f"{seq.name}.txt"
         if isinstance(seq, MaskGtSequence):
-            mask_preds[seq.name] = tuple(read_mots(pred_file)) if pred_file.is_file() else ()
+            mask_preds[seq.name] = tuple(read_mots(pred_file))
         else:
-            box_preds[seq.name] = (
-                tuple(read_mot(pred_file, class_column=multi_class)) if pred_file.is_file() else ()
-            )
+            box_preds[seq.name] = tuple(read_mot(pred_file, class_column=multi_class))
 
     scored = {
         cls_id: _score_class(dataset, box_preds, mask_preds, by_name, cls_id) for cls_id in classes

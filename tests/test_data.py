@@ -284,6 +284,7 @@ def test_zero_indexed_predictions_against_one_indexed_benchmark_raise_on_frame_0
     seq = dataset.sequences[0]
     pred_tracks = [Track(frame=f, track_id=999, x=0, y=0, w=10, h=10, conf=1.0) for f in range(5)]
     write_mot(tmp_path / f"{seq.name}.txt", pred_tracks)
+    write_mot(tmp_path / f"{dataset.sequences[1].name}.txt", [])
 
     with pytest.raises(ValueError) as exc:
         evaluate(dataset, tmp_path, [Count()])
@@ -298,6 +299,7 @@ def test_predictions_beyond_sequence_length_raise_loud_error(tmp_path):
     seq = dataset.sequences[0]
     pred_tracks = [Track(frame=6, track_id=999, x=0, y=0, w=10, h=10, conf=1.0)]
     write_mot(tmp_path / f"{seq.name}.txt", pred_tracks)
+    write_mot(tmp_path / f"{dataset.sequences[1].name}.txt", [])
 
     with pytest.raises(ValueError) as exc:
         evaluate(dataset, tmp_path, [Count()])
@@ -425,12 +427,16 @@ def test_evaluate_results_hold_only_declared_fields(
     assert set(result.combined[name]) == fields
 
 
-def test_evaluate_with_missing_prediction_file_reports_zero_preds(tmp_path):
+def test_evaluate_names_every_missing_prediction_file(tmp_path):
     dataset = load_toy()
-    # No prediction files written at all.
-    result = evaluate(dataset, tmp_path, [Count()])
-    assert result.combined["Count"]["Dets"] == 0.0
-    assert result.combined["Count"]["GT_Dets"] == 20.0
+    # No prediction files written at all: both sequences are named in one error.
+    with pytest.raises(ValueError) as exc:
+        evaluate(dataset, tmp_path, [Count()])
+
+    message = str(exc.value)
+    assert str(tmp_path) in message
+    assert "toy-0001" in message
+    assert "toy-0002" in message
 
 
 def test_evaluate_rejects_duplicate_metric_classes(tmp_path):

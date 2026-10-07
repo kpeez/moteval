@@ -40,7 +40,10 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
   `class_averaged` and `det_averaged` instead (the class combiners take the raw per-class
   state, because TrackMAP weights by private `_num_dt_*` fields). Box predictions give
   their class in column 8, read (`read_mot(class_column=True)`) only for multi-class
-  protocols. Single-class JSON, CSV and table output must not change.
+  protocols. Single-class JSON, CSV and table output must not change. Every sequence
+  needs a `<seq>.txt` prediction file (an empty file means no predictions); `evaluate`
+  raises `ValueError` naming every missing sequence before it scores any, as TrackEval
+  does. Tests that mean "no predictions" write an empty file.
 - `scripts/download_benchmarks.py` — dev-only benchmark downloader (`list/status/download`)
 - `tests/` — flat suite (test_metrics.py, test_parity.py, test_parity_real.py, test_data.py,
   test_loaders.py, test_masks.py, test_cli.py, test_download.py), `tests/fixtures/*.json`
