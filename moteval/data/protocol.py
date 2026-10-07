@@ -39,7 +39,11 @@ class Protocol:
     ``matching_fill`` is the score below-threshold pairs get during the Hungarian
     matching step: upstream's box path zeroes them while its MOTS path sets
     ``-10000``, and the two can tie-break differently, so the value is a declared
-    protocol parameter replicated exactly.
+    protocol parameter replicated exactly. On valid mask input the MOTS fill cannot
+    change a result. GT and ignore masks never overlap (both sides reject such
+    input), so a prediction with IoU >= 0.5 to a GT mask has at least half its area
+    in that mask. It never passes the ignore test, whether matched or not. A
+    prediction with no such GT mask is unmatched under either fill.
     """
 
     name: str
