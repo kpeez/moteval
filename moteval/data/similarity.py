@@ -4,8 +4,7 @@ Box IoU mirrors TrackEval's (convert xywh -> corners, clamp negatives, guard the
 zero-union case to 0). Mask IoU/IoA call ``pycocotools.mask.iou`` exactly as
 TrackEval's ``_calculate_mask_ious`` does — the ``iscrowd`` flag switches the
 denominator to intersection-over-area for ignore-region tests — so metric ports
-stay numerically comparable. RLE encoding always goes through Fortran-order
-arrays, matching the pycocotools contract.
+stay numerically comparable.
 """
 
 import numpy as np
@@ -107,23 +106,6 @@ def mask_ioa(masks_a: list[RleMask], masks_b: list[RleMask]) -> np.ndarray:
     if len(masks_a) == 0 or len(masks_b) == 0:
         ioas = ioas.reshape(len(masks_a), len(masks_b))
     return ioas
-
-
-def encode_mask(mask: np.ndarray) -> RleMask:
-    """Encode one binary ``(h, w)`` mask as a compressed RLE dict.
-
-    pycocotools requires Fortran-contiguous uint8 input; C-order arrays are
-    converted, never rejected, so callers can pass masks built naturally in
-    C order.
-    """
-    if mask.ndim != 2:
-        raise ValueError(f"expected a single (h, w) mask, got shape {mask.shape}")
-    return mask_utils.encode(np.asfortranarray(mask.astype(np.uint8)))
-
-
-def decode_mask(rle: RleMask) -> np.ndarray:
-    """Decode one RLE dict back to a binary ``(h, w)`` uint8 mask."""
-    return mask_utils.decode(rle)
 
 
 def merge_masks(rles: list[RleMask]) -> RleMask:

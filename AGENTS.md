@@ -38,7 +38,9 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
 - `tests/` — flat suite (test_metrics.py, test_parity.py, test_parity_real.py, test_data.py,
   test_loaders.py, test_masks.py, test_cli.py, test_download.py), `tests/fixtures/*.json`
   (frozen TrackEval oracle numbers), `tests/scenarios.py` (shared scenario definitions),
-  `tests/conftest.py` (in-memory toy dataset). `tests/temp/` is gitignored scratch.
+  `tests/perturb.py` (seeded perturbed predictions), `tests/rle.py` (RLE encoding for mask
+  fixtures), `tests/conftest.py` (in-memory toy dataset; the `toy_benchmark` fixture
+  registers it by name for a single test). `tests/temp/` is gitignored scratch.
 
 ## Commands
 

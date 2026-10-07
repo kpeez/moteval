@@ -44,9 +44,10 @@ from moteval.data.model import (
     SequenceData,
 )
 from moteval.data.protocol import Protocol
-from moteval.data.similarity import box_iou, encode_mask
+from moteval.data.similarity import box_iou
 from moteval.formats import MaskTrack, read_mot, read_mots, write_mot, write_mots
 from tests.perturb import perturb_box_tracks, perturb_mask_tracks
+from tests.rle import encode_mask
 
 BOX_PROTOCOL = Protocol(
     name="parity",

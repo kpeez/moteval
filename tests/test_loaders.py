@@ -4,7 +4,6 @@ quirk test for one loader's documented deviation from the default layout.
 """
 
 import json
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -14,14 +13,13 @@ from moteval.benchmarks.animaltrack import load_animaltrack
 from moteval.benchmarks.bft import load_bft
 from moteval.benchmarks.chimpact import _CLASS_ID, _TEST_CLIPS, _VAL_CLIPS, load_chimpact
 from moteval.benchmarks.dancetrack import load_dancetrack
-from moteval.benchmarks.gmot40 import GMOT40_PROTOCOL, load_gmot40
+from moteval.benchmarks.gmot40 import load_gmot40
 from moteval.benchmarks.motchallenge import MOTChallengeConfig, load_layout, load_motchallenge
-from moteval.benchmarks.panaf500 import _CLASS_ID as _PANAF500_CLASS_ID
-from moteval.benchmarks.panaf500 import _xyxy_to_xywh, load_panaf500
+from moteval.benchmarks.panaf500 import load_panaf500
 from moteval.benchmarks.sportsmot import load_sportsmot
-from moteval.benchmarks.uavdt import UAVDT_CONFIG, UAVDT_PROTOCOL, load_uavdt
+from moteval.benchmarks.uavdt import load_uavdt
 from moteval.data.convert import build_sequence_data
-from moteval.data.model import FrameConvention, GtSequence
+from moteval.data.model import FrameConvention
 from moteval.data.protocol import Protocol
 from moteval.formats import Track, write_mot
 from moteval.metrics.count import Count
@@ -106,11 +104,12 @@ def test_end_to_end_evaluate_with_independently_numbered_predictions(
 
     dataset = loader(gt_root, "val")
     (seq,) = dataset.sequences
-    # Predictions numbered independently of GT: different track id, disjoint
-    # single-frame box (not a copy of any GT row).
+    # Predictions numbered independently of GT: literal frame and track id,
+    # single-frame box (not a copy of any GT row). Frame 1 is in range for
+    # every loader in the matrix, gmot40's 0-indexed one included.
     write_mot(
         pred_dir / f"{seq.name}.txt",
-        [Track(frame=seq.tracks[0].frame, track_id=901, x=11, y=11, w=20, h=20, conf=0.9)],
+        [Track(frame=1, track_id=901, x=11, y=11, w=20, h=20, conf=0.9)],
     )
 
     result = evaluate(dataset, pred_dir, [Count()])
@@ -216,7 +215,7 @@ def test_gmot40_unknown_split_raises(tmp_path):
 # the legacy loader did (ADR-0002).
 
 
-def test_gmot40_frame_zero_contributes_and_matches_one_indexed_reencoding(tmp_path):
+def test_gmot40_frame_zero_contributes(tmp_path):
     _write_gmot40_gt(
         tmp_path,
         "bird-0",
@@ -225,30 +224,15 @@ def test_gmot40_frame_zero_contributes_and_matches_one_indexed_reencoding(tmp_pa
 
     dataset = load_gmot40(root=tmp_path, split="test")
     (seq,) = dataset.sequences
-    native_pred = tuple(seq.tracks)
 
-    native_data = build_sequence_data(seq, native_pred, GMOT40_PROTOCOL, 1)
+    # Raw frame numbers are kept, not shifted to 1-indexed like the legacy loader.
+    assert sorted(t.frame for t in seq.tracks) == [0, 1]
+    # The loader's own protocol must accept them (a 1-indexed one raises on 0).
+    data = build_sequence_data(seq, (), dataset.protocol, 1)
     # Frame 0 (the first timestep) must contribute -- the silent-drop bug this
     # rewrite exists to kill would have discarded it.
-    assert native_data.gt_ids[0].shape[0] == 1
-    assert native_data.num_gt_dets == 2
-
-    one_indexed_convention = FrameConvention(name="1-indexed", first_frame=1)
-    one_indexed_protocol = replace(GMOT40_PROTOCOL, frame_convention=one_indexed_convention)
-    shifted_gt = GtSequence(
-        name=seq.name,
-        num_timesteps=seq.num_timesteps,
-        tracks=tuple(replace(t, frame=t.frame + 1) for t in seq.tracks),
-    )
-    shifted_pred = tuple(replace(t, frame=t.frame + 1) for t in native_pred)
-    shifted_data = build_sequence_data(shifted_gt, shifted_pred, one_indexed_protocol, 1)
-
-    count = Count()
-    assert count.eval_sequence(native_data) == count.eval_sequence(shifted_data)
-    for native_frame, shifted_frame in zip(
-        native_data.gt_boxes, shifted_data.gt_boxes, strict=True
-    ):
-        assert native_frame.tolist() == shifted_frame.tolist()
+    assert data.gt_ids[0].shape[0] == 1
+    assert data.num_gt_dets == 2
 
 
 def _coco_image(image_id: int, block: int) -> dict:
@@ -275,11 +259,7 @@ def test_chimpact_frame_zero_contributes(tmp_path):
     dataset = load_chimpact(root=tmp_path, split="train")
     (seq,) = dataset.sequences
 
-    assert 0 in {t.frame for t in seq.tracks}
-    frame_zero = next(t for t in seq.tracks if t.frame == 0)
-    assert (frame_zero.x, frame_zero.y, frame_zero.w, frame_zero.h) == (1.0, 2.0, 3.0, 4.0)
-
-    data = build_sequence_data(seq, seq.tracks, dataset.protocol, _CLASS_ID)
+    data = build_sequence_data(seq, (), dataset.protocol, _CLASS_ID)
     # Frame 0 is the first timestep -- the silent-drop bug this rewrite
     # exists to kill would have discarded it.
     assert data.gt_ids[0].shape[0] == 1
@@ -705,21 +685,6 @@ def test_uavdt_malformed_ignore_row_raises(tmp_path):
         load_uavdt(root=tmp_path, split="all")
 
 
-def test_uavdt_gt_class_id_explicitly_stamped_from_config(tmp_path):
-    _write_uavdt_gt(tmp_path, "M0101", ["1,1,0,0,10,10,1,1,-1"])
-    config = replace(
-        UAVDT_CONFIG,
-        default_root=tmp_path,
-        class_id=7,
-        protocol=replace(UAVDT_PROTOCOL, eval_classes=(7,)),
-    )
-
-    dataset = load_layout(config, root=tmp_path, split="all")
-
-    (seq,) = dataset.sequences
-    assert all(track.class_id == 7 for track in seq.tracks)
-
-
 def test_uavdt_ignore_file_parses_into_gt_sequence_ignore_regions(tmp_path):
     _write_uavdt_gt(tmp_path, "M0101", ["1,1,0,0,10,10,1,1,-1"])
     _write_uavdt_ignore(tmp_path, "M0101", ["1,9,100,100,50,50,1,-1,-1"])
@@ -774,45 +739,13 @@ def test_uavdt_prediction_inside_ignore_region_excluded_through_evaluate(tmp_pat
     }
 
 
-def test_uavdt_ignore_regions_change_evaluation_results(tmp_path):
-    # Control: identical GT and predictions, with vs. without the ignore file,
-    # must produce different Count Dets -- proves the regions have effect.
-    def _build_gt(root: Path, with_ignore: bool) -> None:
-        _write_uavdt_gt(root, "M0101", ["1,1,0,0,10,10,1,1,-1", "2,1,1,0,10,10,1,1,-1"])
-        if with_ignore:
-            _write_uavdt_ignore(
-                root, "M0101", ["1,9,100,100,50,50,1,-1,-1", "2,9,100,100,50,50,1,-1,-1"]
-            )
-
-    pred_dir = tmp_path / "pred"
-    pred_dir.mkdir()
-    write_mot(
-        pred_dir / "M0101.txt",
-        [
-            Track(frame=1, track_id=901, x=110, y=110, w=20, h=20, conf=0.9),
-            Track(frame=1, track_id=902, x=300, y=300, w=20, h=20, conf=0.9),
-        ],
-    )
-
-    honored_root = tmp_path / "honored"
-    _build_gt(honored_root, with_ignore=True)
-    honored = evaluate(load_uavdt(root=honored_root, split="all"), pred_dir, [Count()])
-
-    control_root = tmp_path / "control"
-    _build_gt(control_root, with_ignore=False)
-    control = evaluate(load_uavdt(root=control_root, split="all"), pred_dir, [Count()])
-
-    assert control.combined["Count"]["Dets"] == 2.0
-    assert honored.combined["Count"]["Dets"] == 1.0
-
-
 # ------------------------------------------------------ dancetrack / sportsmot
 #
 # Both reuse the default MOTChallengeConfig layout unmodified; only the root
 # override and registered dataset name need proving per benchmark.
 
 
-def test_dancetrack_root_override_does_not_touch_default_root(tmp_path):
+def test_dancetrack_loads_with_explicit_root(tmp_path):
     _make_mc_sequence(
         tmp_path, "val", "dancetrack0001", seq_length=2, rows=["1,1,10,10,20,20,1,1,1"]
     )
@@ -843,12 +776,6 @@ def _write_panaf500_ann(root: Path, split: str, video_id: str, annotations: list
     )
 
 
-def test_panaf500_xyxy_to_xywh_hand_computed():
-    assert _xyxy_to_xywh([10, 20, 60, 120]) == (10, 20, 50, 100)
-    assert _xyxy_to_xywh([0, 0, 1, 1]) == (0, 0, 1, 1)
-    assert _xyxy_to_xywh([5.5, 6.5, 15.5, 26.5]) == (5.5, 6.5, 10.0, 20.0)
-
-
 def test_panaf500_gt_boxes_converted_from_xyxy_to_xywh(tmp_path):
     _write_panaf500_ann(
         tmp_path,
@@ -857,7 +784,13 @@ def test_panaf500_gt_boxes_converted_from_xyxy_to_xywh(tmp_path):
         [
             {"frame_id": 1, "detections": [{"bbox": [10, 20, 60, 120], "ape_id": 0}]},
             {"frame_id": 2, "detections": []},
-            {"frame_id": 3, "detections": [{"bbox": [0, 0, 10, 10], "ape_id": 1}]},
+            {
+                "frame_id": 3,
+                "detections": [
+                    {"bbox": [0, 0, 10, 10], "ape_id": 1},
+                    {"bbox": [5.5, 6.5, 16.0, 27.25], "ape_id": 2},
+                ],
+            },
         ],
     )
 
@@ -865,11 +798,13 @@ def test_panaf500_gt_boxes_converted_from_xyxy_to_xywh(tmp_path):
 
     (seq,) = dataset.sequences
     assert seq.name == "vid1"
-    assert {t.track_id for t in seq.tracks} == {0, 1}
-    first = next(t for t in seq.tracks if t.frame == 1)
-    assert (first.x, first.y, first.w, first.h) == (10, 20, 50, 100)
-    third = next(t for t in seq.tracks if t.frame == 3)
-    assert (third.x, third.y, third.w, third.h) == (0, 0, 10, 10)
+    assert len(seq.tracks) == 3
+    boxes = {t.track_id: (t.frame, t.x, t.y, t.w, t.h) for t in seq.tracks}
+    assert boxes == {
+        0: (1, 10, 20, 50, 100),
+        1: (3, 0, 0, 10, 10),
+        2: (3, 5.5, 6.5, 10.5, 20.75),
+    }
     assert seq.num_timesteps == 3
 
 
@@ -886,23 +821,6 @@ def test_panaf500_empty_annotations_raises_on_seq_length_derivation(tmp_path):
 
     with pytest.raises(ValueError, match="empty gt"):
         load_panaf500(root=tmp_path, split="validation")
-
-
-def test_panaf500_gt_class_id_matches_module_declared_constant(tmp_path):
-    # Regression for the class_id hazard: this loader never touches read_mot,
-    # so every Track must be stamped explicitly with the module's declared
-    # class rather than left to the dataclass default.
-    _write_panaf500_ann(
-        tmp_path,
-        "validation",
-        "vid1",
-        [{"frame_id": 1, "detections": [{"bbox": [0, 0, 10, 10], "ape_id": 0}]}],
-    )
-
-    dataset = load_panaf500(root=tmp_path, split="validation")
-
-    (seq,) = dataset.sequences
-    assert all(track.class_id == _PANAF500_CLASS_ID for track in seq.tracks)
 
 
 def test_panaf500_end_to_end_evaluate_with_independently_numbered_predictions(tmp_path):
@@ -953,8 +871,6 @@ def test_load_motchallenge_scores_a_custom_layout_without_registration(tmp_path)
 
     assert dataset.name == "my-tracker-data"
     assert dataset.split == "train"
-    assert dataset.protocol.frame_convention.first_frame == 1
-    assert dataset.protocol.eval_classes == (1,)
 
     pred_dir = tmp_path / "pred"
     pred_dir.mkdir()

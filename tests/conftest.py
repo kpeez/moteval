@@ -2,13 +2,16 @@
 
 Two tiny 1-indexed MOTChallenge-style sequences, two tracks each over five
 frames. Ground truth is generated in memory so tests stay hermetic;
-predictions are read from a ``<seq>.txt`` directory by ``evaluate``. The
-loader is inserted into `BENCHMARKS` as ``"toy"`` so in-process CLI tests can
-resolve it by name (``root``/``split`` are accepted and ignored — the data is
-synthesized, not read from disk).
+predictions are read from a ``<seq>.txt`` directory by ``evaluate``. Tests that
+resolve the dataset by name (CLI ``--dataset toy``) request the ``toy_benchmark``
+fixture, which registers the loader in `BENCHMARKS` for that test only
+(``root``/``split`` are accepted and ignored — the data is synthesized, not read
+from disk).
 """
 
 from pathlib import Path
+
+import pytest
 
 from moteval.benchmarks import BENCHMARKS
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
@@ -51,4 +54,6 @@ def load_toy(root: str | Path | None = None, split: str = "val") -> MOTDataset[G
     )
 
 
-BENCHMARKS["toy"] = load_toy
+@pytest.fixture
+def toy_benchmark(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(BENCHMARKS, "toy", load_toy)
