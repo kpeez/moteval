@@ -1,11 +1,12 @@
 /data/
-docs/agents
+.agents/docs
 private
 tests/temp/
 
 # IDE temp files #
 .vscode/
 .cursor/
+.claude/
 .ipynb_checkpoints
 *.egg-info
 
