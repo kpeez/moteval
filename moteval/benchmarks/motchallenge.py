@@ -53,7 +53,7 @@ def _default_gt_path(base: Path, split: str, seq_name: str) -> Path:
 
 
 def _seqinfo_seq_length(base: Path, split: str, seq_name: str, tracks: tuple[Track, ...]) -> int:
-    return _read_seq_length(base / split / seq_name)
+    return read_seq_length(base / split / seq_name)
 
 
 def _default_ignore_path(base: Path, split: str, seq_name: str) -> Path | None:
@@ -87,7 +87,6 @@ class MOTChallengeConfig:
     """
 
     name: str
-    default_root: Path
     protocol: Protocol
     class_id: int = 1
     seq_names: SeqNamesFn = _default_seq_names
@@ -96,7 +95,8 @@ class MOTChallengeConfig:
     ignore_path: IgnorePathFn = _default_ignore_path
 
 
-def _read_seq_length(seq_dir: Path) -> int:
+def read_seq_length(seq_dir: Path) -> int:
+    """Read ``num_timesteps`` from ``<seq_dir>/seqinfo.ini`` (``[Sequence] seqLength``)."""
     seqinfo_path = seq_dir / "seqinfo.ini"
     if not seqinfo_path.is_file():
         raise ValueError(f"missing seqinfo.ini for sequence {seq_dir.name!r} at {seqinfo_path}")
@@ -137,10 +137,10 @@ def _load_sequence(base: Path, split: str, seq_name: str, config: MOTChallengeCo
 
 
 def load_layout(
-    config: MOTChallengeConfig, root: str | Path | None = None, split: str = "val"
+    config: MOTChallengeConfig, root: str | Path, split: str = "val"
 ) -> MOTDataset[GtSequence]:
     """Load a MOTChallenge-layout split into a canonical `MOTDataset`."""
-    base = Path(root) if root is not None else config.default_root
+    base = Path(root)
     seq_names = config.seq_names(base, split)
     sequences = tuple(_load_sequence(base, split, name, config) for name in seq_names)
     return MOTDataset(name=config.name, split=split, sequences=sequences, protocol=config.protocol)
@@ -162,7 +162,5 @@ def load_motchallenge(root: str | Path, split: str = "train") -> MOTDataset[GtSe
     root directory. Benchmarks with their own quirks get a dedicated module
     instead; this is the seam for data that already matches the plain layout.
     """
-    config = MOTChallengeConfig(
-        name=Path(root).name, default_root=Path(root), protocol=MOTCHALLENGE_PROTOCOL
-    )
+    config = MOTChallengeConfig(name=Path(root).name, protocol=MOTCHALLENGE_PROTOCOL)
     return load_layout(config, root=root, split=split)

@@ -14,10 +14,9 @@ SPORTSMOT_PROTOCOL = Protocol(
 )
 SPORTSMOT_CONFIG = MOTChallengeConfig(
     name="sportsmot",
-    default_root=Path("data/benchmarks/sportsmot"),
     protocol=SPORTSMOT_PROTOCOL,
 )
 
 
-def load_sportsmot(root: str | Path | None = None, split: str = "val") -> MOTDataset[GtSequence]:
+def load_sportsmot(root: str | Path, split: str = "val") -> MOTDataset[GtSequence]:
     return load_layout(SPORTSMOT_CONFIG, root=root, split=split)

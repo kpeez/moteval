@@ -32,6 +32,7 @@ from pathlib import Path
 
 import numpy as np
 
+from moteval.benchmarks import default_data_root
 from moteval.benchmarks.dancetrack import load_dancetrack
 from moteval.benchmarks.mots20 import MOTS20_IGNORE_CLASS, MOTS20_PROTOCOL, load_mots20
 from moteval.benchmarks.sportsmot import load_sportsmot
@@ -57,7 +58,7 @@ BOX_PROTOCOL = Protocol(
 BOX_METRICS = ("HOTA", "CLEAR", "Identity", "Count")
 COMBINE_CLASSES_SCENARIO = "combine_classes"
 
-DATA_ROOT = Path("data/benchmarks")
+DATA_ROOT = default_data_root()
 REAL_DATA_SEED = 20260718
 
 
@@ -646,7 +647,7 @@ def build_trackmap_sequence_data(
 
 
 # ---------------------------------------------------------------------------
-# Real-data cases (seeded perturbed predictions against data/benchmarks/)
+# Real-data cases (seeded perturbed predictions against DATA_ROOT)
 # ---------------------------------------------------------------------------
 
 

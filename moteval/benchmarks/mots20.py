@@ -13,9 +13,10 @@ uses 0, which can tie-break differently. MOTS GT has no confidence column, so
 the class selection, exactly as upstream MOTS never drops GT.
 """
 
+from dataclasses import replace
 from pathlib import Path
 
-from moteval.benchmarks.motchallenge import _read_seq_length
+from moteval.benchmarks.motchallenge import read_seq_length
 from moteval.data.model import FrameConvention, MaskGtSequence, MOTDataset
 from moteval.data.protocol import Protocol
 from moteval.formats import read_mots
@@ -29,7 +30,6 @@ MOTS20_PROTOCOL = Protocol(
     drop_zero_conf_gt=False,
     matching_fill=-10000.0,
 )
-MOTS20_DEFAULT_ROOT = Path("data/benchmarks/mots20")
 
 
 def _load_sequence(base: Path, split: str, seq_name: str) -> MaskGtSequence:
@@ -39,7 +39,7 @@ def _load_sequence(base: Path, split: str, seq_name: str) -> MaskGtSequence:
     rows = read_mots(gt_path)
     tracks = tuple(t for t in rows if t.class_id != MOTS20_IGNORE_CLASS)
     ignore_regions = tuple(t for t in rows if t.class_id == MOTS20_IGNORE_CLASS)
-    num_timesteps = _read_seq_length(base / split / seq_name)
+    num_timesteps = read_seq_length(base / split / seq_name)
     return MaskGtSequence(
         name=seq_name, num_timesteps=num_timesteps, tracks=tracks, ignore_regions=ignore_regions
     )
@@ -56,9 +56,8 @@ def _load_split(
     return MOTDataset(name=name, split=split, sequences=sequences, protocol=protocol)
 
 
-def load_mots20(root: str | Path | None = None, split: str = "train") -> MOTDataset[MaskGtSequence]:
-    base = Path(root) if root is not None else MOTS20_DEFAULT_ROOT
-    return _load_split(base, split, "mots20", MOTS20_PROTOCOL)
+def load_mots20(root: str | Path, split: str = "train") -> MOTDataset[MaskGtSequence]:
+    return _load_split(Path(root), split, "mots20", MOTS20_PROTOCOL)
 
 
 def load_mots(
@@ -72,11 +71,5 @@ def load_mots(
     conf-filtered). ``class_id`` selects the evaluated class (MOTS pedestrian
     convention is 2). The dataset is named after the root directory.
     """
-    protocol = Protocol(
-        name="mots",
-        frame_convention=MOTS20_CONVENTION,
-        eval_classes=(class_id,),
-        drop_zero_conf_gt=False,
-        matching_fill=-10000.0,
-    )
+    protocol = replace(MOTS20_PROTOCOL, name="mots", eval_classes=(class_id,))
     return _load_split(Path(root), split, Path(root).name, protocol)
