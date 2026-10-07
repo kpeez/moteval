@@ -62,7 +62,6 @@ _UNNAMED_BBOX_ID = 23
 # `category_id` (0) each annotation carries; that field is intentionally never
 # read.
 _CLASS_ID = 1
-_DEFAULT_ROOT = Path("data/benchmarks/chimpact")
 
 CHIMPACT_CONVENTION = FrameConvention(name="0-indexed", first_frame=0)
 CHIMPACT_PROTOCOL = Protocol(
@@ -210,8 +209,8 @@ def _split_clip_names(label_dir: Path, split: str) -> list[str]:
     return [name for name in names if name not in _VAL_CLIPS and name not in _TEST_CLIPS]
 
 
-def load_chimpact(root: str | Path | None = None, split: str = "val") -> MOTDataset[GtSequence]:
-    base = Path(root) if root is not None else _DEFAULT_ROOT
+def load_chimpact(root: str | Path, split: str = "val") -> MOTDataset[GtSequence]:
+    base = Path(root)
     label_dir = base / "ChimpACT_release_v1" / "labels"
     if not label_dir.is_dir():
         raise ValueError(f"labels directory not found: {label_dir}")

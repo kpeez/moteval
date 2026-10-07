@@ -6,8 +6,9 @@ seeded perturbed predictions (``tests/perturb.py``). The expected numbers in
 data with the same seeds — regenerate with
 ``scripts/regen_parity_fixtures.py --real-data``.
 
-Each test skips loudly when its dataset is absent from ``data/benchmarks/``,
-naming the ``scripts/download_benchmarks.py download`` script that fetches it. A fully-skipped
+Each test skips loudly when its dataset is absent from the data root
+(`moteval.benchmarks.default_data_root`: ``MOTEVAL_DATA_ROOT``, else
+``data/benchmarks/``), naming the ``scripts/download_benchmarks.py download`` script that fetches it. A fully-skipped
 run does not count as the gate passing.
 """
 

@@ -60,7 +60,6 @@ def _gmot40_seq_length(base: Path, split: str, seq_name: str, tracks: tuple[Trac
 
 GMOT40_CONFIG = MOTChallengeConfig(
     name="gmot40",
-    default_root=Path("data/benchmarks/gmot40"),
     protocol=GMOT40_PROTOCOL,
     seq_names=_gmot40_seq_names,
     gt_path=_gmot40_gt_path,
@@ -68,5 +67,5 @@ GMOT40_CONFIG = MOTChallengeConfig(
 )
 
 
-def load_gmot40(root: str | Path | None = None, split: str = "test") -> MOTDataset[GtSequence]:
+def load_gmot40(root: str | Path, split: str = "test") -> MOTDataset[GtSequence]:
     return load_layout(GMOT40_CONFIG, root=root, split=split)

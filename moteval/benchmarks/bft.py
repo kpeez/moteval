@@ -46,7 +46,6 @@ def _bft_seq_length(base: Path, split: str, seq_name: str, tracks: tuple[Track, 
 
 BFT_CONFIG = MOTChallengeConfig(
     name="bft",
-    default_root=Path("data/benchmarks/bft"),
     protocol=BFT_PROTOCOL,
     seq_names=_bft_seq_names,
     gt_path=_bft_gt_path,
@@ -54,5 +53,5 @@ BFT_CONFIG = MOTChallengeConfig(
 )
 
 
-def load_bft(root: str | Path | None = None, split: str = "val") -> MOTDataset[GtSequence]:
+def load_bft(root: str | Path, split: str = "val") -> MOTDataset[GtSequence]:
     return load_layout(BFT_CONFIG, root=root, split=split)
