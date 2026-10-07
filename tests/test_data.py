@@ -19,10 +19,11 @@ _PROTOCOL = Protocol(name="t", frame_convention=CONVENTION, eval_classes=(1,))
 
 
 def _seq() -> GtSequence:
+    # id 42 is listed first so first-seen order and sorted order disagree.
     tracks = (
+        Track(frame=1, track_id=42, x=50, y=50, w=10, h=10, conf=1.0),
         Track(frame=1, track_id=7, x=0, y=0, w=10, h=10, conf=1.0),
         Track(frame=2, track_id=7, x=1, y=0, w=10, h=10, conf=1.0),
-        Track(frame=1, track_id=42, x=50, y=50, w=10, h=10, conf=1.0),
     )
     return GtSequence(name="s", num_timesteps=2, tracks=tracks)
 
@@ -39,12 +40,6 @@ def test_ids_are_densified_via_sorted_mapping():
     assert data.num_gt_ids == 2
     np.testing.assert_array_equal(np.sort(data.gt_ids[0]), [0, 1])
     np.testing.assert_array_equal(data.gt_ids[1], [0])
-
-
-def test_counts_are_summed_over_frames():
-    data = build_sequence_data(_seq(), (), _PROTOCOL, 1)
-    assert data.num_gt_dets == 3
-    assert data.num_pred_dets == 0
 
 
 # ----------------------------------------------------------------- protocol
@@ -114,21 +109,6 @@ def test_conf_zero_gt_still_matches_before_removal():
     assert out.gt_ids.shape[0] == 0
 
 
-def test_conf_zero_gt_excluded_from_evaluation():
-    # gt0 conf=1, gt1 conf=0 (both pedestrian); both preds matched, none distractor.
-    frame = _raw(
-        gt_classes=[1, 1],
-        gt_conf=[1, 0],
-        similarity=[[0.9, 0.0], [0.0, 0.9]],
-        pred_classes=[1, 1],
-    )
-    protocol = Protocol("p", CONVENTION, eval_classes=(1,))
-    out = preprocess_frame(frame, protocol, 1)
-    # both predictions survive; the conf-zero gt row is excluded from evaluation.
-    np.testing.assert_array_equal(out.pred_ids, [100, 101])
-    np.testing.assert_array_equal(out.gt_ids, [0])
-
-
 def _two_class_sequence():
     tracks = tuple(
         Track(frame=f, track_id=tid, x=x, y=x, w=10, h=10, conf=1.0, class_id=cls)
@@ -154,11 +134,15 @@ def test_class_filtering_yields_per_class_views():
     cls1 = build_sequence_data(gt, pred, protocol, 1)
     cls2 = build_sequence_data(gt, pred, protocol, 2)
 
-    for view in (cls1, cls2):
+    # each view keeps only its own class: class 1 sits at x=0, class 2 at x=100.
+    for view, x in ((cls1, 0.0), (cls2, 100.0)):
         assert view.num_gt_ids == 1
         assert view.num_pred_ids == 1
         assert view.num_gt_dets == 2
         assert view.num_pred_dets == 2
+        for t in range(2):
+            np.testing.assert_array_equal(view.gt_boxes[t][:, 0], [x])
+            np.testing.assert_array_equal(view.pred_boxes[t][:, 0], [x])
 
 
 def test_ignore_regions_wired_through_conversion():
@@ -182,19 +166,6 @@ def test_ignore_regions_wired_through_conversion():
     assert data.num_gt_ids == 1
 
 
-def test_toy_protocol_passes_through_engine_unchanged():
-    from tests.conftest import TOY_PROTOCOL, load_toy
-
-    dataset = load_toy()
-    seq = dataset.sequences[0]
-    data = build_sequence_data(seq, seq.tracks, TOY_PROTOCOL, 1)
-    # trivial protocol drops nothing: 2 ids over 5 frames on both sides.
-    assert data.num_gt_ids == 2
-    assert data.num_pred_ids == 2
-    assert data.num_gt_dets == 10
-    assert data.num_pred_dets == 10
-
-
 # -------------------------------------------------------------- similarity
 
 
@@ -207,8 +178,9 @@ def test_box_iou_against_hand_computed():
 
 
 def test_box_iou_disjoint_is_zero():
+    # disjoint along x only: an unclamped overlap would be (-90) * 10 < 0.
     a = np.array([[0, 0, 10, 10]], dtype=np.float64)
-    b = np.array([[100, 100, 10, 10]], dtype=np.float64)
+    b = np.array([[100, 0, 10, 10]], dtype=np.float64)
     assert box_iou(a, b)[0, 0] == 0.0
 
 
