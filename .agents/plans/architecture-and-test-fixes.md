@@ -18,7 +18,7 @@ version of this plan is [architecture-and-test-fixes.html](architecture-and-test
 | Missing prediction file | Raise | TrackEval raises (`trackeval/datasets/mot_challenge_2d_box.py:120-126` at `12c8791b`). A silent zero gives plausible wrong scores. |
 | Expected values for untested quirks | Oracle scenarios through `scripts/regen_parity_fixtures.py` | These are parity quirks, so the proof must come from TrackEval. |
 | Loader default root | Loaders take a required `root` | Only `load_dataset` knows the data location. |
-| BDD100K loader | Not in this plan | It is a scope decision. It can follow as its own plan on top of `pr-multi-class`. |
+| BDD100K loader | Not in this plan | ADR-0003 (scope boundaries) excludes it. Adding it means revisiting that ADR first, then a plan on top of `pr-multi-class`. |
 
 ## Merge order
 
@@ -48,6 +48,10 @@ from several PRs, in different sections.
 - Expected values in tests are hand-derived or come from the TrackEval oracle, never
   copied from moteval output.
 - An independent reviewer approves each PR before it merges.
+- Project ADRs are in `.agents/docs/adrs/` (the llmOS vault). ADR-0007 (CLI output
+  contract) requires a deliberate decision for any JSON schema change. This plan is that
+  decision for `pr-results-fields` and `pr-multi-class`; each of those PRs also records
+  its schema change in ADR-0007, following the vault rules.
 
 ## pr-results-fields
 
@@ -64,7 +68,8 @@ Results and exports hold only the fields that each metric declares.
   the toy dataset go away.
 - Add one parametrized test: per-sequence keys are a subset of `metric.fields`, and
   combined keys equal `metric.fields`, for HOTA, CLEAR, Identity, Count and TrackMAP.
-- Update the README results description and the `Metric.fields` docstring.
+- Update the README results description and the `Metric.fields` docstring. Record in
+  ADR-0007 that exports now hold only declared fields.
 
 ## pr-data-root
 
@@ -124,7 +129,8 @@ Weak tests get assertions that can fail.
 - In the same PR: delete the pass-through `linear_sum_assignment` wrapper in
   `moteval/metrics/_matching.py`, make `_matching.EPS` the one EPS for the metrics, and
   re-export `JAndF` from `moteval/metrics/__init__.py`.
-- Update AGENTS.md and README.md.
+- Update AGENTS.md and README.md, and record the multi-class JSON, CSV and table shape in
+  ADR-0007.
 
 ## pr-quirk-tests
 

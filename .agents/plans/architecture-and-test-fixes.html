@@ -2639,9 +2639,8 @@ tr -> mp : test_data.py
     <li>All metric numbers stay bit-identical to TrackEval <code>12c8791b</code>.</li>
     <li>The box and mask conversion paths stay separate.</li>
     <li><code>box_iou</code> and <code>box_ioa</code> keep their copied lines, for ULP parity.</li>
-    <li>The broken <code>docs/agents</code> link. It points into your vault.</li>
     <li>No MOTS20 download.</li>
-    <li>No BDD100K loader. It can follow as its own plan, on top of <code>pr-multi-class</code>.</li>
+    <li>No BDD100K loader. ADR-0003 excludes it.</li>
     <li>The built-in loaders stay single-class.</li>
   </ul>
 </doc-claim>
