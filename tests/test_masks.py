@@ -214,6 +214,15 @@ def test_mots20_overlapping_gt_masks_raise(tmp_path):
         evaluate(dataset, tmp_path / "preds", [Count()])
 
 
+def test_mots20_missing_prediction_file_raises(tmp_path):
+    _write_mots20_layout(tmp_path / "data", _perfect_gt_rows())
+    dataset = load_mots20(root=tmp_path / "data", split="train")
+    pred_dir = tmp_path / "preds"
+    pred_dir.mkdir()
+    with pytest.raises(ValueError, match=r"has no <seq>\.txt file .*: MOTS20-02"):
+        evaluate(dataset, pred_dir, [Count()])
+
+
 def test_mots20_overlapping_predicted_masks_raise(tmp_path):
     _write_mots20_layout(tmp_path / "data", _perfect_gt_rows())
     dataset = load_mots20(root=tmp_path / "data", split="train")
