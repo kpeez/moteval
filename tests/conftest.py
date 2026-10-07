@@ -1,4 +1,4 @@
-"""Shared test fixtures: the in-memory toy dataset.
+"""Shared test fixtures: the in-memory toy dataset and a two-class dataset.
 
 Two tiny 1-indexed MOTChallenge-style sequences, two tracks each over five
 frames. Ground truth is generated in memory so tests stay hermetic;
@@ -9,6 +9,10 @@ resolve the dataset by name (CLI ``--dataset toy``) request the ``toy_benchmark`
 fixture, which registers a loader in `BENCHMARKS` for that test only. That loader
 takes the required ``root`` and the ``split`` keyword like every benchmark loader, and
 ignores both — the data is synthesized, not read from disk.
+
+`load_two_class` is a one-sequence dataset whose protocol evaluates classes 1 and 2;
+`write_two_class_predictions` writes its predictions with the class in column 8, and
+the ``two_class_benchmark`` fixture registers it as ``two-class``.
 """
 
 from dataclasses import replace
@@ -78,3 +82,52 @@ def write_perfect_predictions(dataset: MOTDataset[GtSequence], pred_dir: Path) -
 @pytest.fixture
 def toy_benchmark(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(BENCHMARKS, "toy", _toy_loader)
+
+
+TWO_CLASS_SEQUENCE = "two-class-0001"
+
+
+def load_two_class() -> MOTDataset[GtSequence]:
+    """One 2-frame sequence of 10x10 boxes that never overlap each other.
+
+    Class 1: GT track 10 at (0, 0). Class 2: GT tracks 20 at (100, 100) and 30 at
+    (200, 200). Every track spans both frames.
+    """
+    tracks = tuple(
+        Track(frame=f, track_id=tid, x=x, y=x, w=10, h=10, conf=1.0, class_id=cls)
+        for tid, x, cls in [(10, 0.0, 1), (20, 100.0, 2), (30, 200.0, 2)]
+        for f in (1, 2)
+    )
+    return MOTDataset(
+        name="two-class",
+        split="val",
+        sequences=(GtSequence(name=TWO_CLASS_SEQUENCE, num_timesteps=2, tracks=tracks),),
+        protocol=replace(TOY_PROTOCOL, name="two-class", eval_classes=(1, 2)),
+    )
+
+
+def write_two_class_predictions(pred_dir: Path) -> None:
+    """Predictions for `load_two_class`, class in column 8, every IoU exactly 1 or 0.
+
+    Class 1: track 100 covers GT 10 in both frames; track 300 sits on GT 30 (a class-2
+    box) in frame 1, so it is a class-1 false positive. Class 2: track 200 covers
+    GT 20 in both frames; GT 30 is missed.
+    """
+    rows = [
+        "1,100,0,0,10,10,1,1",
+        "2,100,0,0,10,10,1,1",
+        "1,300,200,200,10,10,1,1",
+        "1,200,100,100,10,10,1,2",
+        "2,200,100,100,10,10,1,2",
+    ]
+    pred_dir.mkdir(parents=True, exist_ok=True)
+    (pred_dir / f"{TWO_CLASS_SEQUENCE}.txt").write_text("\n".join(rows) + "\n")
+
+
+def _two_class_loader(root: str | Path, split: str = "val") -> MOTDataset[GtSequence]:
+    return load_two_class()
+
+
+@pytest.fixture
+def two_class_benchmark(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(BENCHMARKS, "two-class", _two_class_loader)

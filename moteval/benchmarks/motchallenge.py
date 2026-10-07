@@ -3,15 +3,12 @@
 Default layout: ``<root>/<split>/<seq>/gt/gt.txt`` plus
 ``<root>/<split>/<seq>/seqinfo.ini`` (``[Sequence]`` section, ``seqLength=N``).
 Sequence discovery is the split directory's subdirectories, sorted. GT rows are
-the standard 7-field MOTChallenge prefix (``frame,id,x,y,w,h,conf``); `read_mot`
-parses no class column, so every `Track` it returns silently gets ``class_id=1``.
-That is coincidentally correct for single-class benchmarks (DanceTrack,
-SportsMOT: pedestrian == class 1) but would be WRONG for multi-class GT -- a
-future multi-class benchmark must not reuse this adapter's GT loading naively.
-`MOTChallengeConfig.class_id` is the adapter's only class-assignment hook today;
-a class-column parser can be added as a config field later (e.g. a row-parsing
-callable) without breaking DanceTrack or SportsMOT, which simply leave it at
-the default.
+the standard 7-field MOTChallenge prefix (``frame,id,x,y,w,h,conf``). The adapter
+calls `read_mot` without ``class_column``, so the class column is ignored and
+`MOTChallengeConfig.class_id` tags every GT `Track`. That is correct for the
+single-class benchmarks that use it, but WRONG for multi-class GT: a multi-class
+benchmark must read its GT with ``read_mot(..., class_column=True)`` instead of
+reusing this adapter's GT loading.
 
 Some benchmarks (BFT, AnimalTrack, GMOT-40) keep MOTChallenge-style GT rows but
 deviate from that default layout -- no ``seqinfo.ini``, GT living in a flat
@@ -76,9 +73,9 @@ def max_frame_seq_length(seq_name: str, tracks: tuple[Track, ...], offset: int =
 class MOTChallengeConfig:
     """Per-benchmark configuration for the generic MOTChallenge adapter.
 
-    ``class_id`` is the class every GT `Track` is tagged with, since `read_mot`
-    parses no class column itself. Single-class benchmarks leave it at the
-    pedestrian default (1). ``seq_names``, ``gt_path``, and ``seq_length`` default
+    ``class_id`` is the class every GT `Track` is tagged with, since the adapter
+    reads no class column. Single-class benchmarks leave it at the pedestrian
+    default (1). ``seq_names``, ``gt_path``, and ``seq_length`` default
     to the standard ``<root>/<split>/<seq>/gt/gt.txt`` + ``seqinfo.ini`` layout;
     override them for benchmarks whose real distribution deviates from it.
     ``ignore_path`` returns the crowd-ignore-region file for a sequence, or

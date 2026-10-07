@@ -16,7 +16,7 @@ from moteval import evaluate
 from moteval.cli import main
 from moteval.formats import Track, write_mot
 from moteval.results import EvaluationResult
-from tests.conftest import load_toy, write_perfect_predictions
+from tests.conftest import load_toy, write_perfect_predictions, write_two_class_predictions
 
 
 @pytest.fixture
@@ -112,7 +112,7 @@ def test_result_serializers_follow_stable_schemas(toy_predictions):
     assert rows[0] == ("toy-0001", "HOTA", "HOTA", 1.0)
     assert ("toy-0001", "HOTA", "HOTA_TP", 10.0) in rows
     assert ("COMBINED", "Count", "GT_Dets", 20.0) in rows
-    assert all(isinstance(value, (int, float)) for _seq, _metric, _field, value in rows)
+    assert all(isinstance(row[-1], (int, float)) for row in rows)
 
 
 def test_cli_writes_csv_with_stable_schema(toy_predictions, tmp_path):
@@ -184,6 +184,142 @@ def test_json_export_round_trips_direct_evaluate_values(toy_predictions, tmp_pat
         sequence: _python_scores(scores) for sequence, scores in direct.per_sequence.items()
     }
     assert exported["combined"] == _python_scores(direct.combined)
+
+
+def test_single_class_outputs_keep_their_exact_format(toy_predictions, tmp_path, capsys):
+    # Hand-written expected bytes: a single-class run keeps the original table, CSV
+    # and JSON shapes, with no class column and no class-combination keys.
+    # Perfect predictions on both toy sequences: 10 GT dets and 10 predicted dets on
+    # 2 GT ids and 2 predicted ids each; COMBINED doubles every count.
+    _dataset, pred_dir = toy_predictions
+    out_csv = tmp_path / "result.csv"
+    out_json = tmp_path / "result.json"
+
+    exit_code = main(
+        [
+            "run",
+            "--dataset",
+            "toy",
+            "--pred",
+            str(pred_dir),
+            "--metrics",
+            "count",
+            "--out-csv",
+            str(out_csv),
+            "--out-json",
+            str(out_json),
+        ]
+    )
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == (
+        "seq       Dets  GT_Dets\n"
+        "toy-0001    10       10\n"
+        "toy-0002    10       10\n"
+        "COMBINED    20       20\n"
+    )
+    csv_rows = ["seq,metric,field,value"]
+    for seq, (dets, ids) in {"toy-0001": (10, 2), "toy-0002": (10, 2), "COMBINED": (20, 4)}.items():
+        csv_rows += [
+            f"{seq},Count,Dets,{dets}.0",
+            f"{seq},Count,GT_Dets,{dets}.0",
+            f"{seq},Count,IDs,{ids}.0",
+            f"{seq},Count,GT_IDs,{ids}.0",
+        ]
+    assert out_csv.read_bytes() == ("\r\n".join(csv_rows) + "\r\n").encode()
+    per_sequence = '{"Count": {"Dets": 10.0, "GT_Dets": 10.0, "IDs": 2.0, "GT_IDs": 2.0}}'
+    assert out_json.read_text() == (
+        '{"dataset": "toy", "split": "val", "per_sequence": '
+        f'{{"toy-0001": {per_sequence}, "toy-0002": {per_sequence}}}, '
+        '"combined": {"Count": {"Dets": 20.0, "GT_Dets": 20.0, "IDs": 4.0, "GT_IDs": 4.0}}}'
+    )
+
+
+def test_multi_class_outputs_add_a_class_column_and_both_combinations(
+    tmp_path, two_class_benchmark, capsys
+):
+    pred_dir = tmp_path / "predictions"
+    write_two_class_predictions(pred_dir)
+    out_csv = tmp_path / "result.csv"
+    out_json = tmp_path / "result.json"
+
+    exit_code = main(
+        [
+            "run",
+            "--dataset",
+            "two-class",
+            "--pred",
+            str(pred_dir),
+            "--metrics",
+            "hota,count",
+            "--out-csv",
+            str(out_csv),
+            "--out-json",
+            str(out_json),
+        ]
+    )
+
+    assert exit_code == 0
+    raw_lines = capsys.readouterr().out.splitlines()
+    lines = [line.split() for line in raw_lines]
+    # Both label columns are left-aligned: every seq label starts under "seq".
+    seq_start = raw_lines[0].index("seq")
+    assert all(
+        raw[seq_start:].startswith(row[1]) for raw, row in zip(raw_lines, lines, strict=True)
+    )
+    # Hand derivation (tests/conftest.py `write_two_class_predictions`; every IoU is 1
+    # or 0 and each matched pair keeps one id, so AssA = 1 and HOTA = sqrt(DetA)):
+    # class 1: TP 2, FN 0, FP 1 -> DetA 2/3 = 66.667, HOTA sqrt(2/3) = 81.65.
+    # class 2: TP 2, FN 2, FP 0 -> DetA 1/2 = 50, HOTA sqrt(1/2) = 70.711.
+    # class_averaged: means of the class values -> HOTA 76.18, DetA 7/12 = 58.333.
+    # det_averaged: pooled TP 4, FN 2, FP 1 -> DetA 4/7 = 57.143, HOTA sqrt(4/7) = 75.593.
+    # Count sums over classes in both combinations: 5 dets, 6 GT dets.
+    seq = "two-class-0001"
+    assert lines == [
+        ["class", "seq", "HOTA", "DetA", "AssA", "Dets", "GT_Dets"],
+        ["1", seq, "81.65", "66.667", "100", "3", "2"],
+        ["1", "COMBINED", "81.65", "66.667", "100", "3", "2"],
+        ["2", seq, "70.711", "50", "100", "2", "4"],
+        ["2", "COMBINED", "70.711", "50", "100", "2", "4"],
+        ["class_averaged", "COMBINED", "76.18", "58.333", "100", "5", "6"],
+        ["det_averaged", "COMBINED", "75.593", "57.143", "100", "5", "6"],
+    ]
+
+    with out_csv.open(newline="") as file:
+        reader = csv.reader(file)
+        header = next(reader)
+        rows = list(reader)
+    assert header == ["class", "seq", "metric", "field", "value"]
+    assert ["1", seq, "Count", "Dets", "3.0"] in rows
+    assert ["2", "COMBINED", "Count", "GT_Dets", "4.0"] in rows
+    assert ["class_averaged", "COMBINED", "Count", "GT_Dets", "6.0"] in rows
+    assert ["det_averaged", "COMBINED", "Count", "Dets", "5.0"] in rows
+    assert {(row[0], row[1]) for row in rows} == {
+        ("1", seq),
+        ("1", "COMBINED"),
+        ("2", seq),
+        ("2", "COMBINED"),
+        ("class_averaged", "COMBINED"),
+        ("det_averaged", "COMBINED"),
+    }
+
+    exported = json.loads(out_json.read_text())
+    assert list(exported) == [
+        "dataset",
+        "split",
+        "per_sequence",
+        "combined",
+        "per_class",
+        "class_averaged",
+        "det_averaged",
+    ]
+    assert exported["per_sequence"] == {}
+    assert exported["combined"] == {}
+    assert list(exported["per_class"]) == ["1", "2"]
+    assert exported["per_class"]["2"]["per_sequence"][seq]["Count"]["GT_Dets"] == 4.0
+    assert exported["per_class"]["1"]["combined"]["Count"]["Dets"] == 3.0
+    assert exported["class_averaged"]["Count"]["GT_Dets"] == 6.0
+    assert exported["det_averaged"]["HOTA"]["DetA"] == pytest.approx([4 / 7] * 19)
 
 
 def test_unknown_dataset_is_reported_without_traceback(toy_predictions, capsys):
