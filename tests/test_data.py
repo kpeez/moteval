@@ -439,6 +439,22 @@ def test_evaluate_names_every_missing_prediction_file(tmp_path):
     assert "toy-0002" in message
 
 
+def test_evaluate_checks_prediction_files_before_scoring(tmp_path):
+    dataset = load_toy()
+    # toy-0001 has an out-of-range frame that scoring would reject; toy-0002 has no
+    # file. The missing-file error must come first, before any sequence is scored.
+    bad_frame = Track(frame=6, track_id=999, x=0, y=0, w=10, h=10, conf=1.0)
+    write_mot(tmp_path / "toy-0001.txt", [bad_frame])
+
+    with pytest.raises(ValueError) as exc:
+        evaluate(dataset, tmp_path, [Count()])
+
+    message = str(exc.value)
+    assert "has no <seq>.txt file" in message
+    assert "toy-0002" in message
+    assert "1-indexed" not in message
+
+
 def test_evaluate_rejects_duplicate_metric_classes(tmp_path):
     dataset = load_toy()
     with pytest.raises(ValueError) as exc:
