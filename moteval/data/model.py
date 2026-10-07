@@ -17,7 +17,12 @@ if TYPE_CHECKING:
 
 
 class RleMask(TypedDict):
-    """pycocotools compressed RLE: ``{"size": [height, width], "counts": bytes}``."""
+    """pycocotools compressed RLE: ``{"size": [height, width], "counts": bytes}``.
+
+    moteval always stores ``bytes`` counts; ``str`` is admitted only so this type
+    stays assignable to the pycocotools stub's RLE type (TypedDict fields are
+    invariant).
+    """
 
     size: list[int]
     counts: str | bytes
