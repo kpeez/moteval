@@ -179,10 +179,10 @@ def test_box_iou_against_hand_computed():
 
 
 def test_box_iou_disjoint_is_zero():
-    # disjoint along x only: an unclamped overlap would be (-90) * 10 < 0.
+    # disjoint along one axis each: an unclamped overlap would be (-90) * 10 < 0.
     a = np.array([[0, 0, 10, 10]], dtype=np.float64)
-    b = np.array([[100, 0, 10, 10]], dtype=np.float64)
-    assert box_iou(a, b)[0, 0] == 0.0
+    b = np.array([[100, 0, 10, 10], [0, 100, 10, 10]], dtype=np.float64)
+    np.testing.assert_array_equal(box_iou(a, b), [[0.0, 0.0]])
 
 
 def test_box_iou_empty_sides():

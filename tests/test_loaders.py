@@ -13,7 +13,7 @@ from moteval.benchmarks.animaltrack import load_animaltrack
 from moteval.benchmarks.bft import load_bft
 from moteval.benchmarks.chimpact import _CLASS_ID, _TEST_CLIPS, _VAL_CLIPS, load_chimpact
 from moteval.benchmarks.dancetrack import load_dancetrack
-from moteval.benchmarks.gmot40 import GMOT40_PROTOCOL, load_gmot40
+from moteval.benchmarks.gmot40 import load_gmot40
 from moteval.benchmarks.motchallenge import MOTChallengeConfig, load_layout, load_motchallenge
 from moteval.benchmarks.panaf500 import load_panaf500
 from moteval.benchmarks.sportsmot import load_sportsmot
@@ -225,7 +225,10 @@ def test_gmot40_frame_zero_contributes(tmp_path):
     dataset = load_gmot40(root=tmp_path, split="test")
     (seq,) = dataset.sequences
 
-    data = build_sequence_data(seq, (), GMOT40_PROTOCOL, 1)
+    # Raw frame numbers are kept, not shifted to 1-indexed like the legacy loader.
+    assert sorted(t.frame for t in seq.tracks) == [0, 1]
+    # The loader's own protocol must accept them (a 1-indexed one raises on 0).
+    data = build_sequence_data(seq, (), dataset.protocol, 1)
     # Frame 0 (the first timestep) must contribute -- the silent-drop bug this
     # rewrite exists to kill would have discarded it.
     assert data.gt_ids[0].shape[0] == 1
@@ -785,7 +788,7 @@ def test_panaf500_gt_boxes_converted_from_xyxy_to_xywh(tmp_path):
                 "frame_id": 3,
                 "detections": [
                     {"bbox": [0, 0, 10, 10], "ape_id": 1},
-                    {"bbox": [5.5, 6.5, 15.5, 26.5], "ape_id": 2},
+                    {"bbox": [5.5, 6.5, 16.0, 27.25], "ape_id": 2},
                 ],
             },
         ],
@@ -795,11 +798,12 @@ def test_panaf500_gt_boxes_converted_from_xyxy_to_xywh(tmp_path):
 
     (seq,) = dataset.sequences
     assert seq.name == "vid1"
+    assert len(seq.tracks) == 3
     boxes = {t.track_id: (t.frame, t.x, t.y, t.w, t.h) for t in seq.tracks}
     assert boxes == {
         0: (1, 10, 20, 50, 100),
         1: (3, 0, 0, 10, 10),
-        2: (3, 5.5, 6.5, 10.0, 20.0),
+        2: (3, 5.5, 6.5, 10.5, 20.75),
     }
     assert seq.num_timesteps == 3
 

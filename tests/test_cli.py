@@ -193,7 +193,7 @@ def test_json_export_round_trips_direct_evaluate_values(toy_predictions, tmp_pat
     assert exported["combined"] == _python_scores(direct.combined)
 
 
-def test_unknown_dataset_lists_registered_names(toy_predictions, capsys):
+def test_unknown_dataset_is_reported_without_traceback(toy_predictions, capsys):
     _dataset, pred_dir = toy_predictions
 
     with pytest.raises(SystemExit):
