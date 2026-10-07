@@ -55,9 +55,7 @@ dataset = moteval.load_dataset("dancetrack", split="val")
 # or, for your own data in the standard layout:
 # dataset = moteval.load_motchallenge("path/to/your/gt-root", split="train")
 
-result = moteval.evaluate(
-    dataset, "path/to/tracker/output", [moteval.HOTA(), moteval.CLEAR()]
-)
+result = moteval.evaluate(dataset, "path/to/tracker/output", [moteval.HOTA(), moteval.CLEAR()])
 print(result.combined["CLEAR"]["MOTA"])
 ```
 
