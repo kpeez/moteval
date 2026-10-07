@@ -23,7 +23,7 @@ import numpy as np
 from pycocotools import mask as mask_utils
 from scipy.spatial import KDTree
 
-from moteval.data.model import SequenceData
+from moteval.data.model import RleMask, SequenceData
 from moteval.metrics._matching import linear_sum_assignment
 from moteval.metrics.base import Metric, Scores
 
@@ -53,7 +53,13 @@ def _seg2bmap(seg: np.ndarray) -> np.ndarray:
     return b
 
 
-def _boundary_points(rle: dict) -> np.ndarray:
+def _areas(rles: list[RleMask]) -> np.ndarray:
+    """Pixel area of each RLE mask, as one array."""
+    # pyrefly: ignore[bad-argument-type, bad-return]  # the typeshed stub omits area's list form
+    return mask_utils.area(rles)
+
+
+def _boundary_points(rle: RleMask) -> np.ndarray:
     """`np.argwhere(_seg2bmap(decode(rle)))`, computed on the mask's bbox crop.
 
     `_seg2bmap` boundaries sit on mask pixels or one pixel to their top/left,
@@ -73,8 +79,8 @@ def _boundary_points(rle: dict) -> np.ndarray:
 
 
 def _compute_f(
-    gt_dets: list,
-    pred_dets: list,
+    gt_dets: list[list[RleMask]],
+    pred_dets: list[list[RleMask]],
     pred_id: int,
     gt_id: int,
     gt_areas: list[np.ndarray],
@@ -124,13 +130,17 @@ def _compute_f(
 
 
 def _compute_j(
-    gt_dets: list, pred_dets: list, num_gt_ids: int, num_pred_ids: int, num_timesteps: int
+    gt_dets: list[list[RleMask]],
+    pred_dets: list[list[RleMask]],
+    num_gt_ids: int,
+    num_pred_ids: int,
+    num_timesteps: int,
 ) -> np.ndarray:
     j = np.zeros((num_pred_ids, num_gt_ids, num_timesteps))
     for t, (time_gt, time_pred) in enumerate(zip(gt_dets, pred_dets, strict=True)):
-        area_gt = mask_utils.area(time_gt)
+        area_gt = _areas(time_gt)
         time_pred = list(time_pred)
-        area_pred = mask_utils.area(time_pred)
+        area_pred = _areas(time_pred)
 
         area_pred = np.repeat(area_pred[:, np.newaxis], len(area_gt), axis=1)
         area_gt = np.repeat(area_gt[np.newaxis, :], len(area_pred), axis=0)
@@ -184,8 +194,8 @@ class JAndF(Metric):
         j = _compute_j(gt_dets, pred_dets, num_gt_ids, num_pred_ids, num_timesteps)
 
         # RLE-side per-frame areas for _compute_f's empty-boundary fast path
-        gt_areas = [mask_utils.area(dets) for dets in gt_dets]
-        pred_areas = [mask_utils.area(dets) for dets in pred_dets]
+        gt_areas = [_areas(dets) for dets in gt_dets]
+        pred_areas = [_areas(dets) for dets in pred_dets]
 
         # assignment on mean-over-time J (upstream default optim_type='J');
         # F is computed only for assigned pairs
@@ -202,7 +212,7 @@ class JAndF(Metric):
             j_m = np.concatenate((j_m, np.zeros((diff, j_m.shape[1]))), axis=0)
             f_m = np.concatenate((f_m, np.zeros((diff, f_m.shape[1]))), axis=0)
 
-        res: dict[str, list | float | np.ndarray] = {
+        res: dict[str, list] = {
             "J-Mean": [np.nanmean(j_m[i, :]) for i in range(j_m.shape[0])],
             "J-Recall": [np.nanmean(j_m[i, :] > 0.5 + _EPS) for i in range(j_m.shape[0])],
             "F-Mean": [np.nanmean(f_m[i, :]) for i in range(f_m.shape[0])],
@@ -238,7 +248,7 @@ class JAndF(Metric):
     def combine_classes_class_averaged(self, all_res: dict[str, Scores]) -> Scores:
         res: Scores = {"num_gt_tracks": self._combine_sum(all_res, "num_gt_tracks")}
         for field in _FLOAT_FIELDS:
-            res[field] = float(np.mean([scores[field] for scores in all_res.values()]))
+            res[field] = float(np.mean(np.asarray([scores[field] for scores in all_res.values()])))
         return res
 
     def combine_classes_det_averaged(self, all_res: dict[str, Scores]) -> Scores:

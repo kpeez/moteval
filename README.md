@@ -20,7 +20,7 @@ Requires [uv](https://docs.astral.sh/uv/) and [just](https://github.com/casey/ju
 git clone https://github.com/kpeez/moteval.git
 cd moteval
 just install   # uv sync + pre-commit hooks
-just check     # ruff format + lint + ty type-check
+just check     # ruff format + lint + pyrefly type-check
 just test      # pytest
 ```
 
