@@ -61,7 +61,6 @@ COMBINE_CLASSES_SCENARIO = "combine_classes"
 # The MOTS scenario that the multi-class mask check reuses (see `class_views`).
 MOTS_MULTI_CLASS_SCENARIO = "jf_perturbed_predictions"
 
-DATA_ROOT = default_data_root()
 REAL_DATA_SEED = 20260718
 
 
@@ -771,7 +770,8 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
     # order gives 0.5499999999999998, a match at the 0.55 threshold (`iou < thr - eps` is
     # false); ascending order and the `set(gt) | set(dt)` order ([7, 5, 23, 9, 12]) give
     # 0.5499999999999997, a miss. The height of dt frame 12 was searched to sit on that
-    # boundary. Frame keys stay ascending: insertion order can change set iteration order.
+    # boundary. Frame keys stay ascending, as upstream's loader inserts them; for this
+    # pair no insertion order changes the set order (`track_iou_insertion_order` does).
     "track_iou_frame_order": {
         "seq": (
             24,
@@ -783,6 +783,23 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
                     9: ([13.7, 11.0, 20.3, 30.7], 0.9),
                     12: ([70.0, 70.0, 1.0, 145.32909090909212], 0.9),
                     23: ([60.0, 60.0, 1.0, 220.7], 0.9),
+                }
+            },
+        )
+    },
+    # Frame keys 1 and 17 collide in the union set's hash table, so the set order depends
+    # on insertion order: ascending insertion (upstream's TAO loader sorts by frame) gives
+    # [1, 20, 17], reversed insertion [17, 20, 1]. Frame 1 overlaps, frame 17 is GT only,
+    # and the height of dt frame 20 was searched to sit on the 0.55 boundary: ascending
+    # order gives 0.5499999999999997 (a miss), reversed order 0.5499999999999998 (a match).
+    "track_iou_insertion_order": {
+        "seq": (
+            24,
+            {1: {1: [10.0, 10.0, 20.3, 30.7], 17: [12.0, 10.0, 3.3, 7.1]}},
+            {
+                101: {
+                    1: ([11.1, 10.0, 20.3, 30.7], 0.9),
+                    20: ([60.0, 60.0, 1.0, 391.2990909090918], 0.9),
                 }
             },
         )
@@ -838,7 +855,7 @@ def build_trackmap_sequence_data(
 
 
 # ---------------------------------------------------------------------------
-# Real-data cases (seeded perturbed predictions against DATA_ROOT)
+# Real-data cases (seeded perturbed predictions against `default_data_root()`)
 # ---------------------------------------------------------------------------
 
 
@@ -863,21 +880,21 @@ def prepare_dancetrack_val(tmp_dir: Path) -> tuple[MOTDataset, Path, dict[str, i
     Returns ``(dataset, gt_root, seq_lengths)``; predictions land in
     ``predictions_dir(tmp_dir)``.
     """
-    root = DATA_ROOT / "dancetrack"
+    root = default_data_root() / "dancetrack"
     dataset = load_dancetrack(root=root, split="val")
     return dataset, root / "val", _write_perturbed_box_predictions(dataset, tmp_dir)
 
 
 def prepare_sportsmot_val(tmp_dir: Path) -> tuple[MOTDataset, Path, dict[str, int]]:
     """Same contract as `prepare_dancetrack_val`, for SportsMOT val."""
-    root = DATA_ROOT / "sportsmot"
+    root = default_data_root() / "sportsmot"
     dataset = load_sportsmot(root=root, split="val")
     return dataset, root / "val", _write_perturbed_box_predictions(dataset, tmp_dir)
 
 
 def prepare_mots20_sequence(tmp_dir: Path) -> tuple[MOTDataset, Path, dict[str, int]]:
     """Load MOTS20 train restricted to its first sequence, with seeded mask predictions."""
-    root = DATA_ROOT / "mots20"
+    root = default_data_root() / "mots20"
     dataset = load_mots20(root=root, split="train")
     seq = dataset.sequences[0]
     dataset = type(dataset)(

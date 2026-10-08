@@ -76,8 +76,8 @@ class EvaluationResult:
     detection-averaged combiners. All three are empty for a single-class run.
 
     Every mapping holds only each metric's declared ``Metric.fields``. A metric
-    with no per-sequence field (TrackMAP, whose AP pools detections across
-    sequences) is absent from the per-sequence mappings.
+    whose per-sequence state holds none of its fields (TrackMAP, whose AP pools
+    detections across sequences) is absent from the per-sequence mappings.
     """
 
     per_sequence: dict[str, MetricScores]

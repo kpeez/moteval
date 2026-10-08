@@ -24,8 +24,9 @@ class Metric(ABC):
     Combined results hold exactly these fields; per-sequence results hold a subset.
     ``eval_sequence`` and ``combine_sequences`` may also return private state
     (TrackMAP's match arrays and ``_num_dt_*`` weights) that only the combine
-    methods consume. A metric with no per-sequence field (TrackMAP) has no
-    per-sequence entry in the results.
+    methods consume. A metric whose per-sequence state holds none of its fields
+    (TrackMAP: AP pools detections across sequences, so ``eval_sequence`` returns
+    only private match state) has no per-sequence entry in the results.
     """
 
     geometry: Literal["boxes", "masks"] | None = None

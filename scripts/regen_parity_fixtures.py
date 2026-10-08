@@ -64,11 +64,11 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from moteval import HOTA, TrackMAP, evaluate
+from moteval.benchmarks import default_data_root
 from tests.scenarios import (
     BOX_METRICS,
     BOX_SCENARIOS,
     COMBINE_CLASSES_SCENARIO,
-    DATA_ROOT,
     MOTS_MULTI_CLASS_SCENARIO,
     MULTI_CLASS_BOX_PROTOCOL,
     MULTI_CLASS_MOTS_PROTOCOL,
@@ -409,7 +409,7 @@ def gen_synthetic_trackmap(oracle: SimpleNamespace) -> dict:
 
 def gen_real_data(oracle: SimpleNamespace) -> dict:
     for benchmark in ("dancetrack", "sportsmot", "mots20"):
-        root = DATA_ROOT / benchmark
+        root = default_data_root() / benchmark
         if not root.is_dir() or not any(root.iterdir()):
             raise SystemExit(
                 f"{benchmark} not found under {root} — fetch it with "
