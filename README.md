@@ -129,7 +129,11 @@ comparable. This is enforced by tests rather than claimed: the suite asserts exa
 equality against frozen TrackEval outputs on synthetic scenarios
 (`tests/fixtures/*.json`, regenerated only by `scripts/regen_parity_fixtures.py`, which
 runs the pinned upstream), and `just test-real` repeats the bit-identical check on real
-DanceTrack, SportsMOT, and MOTS20 data.
+DanceTrack, SportsMOT, and MOTS20 data. The other built-in benchmarks have no TrackEval
+loader, so `just test-real` checks them another way: their published ground truth,
+submitted as predictions, must match exactly (`tests/test_loaders_real.py`). ChimpACT
+submits only its labelled keyframes, so the frames its loader fills in between count as
+misses.
 
 One documented divergence: upstream's TrackMAP `combine_classes_det_averaged` is a
 copy-paste of its class-averaged combiner and never actually weights by detections (an
