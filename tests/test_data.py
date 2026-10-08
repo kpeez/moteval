@@ -430,11 +430,15 @@ def test_evaluate_results_hold_only_declared_fields(
 @pytest.mark.parametrize(
     ("metric_cls", "build", "message"),
     [
-        (TrackMAP, _mots_scenario, "TrackMAP reads boxes, but dataset 'parity-mots' holds masks"),
+        (
+            TrackMAP,
+            _mots_scenario,
+            "TrackMAP reads boxes, but sequence 'SEQ-JF-01' of dataset 'parity-mots' holds masks",
+        ),
         (
             JAndF,
             _toy_with_offset_id_predictions,
-            "JAndF reads masks, but dataset 'toy' holds boxes",
+            "JAndF reads masks, but sequence 'toy-0001' of dataset 'toy' holds boxes",
         ),
     ],
     ids=["TrackMAP-on-masks", "JAndF-on-boxes"],

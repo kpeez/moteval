@@ -44,9 +44,9 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
   protocols. Single-class JSON, CSV and table output must not change. Every sequence
   needs a `<seq>.txt` prediction file (an empty file means no predictions); `evaluate`
   raises `ValueError` naming every missing sequence before it scores any, as TrackEval
-  does. Tests that mean "no predictions" write an empty file. Before that check,
-  `evaluate` raises `ValueError` when a metric's `Metric.geometry` (boxes or masks) does
-  not match the dataset.
+  does. Tests that mean "no predictions" write an empty file. `evaluate` also raises
+  `ValueError` before scoring when a metric's `Metric.geometry` (boxes or masks) does not
+  match a sequence.
 - `scripts/download_benchmarks.py` — dev-only benchmark downloader (`list/status/download`)
 - `tests/` — flat suite (test_metrics.py, test_parity.py, test_parity_real.py, test_data.py,
   test_loaders.py, test_masks.py, test_cli.py, test_download.py), `tests/fixtures/*.json`

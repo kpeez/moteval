@@ -387,7 +387,7 @@ def test_metric_on_the_other_geometry_is_reported_without_traceback(toy_predicti
 
     assert exc.value.code == 2
     err = capsys.readouterr().err
-    assert "JAndF reads masks, but dataset 'toy' holds boxes" in err
+    assert "JAndF reads masks, but sequence 'toy-0001' of dataset 'toy' holds boxes" in err
     assert "Traceback" not in err
 
 

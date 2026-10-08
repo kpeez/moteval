@@ -3,7 +3,8 @@
 `evaluate(dataset, predictions, metrics)` reads ``<seq>.txt`` MOTChallenge (or
 MOTS) predictions from a directory and returns typed results. Every sequence
 needs a file; an empty file means no predictions. A missing file raises
-``ValueError`` before any sequence is scored. It is the whole
+``ValueError`` before any sequence is scored, and so does a metric whose
+`Metric.geometry` (boxes or masks) does not match a sequence. It is the whole
 public scoring seam: any `MOTDataset` — built-in benchmark, generic-layout load,
 or hand-constructed — evaluates through it.
 
@@ -94,8 +95,8 @@ def evaluate(
             kind = "masks" if isinstance(seq, MaskGtSequence) else "boxes"
             if metric.geometry not in (None, kind):
                 raise ValueError(
-                    f"{name} reads {metric.geometry}, but dataset {dataset.name!r} holds "
-                    f"{kind} (sequence {seq.name!r})"
+                    f"{name} reads {metric.geometry}, but sequence {seq.name!r} of dataset "
+                    f"{dataset.name!r} holds {kind}"
                 )
 
     # Every sequence needs a prediction file, as in TrackEval; an empty file means
