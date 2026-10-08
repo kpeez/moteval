@@ -427,6 +427,26 @@ def test_evaluate_results_hold_only_declared_fields(
     assert set(result.combined[name]) == fields
 
 
+@pytest.mark.parametrize(
+    ("metric_cls", "build", "message"),
+    [
+        (TrackMAP, _mots_scenario, "TrackMAP reads boxes, but dataset 'parity-mots' holds masks"),
+        (
+            JAndF,
+            _toy_with_offset_id_predictions,
+            "JAndF reads masks, but dataset 'toy' holds boxes",
+        ),
+    ],
+    ids=["TrackMAP-on-masks", "JAndF-on-boxes"],
+)
+def test_evaluate_rejects_a_metric_that_reads_the_other_geometry(
+    metric_cls, build, message, tmp_path
+):
+    dataset, pred_dir = build(tmp_path)
+    with pytest.raises(ValueError, match=message):
+        evaluate(dataset, pred_dir, [metric_cls()])
+
+
 def test_evaluate_names_every_missing_prediction_file(tmp_path):
     dataset = load_toy()
     # No prediction files written at all: both sequences are named in one error.

@@ -88,6 +88,16 @@ def evaluate(
         raise ValueError(f"protocol {dataset.protocol.name!r} repeats a class in {classes}")
     multi_class = len(classes) > 1
 
+    # A metric that reads boxes or masks cannot score the other kind of data.
+    for name, metric in by_name.items():
+        for seq in dataset.sequences:
+            kind = "masks" if isinstance(seq, MaskGtSequence) else "boxes"
+            if metric.geometry not in (None, kind):
+                raise ValueError(
+                    f"{name} reads {metric.geometry}, but dataset {dataset.name!r} holds "
+                    f"{kind} (sequence {seq.name!r})"
+                )
+
     # Every sequence needs a prediction file, as in TrackEval; an empty file means
     # no predictions. Name every missing sequence before scoring any of them.
     missing = [

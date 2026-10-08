@@ -48,6 +48,8 @@ COMBINED     89.334  86.667  92.895    90  92.541     0  94.737    18       20
 `--out-json` export every declared metric field (not just the headline columns), and
 `--format mots` reads mask (MOTS-txt) ground truth. TrackMAP reports combined scores only:
 its AP pools detections across all sequences, so it has no per-sequence entry.
+TrackMAP needs box data and `jf` needs mask data; a run that pairs either with the
+other kind stops with an error before it scores anything.
 
 The same from Python:
 
