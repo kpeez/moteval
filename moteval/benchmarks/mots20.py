@@ -9,9 +9,10 @@ row and the protocol's class filter selects pedestrians (class 2) at eval time.
 ``matching_fill=-10000`` replicates upstream's MOTS preprocessing exactly: its
 Hungarian matching fills below-threshold pairs with -10000 where the box path
 uses 0. The fills can tie-break differently, but on valid (non-overlapping) masks
-that never changes a result (see `Protocol`). MOTS GT has no confidence column, so
-``drop_zero_conf_gt=False`` (loaders fill conf=1); GT is never filtered beyond
-the class selection, exactly as upstream MOTS never drops GT.
+with no distractor classes, as here, that never changes a result (see `Protocol`).
+MOTS GT has no confidence column, so ``drop_zero_conf_gt=False`` (loaders fill
+conf=1); GT is never filtered beyond the class selection, exactly as upstream MOTS
+never drops GT.
 """
 
 from dataclasses import replace
