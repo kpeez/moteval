@@ -45,5 +45,5 @@ testpaths = ["tests"]
 addopts = "-m 'not real_data'"
 markers = [
     "network: opt-in test that downloads real data",
-    "real_data: slow real-data parity gate; run with `just test-real`",
+    "real_data: slow real-data gate (parity and raw-GT loader checks); run with `just test-real`",
 ]

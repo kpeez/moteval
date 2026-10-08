@@ -50,7 +50,8 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
   match a sequence.
 - `scripts/download_benchmarks.py` — dev-only benchmark downloader (`list/status/download`)
 - `tests/` — flat suite (test_metrics.py, test_parity.py, test_parity_real.py, test_data.py,
-  test_loaders.py, test_masks.py, test_cli.py, test_download.py), `tests/fixtures/*.json`
+  test_loaders.py, test_loaders_real.py, test_masks.py, test_cli.py, test_download.py),
+  `tests/fixtures/*.json`
   (frozen TrackEval oracle numbers), `tests/scenarios.py` (shared scenario definitions),
   `tests/perturb.py` (seeded perturbed predictions), `tests/rle.py` (RLE encoding for mask
   fixtures), `tests/conftest.py` (in-memory toy dataset and a two-class dataset, with
@@ -65,7 +66,7 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
 just install   # uv sync --locked + prek hooks
 just check     # ruff format, ruff check --fix, pyrefly check
 just test      # pytest (testpaths: tests/; real-data gate deselected by default)
-just test-real # slow real-data parity gate (needs the data root + fixtures)
+just test-real # slow real-data gate: parity + raw-GT loader checks (needs the data root)
 ```
 
 All three must pass before any PR.
@@ -84,7 +85,7 @@ All three must pass before any PR.
   directory. `load_dataset(name)` reads `<data root>/<name>`, `uv run
   scripts/download_benchmarks.py download <name>` writes there (`--root` overrides),
   and `just test-real` reads from it. Individual loaders take a required `root` and hold
-  no default path. Parity tests needing real data skip loudly when it's absent.
+  no default path. Real-data tests skip loudly when their dataset is absent.
 - GMOT-40 and ChimpACT are natively 0-indexed. Both loaders keep raw 0-indexed frame
   numbers and declare `FrameConvention(first_frame=0)` rather than shifting.
 - BFT, AnimalTrack, and GMOT-40 have no `seqinfo.ini` source, so their loaders derive
@@ -100,6 +101,7 @@ All three must pass before any PR.
   inside `testpaths`. Keep scratch tests outside `tests/`.
 - A same-size source swap within the same second can leave a stale `.pyc` that Python
   still trusts. Run mutation probes with `PYTHONDONTWRITEBYTECODE=1` after you delete
-  every `__pycache__` directory outside `.venv`.
+  every `__pycache__` directory outside `.venv`. Commit your edits first: restoring a
+  mutated file with `git checkout` also discards any uncommitted change to that file.
 - Out of scope: tracker orchestration, SAM3 prompts, VEval/SA-FARI, plots, VACE,
   ID-Euclidean. Don't add them.
