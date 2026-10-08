@@ -41,9 +41,11 @@ derive `num_timesteps=1000`, its true length). For a non-round-length real
 clip (e.g. `clip_0_696`, true length 696 frames, 70 keyframe blocks 0-69),
 this derives `num_timesteps=700`, four frames past the clip's real end --
 the last keyframe's held box gets extended into 4 frames that never
-existed, up to 9 in the worst case. Harmless for the fixture tests here
-(there is no real clip to overshoot); must be revisited if ChimpACT
-real-data parity is ever added (the final parity gate is issue #20).
+existed, up to 9 in the worst case. Three real clips overshoot this way
+(`clip_0_696`, `clip_17000_17712`, `clip_19000_19572`): a tracker that predicts
+only on real frames gets those held boxes as misses. `tests/test_loaders_real.py`
+pins this rule on the real labels. TrackEval has no ChimpACT loader, so there is
+no parity oracle; revisit this if the official MOT output becomes available.
 """
 
 import json

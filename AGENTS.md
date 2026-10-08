@@ -101,6 +101,7 @@ All three must pass before any PR.
   inside `testpaths`. Keep scratch tests outside `tests/`.
 - A same-size source swap within the same second can leave a stale `.pyc` that Python
   still trusts. Run mutation probes with `PYTHONDONTWRITEBYTECODE=1` after you delete
-  every `__pycache__` directory outside `.venv`.
+  every `__pycache__` directory outside `.venv`. Commit your edits first: restoring a
+  mutated file with `git checkout` also discards any uncommitted change to that file.
 - Out of scope: tracker orchestration, SAM3 prompts, VEval/SA-FARI, plots, VACE,
   ID-Euclidean. Don't add them.

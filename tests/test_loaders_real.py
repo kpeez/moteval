@@ -3,14 +3,23 @@
 BFT, AnimalTrack, GMOT-40, UAVDT, PanAf500 and ChimpACT ship no TrackEval loader, so
 their scores cannot be checked against frozen upstream numbers. Each test here instead
 submits the benchmark's own ground truth as predictions. The predictions come from the
-raw annotation files, never from the loader, so a loader that misreads frames, ids,
-boxes or sequence lengths fails to score the ground truth perfectly: CLEAR must count
-every submitted row as a true positive, with no false positives or identity switches.
+raw annotation files, never from the loader. CLEAR must count every submitted row as an
+exact match (MOTP 1.0), with no false positives or identity switches, and each split
+must load its published number of sequences.
+
+PanAf500 and ChimpACT convert JSON, so their tests check the loader's frame, id and box
+mapping. BFT, AnimalTrack, GMOT-40 and UAVDT already store MOTChallenge rows, which both
+sides parse with `read_mot`; for them the tests check the split's sequence list, the
+declared frame convention and the derived sequence length. The DanceTrack and SportsMOT
+parity tests own `read_mot` itself.
 
 ChimpACT submits its labelled keyframes only, because its ground truth fills the frames
 between them. Its loader documents that every keyframe box fills exactly the 9 frames
 after it (interpolated toward the next keyframe, or held when the track has none), so
-the misses must be exactly 9 per submitted row. Every other benchmark has no misses.
+the misses must be exactly 9 per submitted row. That rule is the loader's deliberate
+match to the legacy track-zoo loader, not something the raw labels prove; the synthetic
+tests in `test_loaders.py` pin the interpolated box values. Every other benchmark has
+no misses.
 
 Each test skips loudly when its dataset is absent from the data root
 (`moteval.benchmarks.default_data_root`).
@@ -43,7 +52,8 @@ def _gmot40_rows(root: Path, split: str, seq: str) -> list[str]:
 
 
 def _uavdt_rows(root: Path, split: str, seq: str) -> list[str]:
-    # Column 7 is UAVDT's score flag; the MOTD README defines 0 as "not evaluated".
+    # Column 7 is UAVDT's score flag. The MOTD README says a 0 box is ignored, and the
+    # official evaluateTracking.m deletes those GT rows before matching.
     rows = _raw_rows(root / "UAV-benchmark-MOTD_v1.0" / "GT" / f"{seq}_gt.txt")
     return [row for row in rows if float(row.split(",")[6]) != 0]
 
@@ -72,28 +82,41 @@ def _chimpact_keyframe_rows(root: Path, split: str, seq: str) -> list[str]:
 
 RawRows = Callable[[Path, str, str], list[str]]
 
-CASES: list[tuple[str, str, RawRows, int]] = [
-    ("bft", "train", _bft_rows, 0),
-    ("bft", "val", _bft_rows, 0),
-    ("bft", "test", _bft_rows, 0),
-    ("animaltrack", "all", _animaltrack_rows, 0),
-    ("gmot40", "test", _gmot40_rows, 0),
-    ("uavdt", "all", _uavdt_rows, 0),
-    ("panaf500", "train", _panaf500_rows, 0),
-    ("panaf500", "validation", _panaf500_rows, 0),
-    ("panaf500", "test", _panaf500_rows, 0),
-    ("chimpact", "train", _chimpact_keyframe_rows, 9),
-    ("chimpact", "val", _chimpact_keyframe_rows, 9),
-    ("chimpact", "test", _chimpact_keyframe_rows, 9),
+# (benchmark, split, raw-row writer, published sequence count, misses per row). The
+# counts are each release's split sizes: GMOT-40 is 10 categories of 4 sequences, its
+# animal subset 4 of those categories; ChimpACT's come from the official split lists.
+CASES: list[tuple[str, str, RawRows, int, int]] = [
+    ("bft", "train", _bft_rows, 45, 0),
+    ("bft", "val", _bft_rows, 25, 0),
+    ("bft", "test", _bft_rows, 36, 0),
+    ("animaltrack", "all", _animaltrack_rows, 58, 0),
+    ("animaltrack", "train", _animaltrack_rows, 32, 0),
+    ("animaltrack", "test", _animaltrack_rows, 26, 0),
+    ("gmot40", "test", _gmot40_rows, 40, 0),
+    ("gmot40", "animal", _gmot40_rows, 16, 0),
+    ("uavdt", "all", _uavdt_rows, 50, 0),
+    ("panaf500", "train", _panaf500_rows, 400, 0),
+    ("panaf500", "validation", _panaf500_rows, 25, 0),
+    ("panaf500", "test", _panaf500_rows, 75, 0),
+    ("chimpact", "train", _chimpact_keyframe_rows, 127, 9),
+    ("chimpact", "val", _chimpact_keyframe_rows, 17, 9),
+    ("chimpact", "test", _chimpact_keyframe_rows, 19, 9),
 ]
 
 
 @pytest.mark.real_data
 @pytest.mark.parametrize(
-    ("name", "split", "raw_rows", "misses_per_row"), CASES, ids=[f"{c[0]}-{c[1]}" for c in CASES]
+    ("name", "split", "raw_rows", "num_sequences", "misses_per_row"),
+    CASES,
+    ids=[f"{c[0]}-{c[1]}" for c in CASES],
 )
 def test_raw_ground_truth_scores_perfectly(
-    tmp_path: Path, name: str, split: str, raw_rows: RawRows, misses_per_row: int
+    tmp_path: Path,
+    name: str,
+    split: str,
+    raw_rows: RawRows,
+    num_sequences: int,
+    misses_per_row: int,
 ) -> None:
     root = default_data_root() / name
     if not root.is_dir():
@@ -104,7 +127,7 @@ def test_raw_ground_truth_scores_perfectly(
         )
         pytest.skip(f"SKIPPING REAL-DATA LOADER GATE: {name} not found under {root} — {fetch}")
     dataset = load_dataset(name, root=root, split=split)
-    assert dataset.sequences, f"{name}/{split} loaded no sequences"
+    assert len(dataset.sequences) == num_sequences
     submitted = 0
     for seq in dataset.sequences:
         rows = raw_rows(root, split, seq.name)
@@ -115,3 +138,4 @@ def test_raw_ground_truth_scores_perfectly(
 
     counts = (clear["CLR_TP"], clear["CLR_FP"], clear["IDSW"], clear["CLR_FN"])
     assert counts == (submitted, 0, 0, misses_per_row * submitted)
+    assert clear["MOTP"] == 1.0
