@@ -65,6 +65,15 @@ def _group_tracks(
     detections, ``track['score']``): both are the mean over the track's own detections
     (TAO/BURST convention -- YouTubeVIS instead stores one score per annotation file
     entry, not applicable here since `SequenceData` only carries per-detection confidences).
+
+    Each track dict is keyed by 0-based timestep and filled in ascending order, because
+    the loop is frame-major. `_track_iou`'s sums follow the iteration order of the frame
+    union set, which depends on both the keys and their insertion order. Upstream's TAO
+    loader also inserts in ascending frame order (``trackeval/datasets/tao.py:471``
+    sorts each track's annotations by ``frame_index``), and every oracle TrackMAP
+    scenario lists its frames in ascending order, so the oracle checks this order.
+    Upstream keys its dicts by TAO ``image_id``; MOTChallenge-format input has no image
+    ids, so no oracle exists for that key choice.
     """
     frames: list[dict[int, np.ndarray]] = [{} for _ in range(num_ids)]
     conf_sums = np.zeros(num_ids) if confidences_per_frame is not None else None

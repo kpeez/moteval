@@ -462,6 +462,27 @@ def test_evaluate_rejects_duplicate_metric_classes(tmp_path):
     assert "Count" in str(exc.value)
 
 
+def _toy_with_eval_classes(eval_classes: tuple[int, ...]) -> MOTDataset[GtSequence]:
+    toy = load_toy()
+    return replace(toy, protocol=replace(toy.protocol, eval_classes=eval_classes))
+
+
+def test_evaluate_rejects_a_protocol_without_eval_classes(tmp_path):
+    dataset = _toy_with_eval_classes(())
+    # Valid predictions, so only the class check can stop the run.
+    write_perfect_predictions(dataset, tmp_path)
+    with pytest.raises(ValueError, match="declares no eval_classes"):
+        evaluate(dataset, tmp_path, [Count()])
+
+
+def test_evaluate_rejects_a_repeated_eval_class(tmp_path):
+    # Unchecked, (1, 1) scores class 1 once and reports it as a two-class combination.
+    dataset = _toy_with_eval_classes((1, 1))
+    write_perfect_predictions(dataset, tmp_path)
+    with pytest.raises(ValueError, match="repeats a class"):
+        evaluate(dataset, tmp_path, [Count()])
+
+
 def test_evaluate_scores_each_class_and_both_class_combinations(tmp_path):
     write_two_class_predictions(tmp_path)
     result = evaluate(load_two_class(), tmp_path, [HOTA(), Count()])

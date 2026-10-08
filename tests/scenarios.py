@@ -61,7 +61,6 @@ COMBINE_CLASSES_SCENARIO = "combine_classes"
 # The MOTS scenario that the multi-class mask check reuses (see `class_views`).
 MOTS_MULTI_CLASS_SCENARIO = "jf_perturbed_predictions"
 
-DATA_ROOT = default_data_root()
 REAL_DATA_SEED = 20260718
 
 
@@ -838,7 +837,7 @@ def build_trackmap_sequence_data(
 
 
 # ---------------------------------------------------------------------------
-# Real-data cases (seeded perturbed predictions against DATA_ROOT)
+# Real-data cases (seeded perturbed predictions against `default_data_root()`)
 # ---------------------------------------------------------------------------
 
 
@@ -863,21 +862,21 @@ def prepare_dancetrack_val(tmp_dir: Path) -> tuple[MOTDataset, Path, dict[str, i
     Returns ``(dataset, gt_root, seq_lengths)``; predictions land in
     ``predictions_dir(tmp_dir)``.
     """
-    root = DATA_ROOT / "dancetrack"
+    root = default_data_root() / "dancetrack"
     dataset = load_dancetrack(root=root, split="val")
     return dataset, root / "val", _write_perturbed_box_predictions(dataset, tmp_dir)
 
 
 def prepare_sportsmot_val(tmp_dir: Path) -> tuple[MOTDataset, Path, dict[str, int]]:
     """Same contract as `prepare_dancetrack_val`, for SportsMOT val."""
-    root = DATA_ROOT / "sportsmot"
+    root = default_data_root() / "sportsmot"
     dataset = load_sportsmot(root=root, split="val")
     return dataset, root / "val", _write_perturbed_box_predictions(dataset, tmp_dir)
 
 
 def prepare_mots20_sequence(tmp_dir: Path) -> tuple[MOTDataset, Path, dict[str, int]]:
     """Load MOTS20 train restricted to its first sequence, with seeded mask predictions."""
-    root = DATA_ROOT / "mots20"
+    root = default_data_root() / "mots20"
     dataset = load_mots20(root=root, split="train")
     seq = dataset.sequences[0]
     dataset = type(dataset)(
