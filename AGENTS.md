@@ -1,6 +1,7 @@
 # moteval — agent guide
 
-Issue tracker: Linear
+Issue tracker: Linear. When Linear's free issue limit blocks a new issue, file it in
+GitHub Issues on this repo instead and close it with `Fixes #N`.
 
 MOT evaluation library: a from-scratch TrackEval rewrite that must produce **bit-identical
 numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never runs models.
