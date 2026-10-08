@@ -770,7 +770,8 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
     # order gives 0.5499999999999998, a match at the 0.55 threshold (`iou < thr - eps` is
     # false); ascending order and the `set(gt) | set(dt)` order ([7, 5, 23, 9, 12]) give
     # 0.5499999999999997, a miss. The height of dt frame 12 was searched to sit on that
-    # boundary. Frame keys stay ascending: insertion order can change set iteration order.
+    # boundary. Frame keys stay ascending, as upstream's loader inserts them; for this
+    # pair no insertion order changes the set order (`track_iou_insertion_order` does).
     "track_iou_frame_order": {
         "seq": (
             24,
@@ -782,6 +783,23 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
                     9: ([13.7, 11.0, 20.3, 30.7], 0.9),
                     12: ([70.0, 70.0, 1.0, 145.32909090909212], 0.9),
                     23: ([60.0, 60.0, 1.0, 220.7], 0.9),
+                }
+            },
+        )
+    },
+    # Frame keys 1 and 17 collide in the union set's hash table, so the set order depends
+    # on insertion order: ascending insertion (upstream's TAO loader sorts by frame) gives
+    # [1, 20, 17], reversed insertion [17, 20, 1]. Frame 1 overlaps, frame 17 is GT only,
+    # and the height of dt frame 20 was searched to sit on the 0.55 boundary: ascending
+    # order gives 0.5499999999999997 (a miss), reversed order 0.5499999999999998 (a match).
+    "track_iou_insertion_order": {
+        "seq": (
+            24,
+            {1: {1: [10.0, 10.0, 20.3, 30.7], 17: [12.0, 10.0, 3.3, 7.1]}},
+            {
+                101: {
+                    1: ([11.1, 10.0, 20.3, 30.7], 0.9),
+                    20: ([60.0, 60.0, 1.0, 391.2990909090918], 0.9),
                 }
             },
         )

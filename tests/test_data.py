@@ -476,7 +476,7 @@ def test_evaluate_rejects_a_protocol_without_eval_classes(tmp_path):
 
 
 def test_evaluate_rejects_a_repeated_eval_class(tmp_path):
-    # Unchecked, (1, 1) scores class 1 once and reports it as a two-class combination.
+    # Unchecked, (1, 1) scores class 1 once and reports a multi-class result over it.
     dataset = _toy_with_eval_classes((1, 1))
     write_perfect_predictions(dataset, tmp_path)
     with pytest.raises(ValueError, match="repeats a class"):

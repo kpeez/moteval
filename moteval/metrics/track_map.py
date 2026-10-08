@@ -68,10 +68,11 @@ def _group_tracks(
 
     Each track dict is keyed by 0-based timestep and filled in ascending order, because
     the loop is frame-major. `_track_iou`'s sums follow the iteration order of the frame
-    union set, which depends on both the keys and their insertion order. Upstream's TAO
-    loader also inserts in ascending frame order (``trackeval/datasets/tao.py:471``
-    sorts each track's annotations by ``frame_index``), and every oracle TrackMAP
-    scenario lists its frames in ascending order, so the oracle checks this order.
+    union set, which depends on the keys and, when keys collide in the set's hash table,
+    on their insertion order. Upstream's TAO loader also inserts in ascending frame order
+    (``trackeval/datasets/tao.py:471`` sorts each track's annotations by
+    ``frame_index``). The oracle scenarios insert frames in ascending order too, and
+    ``track_iou_insertion_order`` (colliding keys 1 and 17) fails if this order changes.
     Upstream keys its dicts by TAO ``image_id``; MOTChallenge-format input has no image
     ids, so no oracle exists for that key choice.
     """
