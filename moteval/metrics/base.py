@@ -1,13 +1,14 @@
 """Metric ABC shared by every metric.
 
-A metric declares its ``fields``, scores one `SequenceData` at a time, and knows
-how to combine per-sequence results and per-class results (class-averaged and
-detection-averaged). Values are field->float or field->19-alpha-array dicts so
-combining is generic.
+A metric declares its ``fields`` and the ``geometry`` it reads, scores one
+`SequenceData` at a time, and knows how to combine per-sequence results and
+per-class results (class-averaged and detection-averaged). Values are field->float
+or field->19-alpha-array dicts so combining is generic.
 """
 
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
+from typing import Literal
 
 import numpy as np
 
@@ -26,6 +27,14 @@ class Metric(ABC):
     methods consume. A metric whose per-sequence state holds none of its fields
     (TrackMAP: AP pools detections across sequences, so ``eval_sequence`` returns
     only private match state) has no per-sequence entry in the results.
+    """
+
+    geometry: Literal["boxes", "masks"] | None = None
+    """The geometry ``eval_sequence`` reads besides the precomputed similarity.
+
+    ``"boxes"`` (TrackMAP), ``"masks"`` (J&F), or ``None`` for a metric that reads
+    only similarity. `evaluate` rejects a dataset of the other kind before it
+    scores anything.
     """
 
     @abstractmethod

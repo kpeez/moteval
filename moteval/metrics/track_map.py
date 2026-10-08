@@ -212,6 +212,7 @@ def _ignore_masks(num_ids: int, lengths: list[int], areas: list[float]) -> list[
 
 class TrackMAP(Metric):
     fields = _AP_FIELDS + _AR_FIELDS
+    geometry = "boxes"
 
     def eval_sequence(self, data: SequenceData) -> Scores:
         # No special-cased "both empty" branch: with num_gt == num_dt == 0 every
