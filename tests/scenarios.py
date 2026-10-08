@@ -550,6 +550,19 @@ def build_mots_scenarios() -> tuple[Scenario, ...]:
     seq_b_gt = [_mask_row(f, 7, _lane_mask(0, 5 * f)) for f in (1, 2, 3, 4)]
     seq_b_pred = [_mask_row(f, 900, _lane_mask(0, 5 * f + 2)) for f in (1, 2)]  # partial, jittered
 
+    # J&F casts its decay-bin edges to uint8 (upstream quirk), so they wrap past 255
+    # frames. At 350 frames the edges (0-based timesteps) [0, 87, 175, 262, 349] wrap to
+    # [0, 87, 175, 6, 93]: the last bin covers timesteps 6-93, not 262-349. (At 257-341
+    # frames the last bin is empty and the decays are NaN; 350 keeps them finite.) The
+    # prediction is exact for the first 50 frames and then shifted by 1-3 columns, so the
+    # first bin, the wrapped last bin and the unwrapped last bin all have different means.
+    long_frames = 350
+    long_gt = [_mask_row(f, 1, _lane_mask(0, 20)) for f in range(1, long_frames + 1)]
+    long_pred = [
+        _mask_row(f, 401, _lane_mask(0, 20 if f <= 50 else 21 + f % 3))
+        for f in range(1, long_frames + 1)
+    ]
+
     return (
         Scenario(
             "jf_perturbed_predictions", (("SEQ-JF-01", frames, perturbed_gt, perturbed_pred),)
@@ -563,6 +576,7 @@ def build_mots_scenarios() -> tuple[Scenario, ...]:
             "jf_multi_sequence_combine",
             (("SEQ-COMB-A", 3, seq_a_gt, seq_a_pred), ("SEQ-COMB-B", 4, seq_b_gt, seq_b_pred)),
         ),
+        Scenario("jf_decay_bins_wrap", (("SEQ-JF-LONG", long_frames, long_gt, long_pred),)),
     )
 
 
@@ -747,6 +761,29 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
             {
                 1: {t: ([10, 10, 20, 20], 0.5) for t in range(3)},  # low score, low id
                 9: {t: ([10, 10, 20, 20], 0.9) for t in range(3)},  # high score, high id
+            },
+        )
+    },
+    # Track IoU sums each frame's intersection and union in the iteration order of
+    # upstream's `set(gt.keys()) | set(dt.keys())`. For this sparse pair that order is
+    # [23, 5, 7, 9, 12], not ascending, so moteval's vectorized IoU must fall back to the
+    # scalar `_track_iou`. The summation order changes the last bit of the IoU: upstream's
+    # order gives 0.5499999999999998, a match at the 0.55 threshold (`iou < thr - eps` is
+    # false); ascending order and the `set(gt) | set(dt)` order ([7, 5, 23, 9, 12]) give
+    # 0.5499999999999997, a miss. The height of dt frame 12 was searched to sit on that
+    # boundary. Frame keys stay ascending: insertion order can change set iteration order.
+    "track_iou_frame_order": {
+        "seq": (
+            24,
+            {1: {5: [10.0, 10.0, 20.3, 30.7], 9: [12.0, 10.0, 20.3, 30.7]}},
+            {
+                101: {
+                    5: ([11.1, 10.0, 20.3, 30.7], 0.9),
+                    7: ([40.0, 40.0, 1.0, 359.1], 0.9),
+                    9: ([13.7, 11.0, 20.3, 30.7], 0.9),
+                    12: ([70.0, 70.0, 1.0, 145.32909090909212], 0.9),
+                    23: ([60.0, 60.0, 1.0, 220.7], 0.9),
+                }
             },
         )
     },

@@ -82,10 +82,20 @@ def _group_tracks(
     return frames, lengths, areas, scores
 
 
+def _union_frames(dt_frames: dict[int, np.ndarray], gt_frames: dict[int, np.ndarray]) -> set[int]:
+    """The pair's frame union, built exactly as upstream builds it.
+
+    The sums below depend on this set's iteration order. ``set(d)`` and
+    ``set(d.keys())`` can build different hash tables, so their unions can iterate in
+    different orders; upstream uses the keys views.
+    """
+    return set(gt_frames.keys()) | set(dt_frames.keys())
+
+
 def _track_iou(dt_frames: dict[int, np.ndarray], gt_frames: dict[int, np.ndarray]) -> float:
     intersect = 0.0
     union = 0.0
-    for t in set(gt_frames) | set(dt_frames):
+    for t in _union_frames(dt_frames, gt_frames):
         g = gt_frames.get(t)
         d = dt_frames.get(t)
         if d is not None and g is not None:
@@ -106,7 +116,7 @@ def _track_iou(dt_frames: dict[int, np.ndarray], gt_frames: dict[int, np.ndarray
 def _union_set_order_is_ascending(
     dt_frames: dict[int, np.ndarray], gt_frames: dict[int, np.ndarray]
 ) -> bool:
-    frames = np.fromiter(set(gt_frames) | set(dt_frames), dtype=np.int64)
+    frames = np.fromiter(_union_frames(dt_frames, gt_frames), dtype=np.int64)
     return bool(np.all(frames[1:] > frames[:-1]))
 
 
@@ -118,7 +128,7 @@ def _track_iou_matrix(
     """Pairwise track IoU, vectorized frame-major; float-exact vs `_track_iou`.
 
     `_track_iou` accumulates intersection/union sequentially over the pair's
-    `set(gt) | set(dt)` frame union. Here each pair's per-frame contribution
+    frame union (`_union_frames`). Here each pair's per-frame contribution
     terms are computed elementwise with the same IEEE expressions, then reduced
     with `np.add.accumulate` — a strict left-to-right scan in ascending frame
     order, where absent frames contribute exactly 0.0 (an exact no-op). That
