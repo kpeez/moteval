@@ -59,7 +59,8 @@ def _score_class(
             scores = metric.eval_sequence(data)
             by_metric[name][seq.name] = scores
             declared = _declared(scores, metric.fields)
-            # A metric with no per-sequence fields (TrackMAP) has no per-sequence entry.
+            # A metric whose per-sequence state holds none of its fields (TrackMAP)
+            # has no per-sequence entry.
             if declared:
                 seq_scores[name] = declared
         per_sequence[seq.name] = seq_scores

@@ -19,9 +19,9 @@ import numpy as np
 import pytest
 
 from moteval import CLEAR, HOTA, Count, Identity, JAndF, evaluate
+from moteval.benchmarks import default_data_root
 from tests.perturb import perturb_box_tracks
 from tests.scenarios import (
-    DATA_ROOT,
     predictions_dir,
     prepare_dancetrack_val,
     prepare_mots20_sequence,
@@ -75,7 +75,7 @@ def _assert_metrics_equal(ours: dict, frozen: dict, metrics: tuple[type, ...]) -
 
 @pytest.mark.real_data
 def test_real_data_parity_dancetrack_val(tmp_path):
-    _require(DATA_ROOT / "dancetrack" / "val", "dancetrack", expected_sequences=25)
+    _require(default_data_root() / "dancetrack" / "val", "dancetrack", expected_sequences=25)
     dataset, _, _ = prepare_dancetrack_val(tmp_path)
     assert len(dataset.sequences) > 0
     ours = evaluate(dataset, predictions_dir(tmp_path), [m() for m in BOX_METRICS]).combined
@@ -84,7 +84,7 @@ def test_real_data_parity_dancetrack_val(tmp_path):
 
 @pytest.mark.real_data
 def test_real_data_parity_sportsmot_val(tmp_path):
-    _require(DATA_ROOT / "sportsmot" / "val", "sportsmot", expected_sequences=45)
+    _require(default_data_root() / "sportsmot" / "val", "sportsmot", expected_sequences=45)
     dataset, _, _ = prepare_sportsmot_val(tmp_path)
     assert len(dataset.sequences) > 0
     ours = evaluate(dataset, predictions_dir(tmp_path), [m() for m in BOX_METRICS]).combined
@@ -93,7 +93,7 @@ def test_real_data_parity_sportsmot_val(tmp_path):
 
 @pytest.mark.real_data
 def test_real_data_parity_mots20_mask_sequence(tmp_path):
-    _require(DATA_ROOT / "mots20" / "train", "mots20", expected_sequences=4)
+    _require(default_data_root() / "mots20" / "train", "mots20", expected_sequences=4)
     dataset, _, _ = prepare_mots20_sequence(tmp_path)
     metrics = [HOTA(), CLEAR(), Identity(), Count(), JAndF()]
     ours = evaluate(dataset, predictions_dir(tmp_path), metrics).combined
