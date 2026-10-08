@@ -127,7 +127,8 @@ class SequenceData:
     to ``0..num_*_ids-1`` via a dict mapping over sorted unique raw ids.
     ``geometry`` is the boxes-or-masks union; similarity is precomputed (box IoU
     or mask IoU) so metrics stay geometry-agnostic unless they opt into geometry
-    (TrackMAP reads boxes, J&F reads masks) via the asserting accessors below.
+    (TrackMAP reads boxes, J&F reads masks; each declares it in `Metric.geometry`)
+    via the asserting accessors below.
     """
 
     name: str

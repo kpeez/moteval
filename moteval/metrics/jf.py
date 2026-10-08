@@ -154,6 +154,7 @@ def _compute_j(
 
 class JAndF(Metric):
     fields = _FLOAT_FIELDS + ("num_gt_tracks",)
+    geometry = "masks"
 
     def eval_sequence(self, data: SequenceData) -> Scores:
         num_timesteps = data.num_timesteps

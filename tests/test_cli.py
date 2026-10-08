@@ -379,6 +379,18 @@ def test_missing_prediction_file_is_reported_without_traceback(tmp_path, toy_ben
     assert "Traceback" not in err
 
 
+def test_metric_on_the_other_geometry_is_reported_without_traceback(toy_predictions, capsys):
+    _, pred_dir = toy_predictions
+
+    with pytest.raises(SystemExit) as exc:
+        main(["run", "--dataset", "toy", "--pred", str(pred_dir), "--metrics", "jf"])
+
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "JAndF reads masks, but sequence 'toy-0001' of dataset 'toy' holds boxes" in err
+    assert "Traceback" not in err
+
+
 # ------------------------------------------------------- custom data (no --dataset)
 
 
