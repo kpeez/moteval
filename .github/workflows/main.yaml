@@ -39,7 +39,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-      - uses: extractions/setup-just@v4
       - name: Setup Python/uv + deps
         uses: ./.github/actions/setup-python
         with:
@@ -47,4 +46,4 @@ jobs:
           install-args: "--frozen"
 
       - name: Run tests
-        run: just test
+        run: mise run test
