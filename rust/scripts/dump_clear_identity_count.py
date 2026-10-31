@@ -4,7 +4,9 @@ The parity fixtures cover the common paths. These cases add what they do not: a 
 pred id repeated within one frame (numpy fancy-index ``+=`` counts it once; ``bincount``
 counts every occurrence), similarities on both sides of CLEAR's ``0.5 - eps`` guard and
 Identity's unguarded ``0.5``, ties, empty frames, the two early returns, and class
-combiners over one to four classes.
+combiners over one to four classes. The last cases combine 8 to 12 classes of dense
+sequences with 8 or more matches per frame, where numpy's pairwise ``np.mean`` (class
+averaging) and the plain sum of ``MOTP_sum`` differ from the other order.
 
 Each case is one file in the scenario case format (``rust/testdata/README.md``) with an
 empty ``oracle``: the expected numbers are Python moteval's own (``moteval`` section),
@@ -35,6 +37,7 @@ from rust.scripts import dump_scenarios as ds
 OUT = Path(__file__).resolve().parents[1] / "testdata" / "fuzz" / "clear_identity_count"
 METRICS = ("CLEAR", "Identity", "Count")
 NUM_CASES = 48
+NUM_MANY_CLASS_CASES = 6
 SEED = 20261031
 EPS = np.finfo(float).eps
 # Values that sit on a threshold: CLEAR keeps `sim >= 0.5 - eps`, Identity keeps
@@ -119,15 +122,58 @@ def random_sequence(rng: np.random.Generator, name: str, large: bool) -> Sequenc
     )
 
 
+def dense_sequence(rng: np.random.Generator, name: str) -> SequenceData:
+    """Every id in every frame, each GT paired at or above 0.5 with one prediction.
+
+    Each frame has 8 or more matches, where numpy's pairwise sum and a plain sum of the
+    matched similarities (CLEAR's ``MOTP_sum``) can differ.
+    """
+    num_timesteps = int(rng.integers(2, 4))
+    n = int(rng.integers(8, 11))
+    gt_frames, pred_frames, sims = [], [], []
+    for _ in range(num_timesteps):
+        gt = rng.permutation(n).astype(np.int64)
+        pred = rng.permutation(n).astype(np.int64)
+        sim = rng.random((n, n)) * 0.5
+        sim[np.arange(n), rng.permutation(n)] = 0.5 + 0.5 * rng.random(n)
+        gt_frames.append(gt)
+        pred_frames.append(pred)
+        sims.append(sim)
+    return SequenceData(
+        name=name,
+        num_timesteps=num_timesteps,
+        num_gt_ids=n,
+        num_pred_ids=n,
+        num_gt_dets=n * num_timesteps,
+        num_pred_dets=n * num_timesteps,
+        gt_ids=tuple(gt_frames),
+        pred_ids=tuple(pred_frames),
+        pred_confidences=tuple(np.zeros(n) for _ in pred_frames),
+        geometry=BoxGeometry(
+            gt=tuple(np.zeros((n, 4)) for _ in gt_frames),
+            pred=tuple(np.zeros((n, 4)) for _ in pred_frames),
+        ),
+        similarity=tuple(sims),
+    )
+
+
 def build_case(index: int, rng: np.random.Generator) -> ds.Json:
     capture = ds.Capture(METRICS, ds._inline_writer)
     large = index % 8 == 7
-    for cls in range(1, int(rng.integers(1, 5)) + 1):
+    # The cases after NUM_CASES combine 8 to 12 classes of dense sequences: below 8
+    # values numpy's pairwise mean equals a plain one, so fewer classes cannot tell them
+    # apart. They come last, so the earlier cases' draws do not change.
+    many_classes = index >= NUM_CASES
+    num_classes = int(rng.integers(8, 13)) if many_classes else int(rng.integers(1, 5))
+    for cls in range(1, num_classes + 1):
         view = ds.View(cls)
         capture.views.append(view)
-        for s in range(int(rng.integers(1, 5))):
+        for s in range(1 if many_classes else int(rng.integers(1, 5))):
             key = f"seq{s}"
-            capture.add(view, key, random_sequence(rng, key, large))
+            sequence = (
+                dense_sequence(rng, key) if many_classes else random_sequence(rng, key, large)
+            )
+            capture.add(view, key, sequence)
     results = ds.score(capture, "per_class")
     return {
         "format": ds.FORMAT_VERSION,
@@ -161,11 +207,12 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     for old in OUT.glob("case_*.json"):
         old.unlink()
-    for index in range(NUM_CASES):
+    total = NUM_CASES + NUM_MANY_CLASS_CASES
+    for index in range(total):
         case = build_case(index, rng)
         path = OUT / f"{case['case']}.json"
         path.write_text(json.dumps(case, separators=(",", ":")) + "\n")
-    print(f"wrote {NUM_CASES} cases to {OUT}")
+    print(f"wrote {total} cases to {OUT}")
 
 
 if __name__ == "__main__":

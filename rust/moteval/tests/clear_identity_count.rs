@@ -215,11 +215,12 @@ fn fuzz_case_paths() -> Vec<std::path::PathBuf> {
 
 /// Seeded random sequences (`rust/scripts/dump_clear_identity_count.py`): repeated ids
 /// within a frame, similarities on each side of both thresholds, empty frames, and one
-/// to four classes.
+/// to four classes. Six more cases combine 8 to 12 classes of frames with 8 or more
+/// matches, where numpy's pairwise mean and sum differ from a plain sum.
 #[test]
 fn seeded_cases_match_python() {
     let paths = fuzz_case_paths();
-    assert_eq!(paths.len(), 48, "seeded case count");
+    assert_eq!(paths.len(), 54, "seeded case count");
     let mut diffs = Vec::new();
     let mut compared = 0;
     for path in &paths {

@@ -113,7 +113,8 @@ local benchmarks) are too large to commit. `dump_scenarios.py --real-data` write
 Seeded cases (`fuzz/<metrics>/`) use the same case format with an empty `oracle`: the
 expected numbers are Python moteval's own scores on random `SequenceData` that no fixture
 covers (for CLEAR, Identity, and Count: an id repeated within a frame, similarities on
-each side of both thresholds, and one to four classes).
+each side of both thresholds, one to four classes, and 8 to 12 classes of frames with 8
+or more matches, where a pairwise and a plain sum differ).
 
 ### `case.json`
 
