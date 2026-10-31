@@ -15,6 +15,7 @@ NaN.
 | `box_similarity.json` | `dump_numeric.py` | `tests/box_similarity.rs` |
 | `lsap/<category>.json`, `lsap/special.json` | `dump_lsap.py` | `tests/lsap.rs` |
 | `scenarios/<fixture>/<case>.json` | `dump_scenarios.py` | `tests/harness_cases.rs` and the metric tests |
+| `fuzz/clear_identity_count/<case>.json` | `dump_clear_identity_count.py` | `tests/clear_identity_count.rs` |
 
 ## Seeded inputs
 
@@ -37,6 +38,11 @@ local benchmarks) are too large to commit. `dump_scenarios.py --real-data` write
 `artifacts/rust-port/testdata/<fixture>/<case>/`, and the Rust tests find them through
 `MOTEVAL_RUST_TESTDATA`. When it is unset or a case is absent, a test prints
 `SKIPPING REAL-DATA GATE: ...` and returns; a skipped gate never counts as passed.
+
+Seeded cases (`fuzz/<metrics>/`) use the same case format with an empty `oracle`: the
+expected numbers are Python moteval's own scores on random `SequenceData` that no fixture
+covers (for CLEAR, Identity, and Count: an id repeated within a frame, similarities on
+each side of both thresholds, and one to four classes).
 
 ### `case.json`
 

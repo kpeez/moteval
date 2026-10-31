@@ -45,6 +45,7 @@ Regenerate the test data with the reference interpreter:
 uv run python rust/scripts/dump_numeric.py     # numeric.json, box_similarity.json
 uv run python rust/scripts/dump_lsap.py        # lsap/
 uv run python rust/scripts/dump_scenarios.py   # scenarios/ (synthetic, committed)
+uv run python rust/scripts/dump_clear_identity_count.py   # fuzz/clear_identity_count/
 MOTEVAL_DATA_ROOT=/data/tracking/external \
   uv run python rust/scripts/dump_scenarios.py --real-data --jobs 8   # artifacts/rust-port/testdata
 uv run python rust/scripts/gen_printable.py    # moteval/src/pyfmt/printable.rs

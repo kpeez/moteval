@@ -1,8 +1,7 @@
-//! Count metric: detection and identity totals (no matching).
-//!
-//! The clear-identity-count package ports `moteval/metrics/count.py` here, with all three combiners.
+//! Count metric: detection and identity totals (no matching), ported from
+//! `moteval/metrics/count.py`.
 
-use crate::metrics::{Metric, MetricError, Scores};
+use crate::metrics::{Metric, MetricError, Scores, Value, combine_sum};
 use crate::model::SequenceData;
 
 /// The public fields, in the Python `fields` order.
@@ -21,19 +20,36 @@ impl Metric for Count {
         FIELDS
     }
 
-    fn eval_sequence(&self, _data: &SequenceData) -> Result<Scores, MetricError> {
-        todo!("clear-identity-count: port Count.eval_sequence")
+    fn eval_sequence(&self, data: &SequenceData) -> Result<Scores, MetricError> {
+        let mut res = Scores::new();
+        res.insert("Dets", Value::Float(data.num_pred_dets() as f64));
+        res.insert("GT_Dets", Value::Float(data.num_gt_dets() as f64));
+        res.insert("IDs", Value::Float(data.num_pred_ids() as f64));
+        res.insert("GT_IDs", Value::Float(data.num_gt_ids() as f64));
+        Ok(res)
     }
 
-    fn combine_sequences(&self, _all_res: &[&Scores]) -> Result<Scores, MetricError> {
-        todo!("clear-identity-count: port Count.combine_sequences")
+    fn combine_sequences(&self, all_res: &[&Scores]) -> Result<Scores, MetricError> {
+        sum_every_field(all_res)
     }
 
-    fn combine_classes_class_averaged(&self, _all_res: &[&Scores]) -> Result<Scores, MetricError> {
-        todo!("clear-identity-count: port Count.combine_classes_class_averaged")
+    fn combine_classes_class_averaged(&self, all_res: &[&Scores]) -> Result<Scores, MetricError> {
+        sum_every_field(all_res)
     }
 
-    fn combine_classes_det_averaged(&self, _all_res: &[&Scores]) -> Result<Scores, MetricError> {
-        todo!("clear-identity-count: port Count.combine_classes_det_averaged")
+    fn combine_classes_det_averaged(&self, all_res: &[&Scores]) -> Result<Scores, MetricError> {
+        sum_every_field(all_res)
     }
+}
+
+/// Every combiner: `{f: self._combine_sum(all_res, f) for f in self.fields}`.
+fn sum_every_field(all_res: &[&Scores]) -> Result<Scores, MetricError> {
+    if all_res.is_empty() {
+        return Err(MetricError::NoResults { metric: "Count" });
+    }
+    let mut res = Scores::new();
+    for &field in FIELDS {
+        res.insert(field, combine_sum(all_res, field));
+    }
+    Ok(res)
 }
