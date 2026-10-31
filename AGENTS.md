@@ -142,6 +142,10 @@ installs the git hooks only in the main checkout, because a worktree shares `.gi
   that cover them are listed in `docs/rust-port.md`.
 - The Rust CLI cannot see a dataset built or registered in Python. CLI tests write the
   toy dataset to disk (`write_toy_layout`) and pass `--gt <root> --split val`.
+- numpy's float64 `log10` (CLEAR's MOTAL) is Intel SVML on an AVX-512 Linux host and
+  libm elsewhere, and the two differ in the last bit. `numeric::log10` makes numpy's
+  choice at run time; `rust/testdata/numeric.json` holds SVML's output, so dump it on an
+  AVX-512 Linux host (`dump_numeric.py` refuses otherwise).
 - `mise run install` (and any `uv run`) rebuilds the extension in release mode after a
   Rust source change; a build error there is a Rust compile error.
 - `data/benchmarks` is a symlink to external storage holding one dir per dataset.

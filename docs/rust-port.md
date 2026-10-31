@@ -34,7 +34,8 @@ What the port copies on purpose (details in `rust/README.md` and the module docs
 reduction order (`numeric`: numpy pairwise sums, row-wise means, plain left folds, cumsum),
 scipy 1.18.0's `linear_sum_assignment` line by line, pycocotools 2.0.11's mask API, CPython
 3.14.8's `set` iteration order for TrackMAP's frame union, numpy's `uint8` wrap for the J&F
-decay bins, `round_ties_even` for `np.round`, and CPython's text formats (`repr(float)`,
+decay bins, `round_ties_even` for `np.round`, numpy's `log10` for CLEAR's MOTAL (Intel
+SVML's kernel on an AVX-512 Linux host, libm elsewhere), and CPython's text formats (`repr(float)`,
 `format(x, "1.5g")`, `json.dumps`, `csv.writer`, argparse 3.14) for the CLI and exports.
 
 ## Gates
@@ -107,14 +108,19 @@ Behavior (all non-numeric):
 
 ## Open risks
 
-- **CLEAR MOTAL uses `log10`.** Rust's `f64::log10` (glibc) equals CPython's `math.log10`
-  on every integer up to 300,000, but numpy 2.5.1's SIMD `log10` on an AVX-512 host
-  differs from glibc in the last bit on 144,516 of the integers 1 to 10^7. MOTAL
-  (`(TP - FP - log10(IDSW)) / max(1, TP + FN)`) matched bit for bit in every case checked,
-  because the subtraction rounds the difference away when `|TP - FP|` is large. A
-  last-bit difference is possible when `IDSW > 0` and `|TP - FP|` is small. On a host
-  without AVX-512, numpy may use libm, so the reference itself can differ by host there.
-  `np_log10` in `rust/moteval/src/metrics/clear.rs` is the one function to swap.
+- **CLEAR MOTAL's `np.log10` depends on the host, in numpy and in the port alike.** numpy
+  2.5.1's Linux x86-64 wheels compute float64 `log10` with Intel SVML
+  (`__svml_log108_ha`) when the CPU has AVX-512 F, CD, BW, DQ, and VL, and with libm
+  otherwise. The two differ in the last bit on 144,516 of the integers 1 to 10^7, and
+  MOTAL (`(TP - FP - log10(IDSW)) / max(1, TP + FN)`) shows it when `|TP - FP|` is small
+  (the parity review found IDSW 11 and 40). `numeric::log10` makes the same choice at run
+  time: `numeric::log10_svml`, a scalar port of the SVML kernel, or `f64::log10`. The
+  port equals numpy's SVML path on 12,000,007 inputs (the integers 1 to 10^7, two
+  million random positive doubles, and seven edge values) and on 448 inputs where an exact `1/m` in place of
+  `vrcp14pd` would change the result. `vrcp14pd` is Intel's reference `RCP14D`, which
+  equals this AMD Zen 5 host's instruction on every 16-bit mantissa prefix; a CPU whose
+  `vrcp14pd` differs would change numpy's results there, not the port's. numpy's
+  `NPY_DISABLE_CPU_FEATURES` can move numpy off SVML; the port does not read it.
 - **TrackMAP's frame-union order replays CPython 3.14.8's `set` hash table** (pinned by a
   4,304-case fuzz test). A different reference interpreter needs a new dump.
 - **numpy's sum order follows strides.** Every similarity matrix Python moteval built was

@@ -23,7 +23,7 @@ Modules of the `moteval` crate, each ported from the Python module of the same r
 | Module | Python | Holds |
 |---|---|---|
 | `model` | `data/model.py`, `data/protocol.py` (`Protocol`) | `SequenceData`, `GtSequence`, `MaskGtSequence`, `MOTDataset`, `FrameConvention`, `Protocol`, `Matrix` |
-| `numeric` | numpy, builtins | every reduction order, `arange`, `linspace`, rounding, `maximum`/`py_max` |
+| `numeric` | numpy, builtins | every reduction order, `arange`, `linspace`, rounding, `maximum`/`py_max`, `log10` (numpy's SVML or libm choice) |
 | `lsap` | scipy `linear_sum_assignment` | the scipy 1.18.0 solver, line by line |
 | `similarity` | `data/similarity.py` | box IoU and IoA; mask IoU and IoA |
 | `rle` | pycocotools | `RleMask` and the mask API |
@@ -117,7 +117,9 @@ wheel with `uvx maturin build --release --locked`.
   `eval_classes` order.
 - Errors are a plain `enum` per module with a hand-written `Display` whose text equals
   the Python message. Quote names with `pyfmt::repr_str` where Python uses `{name!r}`.
-- No `unsafe`, no `rayon`, no SIMD, no `mul_add`.
+- No `unsafe`, no `rayon`, no SIMD, no `mul_add`. One exception: `numeric::log10_svml`
+  ports numpy's SVML `log10` kernel, whose `vfmadd`/`vfmsub` instructions round once, so
+  each one is a `mul_add` there.
 
 ## Test harness
 
