@@ -15,6 +15,9 @@ NaN.
 | `box_similarity.json` | `dump_numeric.py` | `tests/box_similarity.rs` |
 | `lsap/<category>.json`, `lsap/special.json` | `dump_lsap.py` | `tests/lsap.rs` |
 | `scenarios/<fixture>/<case>.json` | `dump_scenarios.py` | `tests/harness_cases.rs` and the metric tests |
+| `pyfmt.json` | `dump_pyfmt.py` | `tests/pyfmt.rs` |
+| `exports.json` | `dump_results.py` | `tests/exports.rs` |
+| `cli.json` | `dump_cli.py` | `tests/cli.rs` |
 
 ## Seeded inputs
 
@@ -23,6 +26,16 @@ NaN.
 inputs from a seed, draw for draw (splitmix64; every draw is exact). Each case stores
 `inputs_fnv` (or `fnv`): FNV-1a 64 over the little-endian bytes of the generated floats.
 A generator mismatch fails as "generator drift", not as a wrong answer.
+
+## Text output
+
+`pyfmt.json` holds CPython's `repr(float)` and `format(x, "1.5g")` for 110,000 seeded
+doubles (as FNV-1a hashes per chunk of 100 outputs; the test prints a differing chunk in
+full) plus edge cases, JSON strings, CSV rows, and paths in full. `exports.json` holds
+`EvaluationResult` values (scores in the scenario encoding below) with the exact table,
+JSON, and CSV text Python writes for them, and `evaluate`'s errors before scoring.
+`cli.json` holds argument lists with the Python CLI's stdout, stderr, and exit code;
+every case stops before a dataset is loaded.
 
 ## Scenario cases
 

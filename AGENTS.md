@@ -52,7 +52,8 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
 - `scripts/reference_results.py` — scores the nine benchmarks with seeded predictions; writes
   per-sequence and combined JSON and the reference fixture
 - `tests/` — flat suite (test_metrics.py, test_parity.py, test_parity_real.py, test_data.py,
-  test_loaders.py, test_loaders_real.py, test_reference_real.py, test_masks.py, test_cli.py, test_download.py),
+  test_loaders.py, test_loaders_real.py, test_reference_real.py, test_masks.py, test_cli.py, test_download.py,
+  test_bindings.py: the Rust extension against the Python code it replaces),
   `tests/fixtures/*.json`
   (frozen TrackEval oracle numbers, except `reference_benchmarks.json`), `tests/scenarios.py` (shared scenario definitions),
   `tests/perturb.py` (seeded perturbed predictions), `tests/rle.py` (RLE encoding for mask
@@ -65,7 +66,11 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
   PyO3 crate), dump scripts in `rust/scripts/`, and test data dumped from Python in
   `rust/testdata/` (never hand-edited). `rust/README.md` has the layout, commands, and
   rules; CI's `rust` job runs `cargo fmt --check`, `cargo clippy -D warnings`, and
-  `cargo test`.
+  `cargo test`. maturin is the build backend: `uv sync` compiles `moteval-py` into the
+  extension `moteval._moteval` (stubs in `moteval/_moteval.pyi`), so every Python job
+  needs Rust, and the `wheels` workflow builds abi3 wheels for Linux x86_64 and macOS
+  arm64. The `moteval` console script still runs the Python CLI until the port is
+  integrated.
 
 ## Commands
 
@@ -80,7 +85,8 @@ mise run test-real # slow real-data gate: parity + raw-GT loader checks (needs t
 
 `mise.toml` pins uv, rust, and hyperfine and holds the tasks. uv pins Python through
 `.python-version`; mise does not. Run `mise run install` first in every fresh clone or git
-worktree: the venv is an editable install. Host-only settings,
+worktree: the venv is an editable install, and it rebuilds the Rust extension when a
+Rust source changes (`[tool.uv] cache-keys`). Host-only settings,
 such as `MOTEVAL_DATA_ROOT`, go in the gitignored `mise.local.toml`. `mise run` trusts its own
 config; run `mise trust` only to activate that env in your shell. `mise run install`
 installs the git hooks only in the main checkout, because a worktree shares `.git/hooks`.

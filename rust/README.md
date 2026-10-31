@@ -48,7 +48,15 @@ uv run python rust/scripts/dump_scenarios.py   # scenarios/ (synthetic, committe
 MOTEVAL_DATA_ROOT=/data/tracking/external \
   uv run python rust/scripts/dump_scenarios.py --real-data --jobs 8   # artifacts/rust-port/testdata
 uv run python rust/scripts/gen_printable.py    # moteval/src/pyfmt/printable.rs
+uv run python rust/scripts/dump_pyfmt.py       # pyfmt.json
+uv run python rust/scripts/dump_results.py     # exports.json
+uv run python rust/scripts/dump_cli.py         # cli.json
 ```
+
+`moteval-py` builds the extension `moteval._moteval` (`pyproject.toml` uses maturin):
+`mise run install` (or any `uv run`) rebuilds it after a Rust change, and
+`tests/test_bindings.py` checks it against the Python code. Build a wheel with
+`uvx maturin build --release --locked`.
 
 ## Rules for every package
 

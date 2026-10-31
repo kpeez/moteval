@@ -1,0 +1,65 @@
+name: wheels
+
+# abi3 wheels (CPython 3.10 and later) for the targets users need: Linux x86_64
+# (manylinux) and macOS arm64. Add a target only when a user needs it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wheels-${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  wheel:
+    name: wheel (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2_28"
+          - name: macos-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+            manylinux: ""
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          # Keep in step with the rust pin in mise.toml.
+          rust-toolchain: "1.99.1"
+          args: --release --locked --out dist
+
+      # The oldest supported interpreter imports the abi3 wheel and runs the Rust CLI.
+      - name: Smoke test
+        shell: bash
+        run: |
+          python -m pip install dist/*.whl
+          python -c "import moteval, moteval._moteval as m; code, out, err = m.cli_run(['run', '--pred', 'no-such-dir']); assert code == 2 and 'prediction directory not found' in err, (code, out, err)"
+          moteval --help
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheel-${{ matrix.name }}
+          path: dist/*.whl
+          retention-days: 7
