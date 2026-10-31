@@ -34,6 +34,9 @@ LENGTHS = (
 PATTERNS = ("alternating", "spread", "big_small", "negzero", "uniform")
 SHAPES = ((1, 1), (1, 19), (3, 8), (5, 9), (25, 19), (45, 10), (7, 129), (130, 3))
 LARGE_SHAPE = (300, 301)  # spread pattern only, to keep the file small
+# One column: numpy reduces axis 0 of an (n, 1) array pairwise, not row by row. Appended
+# after the other shapes so their seeds do not change.
+COLUMN_SHAPES = ((8, 1), (9, 1), (25, 1), (130, 1))
 
 
 def bits(values) -> list[int]:
@@ -87,7 +90,8 @@ def axes() -> list[dict]:
     cases = []
     seed = 3000
     work = [(name, shape) for name in ("spread", "big_small", "negzero") for shape in SHAPES]
-    for name, (rows, cols) in [*work, ("spread", LARGE_SHAPE)]:
+    columns = [(name, shape) for name in ("spread", "big_small") for shape in COLUMN_SHAPES]
+    for name, (rows, cols) in [*work, ("spread", LARGE_SHAPE), *columns]:
         seed += 1
         values = pattern(name, rows * cols, seed)
         m = np.array(values, dtype=np.float64).reshape(rows, cols)

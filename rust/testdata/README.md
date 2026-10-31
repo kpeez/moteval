@@ -16,14 +16,20 @@ NaN.
 | `lsap/<category>.json`, `lsap/special.json` | `dump_lsap.py` | `tests/lsap.rs` |
 | `scenarios/<fixture>/<case>.json` | `dump_scenarios.py` | `tests/harness_cases.rs` and the metric tests |
 | `fuzz/clear_identity_count/<case>.json` | `dump_clear_identity_count.py` | `tests/clear_identity_count.rs` |
+| `set_order.json` | `dump_set_order.py` | `tests/set_order.rs` |
+| `hota_trackmap_internals.json` | `dump_metric_internals.py` | unit tests in `src/metrics/hota.rs` and `src/metrics/track_map.rs` |
 
 ## Seeded inputs
 
-`numeric.json`, `box_similarity.json`, and `lsap/` store seeds, not inputs.
+`numeric.json`, `box_similarity.json`, `lsap/`, `set_order.json`, and
+`hota_trackmap_internals.json` store seeds, not inputs.
 `rust/scripts/testgen.py` and `rust/moteval/tests/harness/testgen.rs` generate the same
 inputs from a seed, draw for draw (splitmix64; every draw is exact). Each case stores
 `inputs_fnv` (or `fnv`): FNV-1a 64 over the little-endian bytes of the generated floats.
-A generator mismatch fails as "generator drift", not as a wrong answer.
+A generator mismatch fails as "generator drift", not as a wrong answer. `set_order.json`
+and `hota_trackmap_internals.json` use the same splitmix64, but their generators live in
+their dump scripts and the tests that read them, and they store FNV-1a digests of `u64`
+words (frame keys, or float bits) instead of every value.
 
 ## Scenario cases
 
