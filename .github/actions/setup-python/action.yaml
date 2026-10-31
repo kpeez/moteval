@@ -1,11 +1,10 @@
 name: "Setup Python Environment"
-description: "Set up uv with a managed Python and install project dependencies (lockfile-true)"
+description: "Install uv from mise.toml, then sync the locked environment for one Python version"
 
 inputs:
   python-version:
     description: "Python version"
     required: true
-    default: "3.13"
   install-args:
     description: "Extra args for uv sync (e.g., --group ci)"
     required: false
@@ -14,15 +13,25 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Install uv
-      uses: astral-sh/setup-uv@v9.0.0
+    - name: Install uv (version from mise.toml)
+      uses: jdx/mise-action@v5
       with:
-        python-version: ${{ inputs.python-version }}
-        enable-cache: true
-        cache-suffix: ${{ inputs.python-version }}
+        install_args: uv
+
+    - name: Cache uv downloads
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/uv
+        key: uv-${{ runner.os }}-${{ inputs.python-version }}-${{ hashFiles('uv.lock') }}
+        restore-keys: uv-${{ runner.os }}-${{ inputs.python-version }}-
 
     - name: Install Python dependencies
       shell: bash
+      env:
+        UV_PYTHON: ${{ inputs.python-version }}
       run: |
         uv --version
         uv sync ${{ inputs.install-args }}
+        echo "UV_PYTHON=$UV_PYTHON" >> "$GITHUB_ENV"
+        # Python jobs need only uv; stop `mise run` from installing rust and hyperfine.
+        echo "MISE_TASK_RUN_AUTO_INSTALL=false" >> "$GITHUB_ENV"

@@ -14,14 +14,15 @@ pip install git+https://github.com/kpeez/moteval.git
 
 ### Development
 
-Requires [uv](https://docs.astral.sh/uv/) and [just](https://github.com/casey/just):
+Requires [mise](https://mise.jdx.dev/), which installs the pinned uv:
 
 ```sh
 git clone https://github.com/kpeez/moteval.git
 cd moteval
-just install   # uv sync + pre-commit hooks
-just check     # ruff format + lint + pyrefly type-check
-just test      # pytest
+mise install         # pinned tools from mise.toml
+mise run install     # uv sync + pre-commit hooks
+mise run check       # ruff format + lint + pyrefly type-check
+mise run test        # pytest
 ```
 
 ## Quick start
@@ -128,9 +129,9 @@ moteval is a from-scratch rewrite of [TrackEval](https://github.com/JonathonLuit
 comparable. This is enforced by tests rather than claimed: the suite asserts exact
 equality against frozen TrackEval outputs on synthetic scenarios
 (`tests/fixtures/*.json`, regenerated only by `scripts/regen_parity_fixtures.py`, which
-runs the pinned upstream), and `just test-real` repeats the bit-identical check on real
+runs the pinned upstream), and `mise run test-real` repeats the bit-identical check on real
 DanceTrack, SportsMOT, and MOTS20 data. The other built-in benchmarks have no TrackEval
-loader, so `just test-real` checks them another way: their published ground truth,
+loader, so `mise run test-real` checks them another way: their published ground truth,
 submitted as predictions, must match exactly (`tests/test_loaders_real.py`). ChimpACT
 submits only its labelled keyframes, so the frames its loader fills in between count as
 misses.
