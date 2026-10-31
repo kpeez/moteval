@@ -59,6 +59,14 @@ jobs:
           python -m pip install "$GITHUB_WORKSPACE"/dist/*.whl
           python -c "import moteval, moteval._moteval as m; code, out, err = m.cli_run(['run', '--pred', 'no-such-dir']); assert code == 2 and 'prediction directory not found' in err, (code, out, err)"
           moteval --help
+          # Score a tiny MOTChallenge layout end to end with numpy as the only dependency.
+          python -c "import importlib.util as u; assert u.find_spec('scipy') is None and u.find_spec('pycocotools') is None"
+          mkdir -p gt/train/S/gt pred
+          printf '1,1,10,10,20,20,1\n2,1,12,10,20,20,1\n' > gt/train/S/gt/gt.txt
+          printf '[Sequence]\nseqLength=2\n' > gt/train/S/seqinfo.ini
+          printf '1,7,10,10,20,20,1\n2,7,12,10,20,20,1\n' > pred/S.txt
+          moteval run --gt gt --pred pred --metrics hota,clear,identity,count,track_map --out-json out.json
+          python -c "import json; r = json.load(open('out.json'))['combined']; assert (r['CLEAR']['MOTA'], r['Identity']['IDF1'], r['HOTA']['HOTA(0)']) == (1.0, 1.0, 1.0), r"
 
       - uses: actions/upload-artifact@v7
         with:
