@@ -45,6 +45,7 @@ Regenerate the test data with the reference interpreter:
 uv run python rust/scripts/dump_numeric.py     # numeric.json, box_similarity.json
 uv run python rust/scripts/dump_lsap.py        # lsap/
 uv run python rust/scripts/dump_set_order.py   # set_order.json (TrackMAP frame-union order)
+uv run python rust/scripts/dump_metric_internals.py  # hota_trackmap_internals.json
 uv run python rust/scripts/dump_scenarios.py   # scenarios/ (synthetic, committed)
 MOTEVAL_DATA_ROOT=/data/tracking/external \
   uv run python rust/scripts/dump_scenarios.py --real-data --jobs 8   # artifacts/rust-port/testdata

@@ -781,4 +781,124 @@ mod tests {
         let recalls = recall_thresholds();
         assert_eq!((recalls[0], recalls[100]), (0.0, 1.0));
     }
+
+    use crate::metrics::hota::internals_testdata::{
+        SplitMix64, digest, expected_digest, fnv1a64_words, load, scores_inputs_fnv, u64_of,
+    };
+
+    /// `trackmap_class_scores` in `dump_metric_internals.py`.
+    fn class_scores(rng: &mut SplitMix64) -> Scores {
+        let mut scores = Scores::new();
+        for label in LABELS {
+            for field in [format!("AP_{label}"), format!("AR_{label}")] {
+                let values = (0..NUM_IOU_THRESHOLDS)
+                    .map(|_| {
+                        if rng.below(4) == 0 {
+                            -1.0
+                        } else {
+                            rng.uniform()
+                        }
+                    })
+                    .collect();
+                scores.insert(field, Value::Array(values));
+            }
+            let weights = (0..NUM_IOU_THRESHOLDS)
+                .map(|_| {
+                    let a = rng.below(4);
+                    (a * rng.below(30)) as f64
+                })
+                .collect();
+            scores.insert(format!("{WEIGHT_PREFIX}{label}"), Value::Array(weights));
+        }
+        scores
+    }
+
+    #[test]
+    fn class_combiners_match_python_with_many_classes() {
+        let json = load();
+        let cases = json["trackmap_class_combiners"].as_array().unwrap();
+        assert_eq!(cases.len(), 40);
+        for case in cases {
+            let seed = u64_of(&case["seed"]);
+            let mut rng = SplitMix64::new(seed);
+            let num_classes = 8 + rng.below(13);
+            assert_eq!(num_classes, u64_of(&case["num_classes"]));
+            let all: Vec<Scores> = (0..num_classes).map(|_| class_scores(&mut rng)).collect();
+            let drift = "generator drift";
+            assert_eq!(
+                scores_inputs_fnv(&all),
+                u64_of(&case["inputs_fnv"]),
+                "{seed}: {drift}"
+            );
+            let refs: Vec<&Scores> = all.iter().collect();
+            let class_averaged = TrackMap.combine_classes_class_averaged(&refs).unwrap();
+            let det_averaged = TrackMap.combine_classes_det_averaged(&refs).unwrap();
+            assert_eq!(
+                digest(&class_averaged),
+                expected_digest(&case["class_averaged"]),
+                "seed {seed}: class_averaged"
+            );
+            assert_eq!(
+                digest(&det_averaged),
+                expected_digest(&case["det_averaged"]),
+                "seed {seed}: det_averaged"
+            );
+        }
+    }
+
+    #[test]
+    fn track_lengths_areas_and_scores_match_python() {
+        let json = load();
+        let cases = json["trackmap_tracks"].as_array().unwrap();
+        assert_eq!(cases.len(), 300);
+        for case in cases {
+            let seed = u64_of(&case["seed"]);
+            let mut rng = SplitMix64::new(seed);
+            let num_timesteps = 20 + rng.below(40);
+            let num_ids = 1 + rng.below(6) as usize;
+            let (mut ids, mut boxes, mut confidences) = (Vec::new(), Vec::new(), Vec::new());
+            for _ in 0..num_timesteps {
+                let (mut frame_ids, mut frame_boxes, mut frame_confs) =
+                    (Vec::new(), Vec::new(), Vec::new());
+                for track_id in 0..num_ids {
+                    if rng.below(3) == 0 {
+                        continue;
+                    }
+                    frame_ids.push(track_id);
+                    let x = rng.uniform() * 50.0;
+                    let y = rng.uniform() * 50.0;
+                    let w = rng.uniform() * 64.0;
+                    let h = rng.uniform() * 64.0;
+                    frame_boxes.push([x, y, w, h]);
+                    frame_confs.push(rng.uniform());
+                }
+                ids.push(frame_ids);
+                boxes.push(frame_boxes);
+                confidences.push(frame_confs);
+            }
+            let mut inputs = Vec::new();
+            for ((frame_ids, frame_boxes), frame_confs) in ids.iter().zip(&boxes).zip(&confidences)
+            {
+                inputs.push(frame_ids.len() as u64);
+                inputs.extend(frame_ids.iter().map(|&id| id as u64));
+                inputs.extend(frame_boxes.iter().flatten().map(|x| x.to_bits()));
+                inputs.extend(frame_confs.iter().map(|x| x.to_bits()));
+            }
+            assert_eq!(
+                fnv1a64_words(inputs),
+                u64_of(&case["inputs_fnv"]),
+                "seed {seed}: generator drift"
+            );
+            let tracks = group_tracks(&ids, &boxes, num_ids, Some(&confidences));
+            let lengths: Vec<u64> = tracks.iter().map(|t| t.frames.len() as u64).collect();
+            let areas: Vec<u64> = tracks.iter().map(|t| track_area(t).to_bits()).collect();
+            let scores: Vec<u64> = tracks.iter().map(|t| track_score(t).to_bits()).collect();
+            let want = |key: &str| -> Vec<u64> {
+                case[key].as_array().unwrap().iter().map(u64_of).collect()
+            };
+            assert_eq!(lengths, want("lengths"), "seed {seed}: lengths");
+            assert_eq!(areas, want("areas"), "seed {seed}: areas");
+            assert_eq!(scores, want("scores"), "seed {seed}: scores");
+        }
+    }
 }
