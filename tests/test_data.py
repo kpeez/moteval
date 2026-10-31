@@ -528,6 +528,55 @@ def test_custom_dataset_evaluates_through_public_api(tmp_path):
     }
 
 
+def test_matching_fill_decides_which_prediction_a_distractor_removes(tmp_path):
+    """The engine reads ``Protocol.matching_fill`` (0 on the box path, -10000 on MOTS).
+
+    One frame of boxes 100 wide and 10 high on one row, so IoU is interval overlap. GT
+    ``a`` and ``b`` are evaluated; GT ``c`` is a distractor. Prediction ``x`` covers
+    ``a`` (IoU 1) and ``y`` covers ``b``; ``a-y``, ``b-x``, ``b-z`` and ``c-x`` overlap at
+    IoU 70/130. Fill 0 maximizes the IoU sum: ``a-x`` and ``b-y`` (2.0) beat ``a-y``,
+    ``b-z`` and ``c-x`` (1.615), and nothing is removed. Fill -10000 first maximizes
+    the number of pairs at or above 0.5, so ``x`` is matched to the distractor ``c`` and
+    removed.
+    """
+    import moteval
+
+    convention = moteval.FrameConvention(name="test-fill-1-indexed", first_frame=1)
+    boxes = {"a": 50, "b": 80, "c": 20, "x": 50, "y": 80, "z": 110}  # left edges
+    tracks = tuple(
+        moteval.Track(
+            frame=1, track_id=track_id, x=boxes[name], y=0, w=100, h=10, conf=1, class_id=cls
+        )
+        for track_id, name, cls in ((1, "a", 1), (2, "b", 1), (3, "c", 2))
+    )
+    sequence = moteval.GtSequence(name="fill-sequence", num_timesteps=1, tracks=tracks)
+    predictions = tmp_path / "predictions"
+    predictions.mkdir()
+    (predictions / "fill-sequence.txt").write_text(
+        "".join(f"1,{101 + i},{boxes[n]},0,100,10,1\n" for i, n in enumerate("xyz"))
+    )
+
+    def score(fill: float) -> dict:
+        protocol = moteval.Protocol(
+            name=f"test-fill-{fill}",
+            frame_convention=convention,
+            eval_classes=(1,),
+            distractor_classes=(2,),
+            matching_fill=fill,
+        )
+        dataset = moteval.MOTDataset(
+            name="test-fill", split="test", sequences=(sequence,), protocol=protocol
+        )
+        return moteval.evaluate(dataset, predictions, [moteval.CLEAR(), moteval.Count()]).combined
+
+    box_path = score(0.0)
+    assert box_path["Count"]["Dets"] == 3.0
+    assert (box_path["CLEAR"]["CLR_TP"], box_path["CLEAR"]["CLR_FP"]) == (2.0, 1.0)
+    mots_path = score(-10000.0)
+    assert mots_path["Count"]["Dets"] == 2.0
+    assert (mots_path["CLEAR"]["CLR_TP"], mots_path["CLEAR"]["CLR_FP"]) == (2.0, 0.0)
+
+
 def test_unknown_dataset_lists_available_names():
     with pytest.raises(ValueError) as exc_info:
         load_dataset("nonexistent")
