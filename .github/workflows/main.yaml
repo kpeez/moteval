@@ -61,6 +61,10 @@ jobs:
         with:
           install_args: rust
 
+      # mise installs the minimal rustup profile, which lacks rustfmt and clippy.
+      - name: Add rustfmt and clippy
+        run: rustup component add rustfmt clippy
+
       - name: Cache cargo
         uses: actions/cache@v6
         with:
