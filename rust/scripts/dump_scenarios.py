@@ -14,8 +14,8 @@ case also stores Python moteval's own scores, and the script checks that they eq
 fixture bit for bit before it writes anything, so a dumped case cannot disagree with its
 oracle.
 
-    uv run python rust/scripts/dump_scenarios.py
-    MOTEVAL_DATA_ROOT=/data/tracking/external uv run python rust/scripts/dump_scenarios.py \
+    artifacts/rust-port/ref-venv/bin/python rust/scripts/dump_scenarios.py
+    MOTEVAL_DATA_ROOT=/data/tracking/external artifacts/rust-port/ref-venv/bin/python rust/scripts/dump_scenarios.py \
         --real-data --jobs 8
 """
 
@@ -33,8 +33,13 @@ from typing import Any
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
 if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.append(str(_REPO_ROOT))
+
+from rust.scripts.reference import require_reference
+
+require_reference()
 
 from moteval import (
     CLEAR,

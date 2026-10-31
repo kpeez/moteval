@@ -20,7 +20,7 @@ regenerates the same masks from the seeds (``maskgen.py`` / ``tests/maskgen/mod.
 Run with the reference interpreter (CPython 3.14.8, numpy 2.5.1, scipy 1.18.0,
 pycocotools 2.0.11):
 
-    uv run python rust/scripts/dump_masks.py
+    artifacts/rust-port/ref-venv/bin/python rust/scripts/dump_masks.py
 """
 
 import json
@@ -34,12 +34,18 @@ from pycocotools import mask as mask_utils
 from scipy.spatial import KDTree
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
 if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.append(str(_REPO_ROOT))
+
+from rust.scripts.reference import require_reference
+
+require_reference()
+
+from moteval.data.similarity import masks_overlap  # pyrefly: ignore[missing-import]
 
 from moteval.data.model import MaskGeometry, RleMask, SequenceData
-from moteval.data.similarity import masks_overlap
-from moteval.metrics.jf import JAndF, _boundary_points
+from moteval.metrics.jf import JAndF, _boundary_points  # pyrefly: ignore[missing-module-attribute]
 from rust.scripts.maskgen import (
     FAMILIES,
     FAMILY_SIZE,

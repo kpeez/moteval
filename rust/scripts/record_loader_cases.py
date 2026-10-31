@@ -20,18 +20,26 @@ Every test of the two files must record at least one case, or the run fails. Out
 ``rust/testdata/loader_cases/<test file>/<test name>.json``, read by
 ``rust/moteval/tests/loader_cases.rs``.
 
-    uv run python rust/scripts/record_loader_cases.py
+The recorded tests are the ``py-reference`` tag's, extracted with ``git archive``: this
+checkout's tests call the Rust-backed package, which has no Python functions to record.
+Run it with the reference interpreter (``rust/scripts/reference.py``):
+
+    artifacts/rust-port/ref-venv/bin/python rust/scripts/record_loader_cases.py
 """
 
 import functools
 import hashlib
 import inspect
+import io
 import json
 import os
 import re
 import shutil
 import struct
+import subprocess
 import sys
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +47,14 @@ import numpy as np
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.append(str(_REPO_ROOT))
+
+from rust.scripts.reference import REFERENCE_TAG, require_reference
+
+require_reference()
+
 OUT = _REPO_ROOT / "rust" / "testdata" / "loader_cases"
 TEST_FILES = ("tests/test_loaders.py", "tests/test_data.py")
 Json = Any
@@ -242,7 +258,7 @@ def preprocessed_frame(f: Any) -> Json:
 
 
 def mc_config(ctx: Context, config: Any) -> Json:
-    from moteval.benchmarks import motchallenge as mc
+    from moteval.benchmarks import motchallenge as mc  # pyrefly: ignore[missing-module-attribute]
 
     defaults = (
         mc._default_seq_names,
@@ -488,10 +504,28 @@ def slug(nodeid: str) -> str:
     return f"{name}-{hashlib.sha1(nodeid.encode()).hexdigest()[:8]}"
 
 
+def extract_reference_tests(directory: Path) -> None:
+    """Write the reference tag's ``tests/`` and ``pyproject.toml`` (its pytest
+    settings) into ``directory``."""
+    archive = subprocess.run(
+        ["git", "-C", str(_REPO_ROOT), "archive", REFERENCE_TAG, "tests", "pyproject.toml"],
+        check=True,
+        capture_output=True,
+    ).stdout
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        tar.extractall(directory, filter="data")
+
+
 def main() -> None:
     recorder = Recorder()
-    os.chdir(_REPO_ROOT)
-    code = pytest.main(["-q", "-p", "no:cacheprovider", *TEST_FILES], plugins=[recorder])
+    with tempfile.TemporaryDirectory() as tmp:
+        extract_reference_tests(Path(tmp))
+        # The extracted `tests` package shadows this checkout's; node ids keep the
+        # `tests/<file>.py::<test>` form.
+        sys.path.insert(0, tmp)
+        os.chdir(tmp)
+        code = pytest.main(["-q", "-p", "no:cacheprovider", *TEST_FILES], plugins=[recorder])
+        os.chdir(_REPO_ROOT)
     if code != 0:
         raise SystemExit(f"the recorded tests failed (pytest exit {code})")
     if OUT.exists():

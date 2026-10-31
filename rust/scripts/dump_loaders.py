@@ -18,7 +18,7 @@ For every (benchmark, split) of `scripts/reference_results.REFERENCE_CASES` this
 prediction files with the Rust readers, builds every class view, and compares all of it
 with these files and with ``reference_benchmarks``.
 
-    MOTEVAL_DATA_ROOT=/data/tracking/external uv run python rust/scripts/dump_loaders.py \
+    MOTEVAL_DATA_ROOT=/data/tracking/external artifacts/rust-port/ref-venv/bin/python rust/scripts/dump_loaders.py \
         --out artifacts/rust-port/testdata/loaders_real --jobs 8
 """
 
@@ -34,12 +34,17 @@ from typing import Any
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
 if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.append(str(_REPO_ROOT))
+
+from rust.scripts.reference import require_reference
+
+require_reference()
 
 from moteval import Metric, Scores, SequenceData, evaluate
 from moteval.benchmarks import default_data_root, load_dataset
-from moteval.data import convert
+from moteval.data import convert  # pyrefly: ignore[missing-module-attribute]
 from moteval.data.model import MaskGtSequence
 from moteval.formats import read_mot, read_mots
 from scripts import reference_results
@@ -169,12 +174,12 @@ def record_mask_geometry(dataset: Any, pred_dir: Path) -> list[list[Json]]:
     try:
         for name in ("masks_overlap", "merge_masks", "mask_ioa", "mask_iou"):
             setattr(convert, name, logged(name))
-        eval_module.build_mask_sequence_data = build
+        eval_module.build_mask_sequence_data = build  # pyrefly: ignore[missing-attribute]
         evaluate(dataset, pred_dir, [_NoOp()])
     finally:
         for name, fn in originals.items():
             setattr(convert, name, fn)
-        eval_module.build_mask_sequence_data = originals["build_mask_sequence_data"]
+        eval_module.build_mask_sequence_data = originals["build_mask_sequence_data"]  # pyrefly: ignore[missing-attribute]
     return logs
 
 

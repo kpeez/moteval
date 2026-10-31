@@ -10,7 +10,7 @@ Each case is one file in the scenario case format (``rust/testdata/README.md``) 
 empty ``oracle``: the expected numbers are Python moteval's own (``moteval`` section),
 per sequence (raw), per view combined, class-averaged, and det-averaged.
 
-    uv run python rust/scripts/dump_clear_identity_count.py
+    artifacts/rust-port/ref-venv/bin/python rust/scripts/dump_clear_identity_count.py
 """
 
 import json
@@ -20,8 +20,13 @@ from pathlib import Path
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
 if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.append(str(_REPO_ROOT))
+
+from rust.scripts.reference import require_reference
+
+require_reference()
 
 from moteval import SequenceData
 from moteval.data.model import BoxGeometry

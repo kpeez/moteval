@@ -4,7 +4,7 @@ Writes ``rust/testdata/cli.json``, which ``rust/moteval/tests/cli.rs`` replays a
 Rust ``moteval`` binary byte for byte (stdout, stderr, exit code). Run with the reference
 interpreter from the repository root:
 
-    uv run python rust/scripts/dump_cli.py
+    artifacts/rust-port/ref-venv/bin/python rust/scripts/dump_cli.py
 
 Each case runs ``moteval.cli.main(argv)`` in-process, with ``COLUMNS=80`` (argparse wraps
 usage and help to the terminal width) and the working directory set to a fixture tree:
@@ -23,8 +23,13 @@ import tempfile
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
 if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.append(str(_REPO_ROOT))
+
+from rust.scripts.reference import require_reference
+
+require_reference()
 
 from moteval import cli
 

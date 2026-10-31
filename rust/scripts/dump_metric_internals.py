@@ -24,7 +24,7 @@ the same generator. Score sets are stored per field as ``[field, shape, fnv]``, 
 ``fnv`` is FNV-1a 64 over the little-endian ``float64`` bytes (a scalar has shape ``[]``).
 Run with the reference interpreter:
 
-    uv run python rust/scripts/dump_metric_internals.py
+    artifacts/rust-port/ref-venv/bin/python rust/scripts/dump_metric_internals.py
 """
 
 import json
@@ -35,13 +35,21 @@ from typing import Any
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
 if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.append(str(_REPO_ROOT))
+
+from rust.scripts.reference import require_reference
+
+require_reference()
 
 import moteval.metrics.hota as hota_module
 from moteval import HOTA, Scores, SequenceData, TrackMAP
 from moteval.data.model import BoxGeometry
-from moteval.metrics.track_map import LABELS, _group_tracks
+from moteval.metrics.track_map import (
+    LABELS,  # pyrefly: ignore[missing-module-attribute]
+    _group_tracks,  # pyrefly: ignore[missing-module-attribute]
+)
 from rust.scripts.testgen import MASK64, SplitMix64, f64_bits
 
 OUT = Path(__file__).resolve().parents[1] / "testdata" / "hota_trackmap_internals.json"
@@ -147,18 +155,18 @@ def hota_dense_case(seed: int) -> Json:
     rng = SplitMix64(seed)
     sequences = [hota_dense_sequence(rng, f"dense{i}") for i in range(3)]
     costs: list[int] = []
-    real_lsap = hota_module.linear_sum_assignment
+    real_lsap = hota_module.linear_sum_assignment  # pyrefly: ignore[missing-attribute]
 
     def recording_lsap(cost: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         costs.extend(np.ascontiguousarray(cost, dtype=np.float64).ravel().view(np.uint64).tolist())
         return real_lsap(cost)
 
     metric = HOTA()
-    hota_module.linear_sum_assignment = recording_lsap
+    hota_module.linear_sum_assignment = recording_lsap  # pyrefly: ignore[missing-attribute]
     try:
         per_sequence = [metric.eval_sequence(seq) for seq in sequences]
     finally:
-        hota_module.linear_sum_assignment = real_lsap
+        hota_module.linear_sum_assignment = real_lsap  # pyrefly: ignore[missing-attribute]
     combined = metric.combine_sequences({seq.name: s for seq, s in zip(sequences, per_sequence)})
     return {
         "seed": seed,
@@ -172,11 +180,11 @@ def hota_dense_case(seed: int) -> Json:
 
 def hota_class_scores(rng: SplitMix64) -> Scores:
     scores: Scores = {}
-    for field in hota_module._FLOAT_ARRAY_FIELDS:
+    for field in hota_module._FLOAT_ARRAY_FIELDS:  # pyrefly: ignore[missing-attribute]
         scores[field] = np.array([rng.uniform() for _ in range(19)])
-    for field in hota_module._INTEGER_ARRAY_FIELDS:
+    for field in hota_module._INTEGER_ARRAY_FIELDS:  # pyrefly: ignore[missing-attribute]
         scores[field] = np.array([float(rng.below(500)) for _ in range(19)])
-    for field in hota_module._FLOAT_FIELDS:
+    for field in hota_module._FLOAT_FIELDS:  # pyrefly: ignore[missing-attribute]
         scores[field] = rng.uniform()
     return scores
 

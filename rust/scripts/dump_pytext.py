@@ -9,7 +9,7 @@ script asks the reference interpreter what each input gives and writes
 Inputs are hand-picked edge cases plus seeded random strings. Floats are stored as `u64`
 bits; strings that JSON cannot carry exactly (lone surrogates) never appear.
 
-    uv run python rust/scripts/dump_pytext.py
+    artifacts/rust-port/ref-venv/bin/python rust/scripts/dump_pytext.py
 """
 
 import json
@@ -22,10 +22,15 @@ from pathlib import Path
 from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
 if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.append(str(_REPO_ROOT))
 
-from moteval.benchmarks.motchallenge import read_seq_length
+from rust.scripts.reference import require_reference
+
+require_reference()
+
+from moteval.benchmarks.motchallenge import read_seq_length  # pyrefly: ignore[missing-import]
 
 OUT = Path(__file__).resolve().parents[1] / "testdata" / "pytext"
 Json = Any

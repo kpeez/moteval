@@ -5,7 +5,7 @@ Writes ``rust/testdata/numeric.json`` and ``rust/testdata/box_similarity.json``,
 Inputs come from ``testgen.py`` (seeded, regenerated in Rust); floats are stored as
 ``u64`` bit patterns. Run with the reference interpreter and numpy 2.5.1:
 
-    uv run python rust/scripts/dump_numeric.py
+    artifacts/rust-port/ref-venv/bin/python rust/scripts/dump_numeric.py
 """
 
 import functools
@@ -18,10 +18,16 @@ from pathlib import Path
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
 if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.append(str(_REPO_ROOT))
 
-from moteval.data.similarity import box_ioa, box_iou
+from rust.scripts.reference import require_reference
+
+require_reference()
+
+from moteval.data.similarity import box_ioa, box_iou  # pyrefly: ignore[missing-import]
+
 from rust.scripts.testgen import SplitMix64, f64_bits, fnv1a64, pattern, random_box
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "testdata"

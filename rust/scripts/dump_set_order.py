@@ -8,7 +8,7 @@ and insertion orders, runs them through moteval's own ``_union_frames``, and wri
 case from its seed with the same generator and requires the same order. Run with the
 reference interpreter (CPython 3.14.8):
 
-    uv run python rust/scripts/dump_set_order.py
+    artifacts/rust-port/ref-venv/bin/python rust/scripts/dump_set_order.py
 
 Cases are grouped by regime; case ``i`` of a regime uses seed ``first_seed + i``. Each
 case is one row: ``inputs_fnv`` (FNV-1a 64 over the gt keys, a separator, and the dt keys,
@@ -25,10 +25,15 @@ from pathlib import Path
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
 if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.append(str(_REPO_ROOT))
 
-from moteval.metrics.track_map import _union_frames
+from rust.scripts.reference import require_reference
+
+require_reference()
+
+from moteval.metrics.track_map import _union_frames  # pyrefly: ignore[missing-module-attribute]
 from rust.scripts.testgen import MASK64, SplitMix64
 
 OUT = Path(__file__).resolve().parents[1] / "testdata" / "set_order.json"

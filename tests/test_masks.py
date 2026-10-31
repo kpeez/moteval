@@ -4,13 +4,13 @@ import numpy as np
 import pytest
 from pycocotools import mask as mask_utils
 
-from moteval import CLEAR, HOTA, Count, Identity, evaluate
-from moteval.benchmarks.mots20 import MOTS20_PROTOCOL, load_mots, load_mots20
-from moteval.data.model import BoxGeometry, GtSequence, MaskGeometry
-from moteval.data.similarity import mask_ioa, mask_iou
+from moteval import CLEAR, HOTA, Count, Identity, SequenceData, evaluate, load_mots
+from moteval.benchmarks import BENCHMARKS
+from moteval.data.model import BoxGeometry, MaskGeometry
 from moteval.formats import MaskTrack, read_mots, write_mots
-from tests.conftest import load_toy
 from tests.rle import encode_mask
+
+load_mots20 = BENCHMARKS["mots20"]
 
 
 def _square_mask(h: int, w: int, r0: int, r1: int, c0: int, c1: int) -> np.ndarray:
@@ -38,41 +38,10 @@ def test_rle_round_trip_from_c_order_input():
 
 
 # ------------------------------------------------------------------- mask IoU
-
-
-def test_mask_iou_matches_hand_computed_overlap():
-    # A: rows 0-4 full width (50 px). B: all rows, cols 0-4 (50 px).
-    # Intersection 25 px, union 75 px -> IoU = 1/3.
-    a = encode_mask(_square_mask(10, 10, 0, 5, 0, 10))
-    b = encode_mask(_square_mask(10, 10, 0, 10, 0, 5))
-    ious = mask_iou([a], [b])
-    assert ious.shape == (1, 1)
-    assert ious[0, 0] == pytest.approx(25 / 75)
-
-
-def test_mask_iou_identical_and_disjoint():
-    a = encode_mask(_square_mask(10, 10, 0, 5, 0, 5))
-    far = encode_mask(_square_mask(10, 10, 6, 9, 6, 9))
-    ious = mask_iou([a, far], [a])
-    assert ious[0, 0] == 1.0
-    assert ious[1, 0] == 0.0
-
-
-def test_mask_iou_empty_inputs_keep_matrix_shape():
-    a = encode_mask(_square_mask(10, 10, 0, 5, 0, 5))
-    assert mask_iou([], [a]).shape == (0, 1)
-    assert mask_iou([a], []).shape == (1, 0)
-    assert mask_iou([], []).shape == (0, 0)
-
-
-def test_mask_ioa_normalises_by_first_argument_area():
-    # A (25 px) half-covered by B (50 px): IoA(A, B) = 25/25 = 1.0 when A is
-    # inside B; here A is rows 0-4 cols 0-4, B is rows 0-9 cols 0-4 -> A fully
-    # inside B -> IoA 1.0, while IoU would be 25/50.
-    a = encode_mask(_square_mask(10, 10, 0, 5, 0, 5))
-    b = encode_mask(_square_mask(10, 10, 0, 10, 0, 5))
-    assert mask_ioa([a], [b])[0, 0] == pytest.approx(1.0)
-    assert mask_iou([a], [b])[0, 0] == pytest.approx(0.5)
+#
+# Mask IoU and IoA run in Rust: rust/moteval/tests/rle.rs checks them against
+# pycocotools on 1,000 seeded masks, and tests/jf.rs against the dumped similarity of
+# every MOTS frame.
 
 
 # ------------------------------------------------------------------- MOTS-txt
@@ -142,11 +111,13 @@ def _perfect_gt_rows():
     ]
 
 
-def test_mots20_protocol_declares_mots_matching_semantics():
-    assert MOTS20_PROTOCOL.eval_classes == (2,)
-    assert MOTS20_PROTOCOL.matching_fill == -10000.0
-    assert MOTS20_PROTOCOL.drop_zero_conf_gt is False
-    assert MOTS20_PROTOCOL.frame_convention.first_frame == 1
+def test_mots20_protocol_declares_mots_matching_semantics(tmp_path):
+    _write_mots20_layout(tmp_path / "data", _perfect_gt_rows())
+    protocol = load_mots20(root=tmp_path / "data", split="train").protocol
+    assert protocol.eval_classes == (2,)
+    assert protocol.matching_fill == -10000.0
+    assert protocol.drop_zero_conf_gt is False
+    assert protocol.frame_convention.first_frame == 1
 
 
 def test_mots20_perfect_predictions_evaluate_end_to_end(tmp_path):
@@ -250,23 +221,32 @@ def test_mots20_out_of_range_prediction_frame_raises(tmp_path):
 # ------------------------------------------------------------ geometry union
 
 
-def test_geometry_accessors_fail_loudly_across_kinds(tmp_path):
-    from moteval.data.convert import build_mask_sequence_data, build_sequence_data
+def _sequence_data(geometry: BoxGeometry | MaskGeometry) -> SequenceData:
+    empty = (np.zeros(0, dtype=np.int64),)
+    return SequenceData(
+        name="s",
+        num_timesteps=1,
+        num_gt_ids=0,
+        num_pred_ids=0,
+        num_gt_dets=0,
+        num_pred_dets=0,
+        gt_ids=empty,
+        pred_ids=empty,
+        pred_confidences=(np.zeros(0),),
+        geometry=geometry,
+        similarity=(np.zeros((0, 0)),),
+    )
 
-    toy = load_toy()
-    box_seq = toy.sequences[0]
-    assert isinstance(box_seq, GtSequence)
-    box_data = build_sequence_data(box_seq, (), toy.protocol, 1)
-    assert isinstance(box_data.geometry, BoxGeometry)
-    assert box_data.gt_boxes[0].shape[1] == 4
+
+def test_geometry_accessors_fail_loudly_across_kinds():
+    box_data = _sequence_data(BoxGeometry(gt=(np.zeros((0, 4)),), pred=(np.zeros((0, 4)),)))
+    assert box_data.gt_boxes[0].shape == (0, 4)
     with pytest.raises(TypeError, match="box geometry"):
         _ = box_data.gt_masks
 
-    _write_mots20_layout(tmp_path / "data", _perfect_gt_rows())
-    mots = load_mots20(root=tmp_path / "data", split="train")
-    mask_data = build_mask_sequence_data(mots.sequences[0], (), mots.protocol, 2)
-    assert isinstance(mask_data.geometry, MaskGeometry)
-    assert mask_data.gt_masks[0].shape == (2,)
+    no_masks = np.empty(0, dtype=object)
+    mask_data = _sequence_data(MaskGeometry(gt=(no_masks,), pred=(no_masks,)))
+    assert mask_data.gt_masks[0].shape == (0,)
     with pytest.raises(TypeError, match="mask geometry"):
         _ = mask_data.gt_boxes
 

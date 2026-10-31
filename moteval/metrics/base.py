@@ -1,31 +1,28 @@
-"""Metric ABC shared by every metric.
+"""Metric ABC shared by every metric, and the base of the built-in metrics.
 
 A metric declares its ``fields`` and the ``geometry`` it reads, scores one
 `SequenceData` at a time, and knows how to combine per-sequence results and
 per-class results (class-averaged and detection-averaged). Values are field->float
 or field->19-alpha-array dicts so combining is generic.
+
+The six built-in metrics (`HOTA`, `CLEAR`, `Identity`, `Count`, `TrackMAP`, `JAndF`)
+run in the Rust extension (``rust/moteval/src/metrics/``): `RustMetric` sends the
+`SequenceData` or the score dicts across and returns plain ``float`` and float64 numpy
+values.
 """
 
-import functools
-import operator
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Mapping
 from typing import Literal
 
 import numpy as np
 
+from moteval import _moteval
+from moteval._rust import call
 from moteval.data.model import SequenceData
 
 Scores = dict[str, float | np.ndarray]
 
-
-def _plain_sum(values: Iterable[float | np.ndarray]) -> float | np.ndarray:
-    """Add ``values`` left to right from 0, as upstream's ``sum`` over ``np.float64`` does.
-
-    Builtin ``sum`` over exact Python floats is compensated on Python 3.12+, so it would round
-    differently from upstream for fields that a metric holds as plain floats.
-    """
-    return functools.reduce(operator.add, values, 0)
+Geometry = Literal["boxes", "masks"] | None
 
 
 class Metric(ABC):
@@ -40,7 +37,7 @@ class Metric(ABC):
     only private match state) has no per-sequence entry in the results.
     """
 
-    geometry: Literal["boxes", "masks"] | None = None
+    geometry: Geometry = None
     """The geometry ``eval_sequence`` reads besides the precomputed similarity.
 
     ``"boxes"`` (TrackMAP), ``"masks"`` (J&F), or ``None`` for a metric that reads
@@ -60,15 +57,35 @@ class Metric(ABC):
     @abstractmethod
     def combine_classes_det_averaged(self, all_res: dict[str, Scores]) -> Scores: ...
 
-    def _combine_sum(self, all_res: dict[str, Scores], field: str) -> float | np.ndarray:
-        return _plain_sum(res[field] for res in all_res.values())
 
-    def _combine_weighted_av(
-        self,
-        all_res: dict[str, Scores],
-        field: str,
-        comb_res: Mapping[str, float | np.ndarray],
-        weight_field: str,
-    ) -> float | np.ndarray:
-        weighted_sum = _plain_sum(res[field] * res[weight_field] for res in all_res.values())
-        return weighted_sum / np.maximum(1.0, comb_res[weight_field])
+def rust_metric_info(name: str) -> tuple[tuple[str, ...], Geometry]:
+    """The ``fields`` and ``geometry`` of the built-in metric ``name``, from Rust."""
+    fields, geometry = _moteval.metric_info(name)
+    if geometry not in ("boxes", "masks", None):
+        raise ValueError(f"metric {name} reads unknown geometry {geometry!r}")
+    return tuple(fields), geometry
+
+
+class RustMetric(Metric):
+    """A built-in metric computed by the Rust extension.
+
+    ``rust_name`` selects the Rust metric; it is also the metric's key in results.
+    """
+
+    rust_name: str
+
+    def eval_sequence(self, data: SequenceData) -> Scores:
+        return call(_moteval.metric_eval_sequence, self.rust_name, data)
+
+    def combine_sequences(self, all_res: dict[str, Scores]) -> Scores:
+        return call(_moteval.metric_combine, self.rust_name, "combine_sequences", all_res)
+
+    def combine_classes_class_averaged(self, all_res: dict[str, Scores]) -> Scores:
+        return call(
+            _moteval.metric_combine, self.rust_name, "combine_classes_class_averaged", all_res
+        )
+
+    def combine_classes_det_averaged(self, all_res: dict[str, Scores]) -> Scores:
+        return call(
+            _moteval.metric_combine, self.rust_name, "combine_classes_det_averaged", all_res
+        )

@@ -1,16 +1,16 @@
+import configparser
 import dataclasses
+import json
 from dataclasses import replace
 
 import numpy as np
 import pytest
 
-from moteval import CLEAR, HOTA, Identity, JAndF, TrackMAP, evaluate, load_dataset
-from moteval.data.convert import build_sequence_data
-from moteval.data.model import FrameConvention, GtSequence, MOTDataset
-from moteval.data.protocol import Protocol, RawFrame, preprocess_frame
-from moteval.data.similarity import box_ioa, box_iou
+from moteval import CLEAR, HOTA, Count, Identity, JAndF, TrackMAP, evaluate, load_dataset
+from moteval._rust import python_error
+from moteval.data.model import BoxGeometry, FrameConvention, GtSequence, MOTDataset, SequenceData
+from moteval.data.protocol import Protocol
 from moteval.formats import Track, read_mot, write_mot
-from moteval.metrics.count import Count
 from tests.conftest import (
     TWO_CLASS_SEQUENCE,
     load_toy,
@@ -29,201 +29,29 @@ CONVENTION = FrameConvention("1-indexed", 1)
 _PROTOCOL = Protocol(name="t", frame_convention=CONVENTION, eval_classes=(1,))
 
 # --------------------------------------------------------------------- model
-
-
-def _seq() -> GtSequence:
-    # id 42 is listed first so first-seen order and sorted order disagree.
-    tracks = (
-        Track(frame=1, track_id=42, x=50, y=50, w=10, h=10, conf=1.0),
-        Track(frame=1, track_id=7, x=0, y=0, w=10, h=10, conf=1.0),
-        Track(frame=2, track_id=7, x=1, y=0, w=10, h=10, conf=1.0),
-    )
-    return GtSequence(name="s", num_timesteps=2, tracks=tracks)
+#
+# Conversion (id densification, class views, ignore regions), the preprocessing engine,
+# and box IoU/IoA run in Rust. rust/moteval/tests/loader_cases.rs replays every call
+# the pure-Python versions of these tests made, bit for bit (rust/testdata/loader_cases).
 
 
 def test_sequence_data_is_frozen():
-    data = build_sequence_data(_seq(), (), _PROTOCOL, 1)
+    empty = (np.zeros(0),)
+    data = SequenceData(
+        name="s",
+        num_timesteps=1,
+        num_gt_ids=0,
+        num_pred_ids=0,
+        num_gt_dets=0,
+        num_pred_dets=0,
+        gt_ids=empty,
+        pred_ids=empty,
+        pred_confidences=empty,
+        geometry=BoxGeometry(gt=(np.zeros((0, 4)),), pred=(np.zeros((0, 4)),)),
+        similarity=(np.zeros((0, 0)),),
+    )
     with pytest.raises(dataclasses.FrozenInstanceError):
         setattr(data, "name", "mutated")  # noqa: B010  (assignment form fails static checks)
-
-
-def test_ids_are_densified_via_sorted_mapping():
-    # raw ids 7 and 42 densify to 0 and 1, never a max-id-sized dense array.
-    data = build_sequence_data(_seq(), (), _PROTOCOL, 1)
-    assert data.num_gt_ids == 2
-    np.testing.assert_array_equal(np.sort(data.gt_ids[0]), [0, 1])
-    np.testing.assert_array_equal(data.gt_ids[1], [0])
-
-
-# ----------------------------------------------------------------- protocol
-
-
-def _raw(gt_classes, gt_conf, similarity, pred_classes, ignore_ioa=None):
-    num_gt = len(gt_classes)
-    num_pred = len(pred_classes)
-    if ignore_ioa is None:
-        ignore_ioa = np.zeros((num_pred, 0))
-    return RawFrame(
-        gt_ids=np.arange(num_gt, dtype=np.int64),
-        gt_classes=np.array(gt_classes, dtype=np.int64),
-        gt_conf=np.array(gt_conf, dtype=np.float64),
-        gt_dets=np.zeros((num_gt, 4)),
-        pred_ids=np.arange(100, 100 + num_pred, dtype=np.int64),
-        pred_classes=np.array(pred_classes, dtype=np.int64),
-        pred_confidences=np.ones(num_pred),
-        pred_dets=np.zeros((num_pred, 4)),
-        similarity=np.array(similarity, dtype=np.float64).reshape(num_gt, num_pred),
-        ignore_ioa=np.array(ignore_ioa, dtype=np.float64).reshape(num_pred, -1),
-    )
-
-
-def test_prediction_matched_to_distractor_is_dropped_unmatched_survives():
-    # gt0 pedestrian, gt1 distractor. pred0 -> gt0, pred1 -> gt1, pred2 unmatched.
-    frame = _raw(
-        gt_classes=[1, 99],
-        gt_conf=[1, 1],
-        similarity=[[0.9, 0.0, 0.0], [0.0, 0.9, 0.0]],
-        pred_classes=[1, 1, 1],
-    )
-    protocol = Protocol("p", CONVENTION, eval_classes=(1,), distractor_classes=(99,))
-    out = preprocess_frame(frame, protocol, 1)
-    # pred1 (matched to distractor gt1) dropped; pred0 (pedestrian) and pred2 survive.
-    np.testing.assert_array_equal(out.pred_ids, [100, 102])
-    # only the pedestrian gt is kept for evaluation.
-    assert out.gt_ids.shape[0] == 1
-
-
-def test_unmatched_prediction_dropped_only_above_ignore_threshold():
-    # no gt, three unmatched preds; IoA 0.6 drops, 0.5 (== threshold) and 0.4 survive.
-    frame = _raw(
-        gt_classes=[],
-        gt_conf=[],
-        similarity=np.zeros((0, 3)),
-        pred_classes=[1, 1, 1],
-        ignore_ioa=[[0.6], [0.5], [0.4]],
-    )
-    protocol = Protocol("p", CONVENTION, eval_classes=(1,), ignore_iou_threshold=0.5)
-    out = preprocess_frame(frame, protocol, 1)
-    np.testing.assert_array_equal(out.pred_ids, [101, 102])
-
-
-def test_conf_zero_gt_still_matches_before_removal():
-    # gt0 is a conf-zero distractor: it must participate in matching (removing the
-    # matched prediction) before being dropped -- TrackEval's matching-then-removal.
-    frame = _raw(
-        gt_classes=[99],
-        gt_conf=[0],
-        similarity=[[0.9]],
-        pred_classes=[1],
-    )
-    protocol = Protocol("p", CONVENTION, eval_classes=(1,), distractor_classes=(99,))
-    out = preprocess_frame(frame, protocol, 1)
-    assert out.pred_ids.shape[0] == 0
-    assert out.gt_ids.shape[0] == 0
-
-
-def _two_class_sequence():
-    tracks = tuple(
-        Track(frame=f, track_id=tid, x=x, y=x, w=10, h=10, conf=1.0, class_id=cls)
-        for tid, x, cls in [(10, 0.0, 1), (20, 100.0, 2)]
-        for f in (1, 2)
-    )
-    return GtSequence(name="s", num_timesteps=2, tracks=tracks)
-
-
-def _two_class_predictions():
-    return tuple(
-        Track(frame=f, track_id=tid, x=x, y=x, w=10, h=10, conf=1.0, class_id=cls)
-        for tid, x, cls in [(100, 0.0, 1), (200, 100.0, 2)]
-        for f in (1, 2)
-    )
-
-
-def test_class_filtering_yields_per_class_views():
-    protocol = Protocol("p", CONVENTION, eval_classes=(1, 2))
-    gt = _two_class_sequence()
-    pred = _two_class_predictions()
-
-    cls1 = build_sequence_data(gt, pred, protocol, 1)
-    cls2 = build_sequence_data(gt, pred, protocol, 2)
-
-    # each view keeps only its own class: class 1 sits at x=0, class 2 at x=100.
-    for view, x in ((cls1, 0.0), (cls2, 100.0)):
-        assert view.num_gt_ids == 1
-        assert view.num_pred_ids == 1
-        assert view.num_gt_dets == 2
-        assert view.num_pred_dets == 2
-        for t in range(2):
-            np.testing.assert_array_equal(view.gt_boxes[t][:, 0], [x])
-            np.testing.assert_array_equal(view.pred_boxes[t][:, 0], [x])
-
-
-def test_ignore_regions_wired_through_conversion():
-    # end-to-end: GtSequence.ignore_regions -> _bin_frames -> box_ioa -> engine.
-    gt_tracks = tuple(Track(frame=f, track_id=1, x=0, y=0, w=10, h=10, conf=1.0) for f in (1, 2))
-    ignore = tuple(Track(frame=f, track_id=0, x=100, y=100, w=20, h=20, conf=0.0) for f in (1, 2))
-    gt = GtSequence(name="s", num_timesteps=2, tracks=gt_tracks, ignore_regions=ignore)
-    preds = tuple(
-        Track(frame=f, track_id=tid, x=x, y=x, w=10, h=10, conf=1.0)
-        for tid, x in [(100, 0.0), (200, 105.0), (300, 500.0)]
-        for f in (1, 2)
-    )
-    protocol = Protocol("p", CONVENTION, eval_classes=(1,))
-
-    data = build_sequence_data(gt, preds, protocol, 1)
-
-    # pred 200 sits fully inside the ignore region (IoA 1.0 > 0.5) while unmatched
-    # and is dropped; matched pred 100 and far-away pred 300 survive.
-    assert data.num_pred_ids == 2
-    assert data.num_pred_dets == 4
-    assert data.num_gt_ids == 1
-
-
-# -------------------------------------------------------------- similarity
-
-
-def test_box_iou_against_hand_computed():
-    a = np.array([[0, 0, 10, 10], [0, 0, 10, 10]], dtype=np.float64)
-    b = np.array([[0, 0, 10, 10], [5, 0, 10, 10]], dtype=np.float64)
-    ious = box_iou(a, b)
-    # identical boxes -> 1.0; half-overlap -> inter 50 / union 150 = 1/3.
-    np.testing.assert_allclose(ious, [[1.0, 1 / 3], [1.0, 1 / 3]])
-
-
-def test_box_iou_disjoint_is_zero():
-    # disjoint along one axis each: an unclamped overlap would be (-90) * 10 < 0.
-    a = np.array([[0, 0, 10, 10]], dtype=np.float64)
-    b = np.array([[100, 0, 10, 10], [0, 100, 10, 10]], dtype=np.float64)
-    np.testing.assert_array_equal(box_iou(a, b), [[0.0, 0.0]])
-
-
-def test_box_iou_empty_sides():
-    empty = np.zeros((0, 4), dtype=np.float64)
-    full = np.array([[0, 0, 10, 10]], dtype=np.float64)
-    assert box_iou(empty, full).shape == (0, 1)
-    assert box_iou(full, empty).shape == (1, 0)
-
-
-def test_box_ioa_against_hand_computed():
-    a = np.array([[0, 0, 10, 10]], dtype=np.float64)
-    b = np.array([[5, 0, 10, 10], [0, 0, 20, 20]], dtype=np.float64)
-    ioas = box_ioa(a, b)
-    # normalised by a's area (100): half-overlap -> 50/100; a fully inside b -> 100/100
-    # (IoU there would be 0.25 -- IoA is asymmetric by design).
-    np.testing.assert_allclose(ioas, [[0.5, 1.0]])
-
-
-def test_box_ioa_zero_area_a_is_zero():
-    a = np.array([[0, 0, 0, 0]], dtype=np.float64)
-    b = np.array([[0, 0, 10, 10]], dtype=np.float64)
-    assert box_ioa(a, b)[0, 0] == 0.0
-
-
-def test_box_ioa_empty_sides():
-    empty = np.zeros((0, 4), dtype=np.float64)
-    full = np.array([[0, 0, 10, 10]], dtype=np.float64)
-    assert box_ioa(empty, full).shape == (0, 1)
-    assert box_ioa(full, empty).shape == (1, 0)
 
 
 # ---------------------------------------------------------------- formats
@@ -699,3 +527,46 @@ def test_unknown_dataset_lists_available_names():
     message = str(exc_info.value)
     assert "available:" in message
     assert "dancetrack" in message
+
+
+# ------------------------------------------------------------- Rust errors
+
+
+def test_a_missing_file_raises_oserror_with_python_text(tmp_path):
+    missing = tmp_path / "missing.txt"
+    with pytest.raises(OSError) as exc:
+        read_mot(missing)
+    assert str(exc.value) == f"[Errno 2] No such file or directory: '{missing}'"
+
+
+@pytest.mark.parametrize(
+    ("exception", "message", "cls"),
+    [
+        ("ValueError", "bad row", ValueError),
+        ("Unsupported", "too large", ValueError),
+        ("UnicodeDecodeError", "'utf-8' codec can't decode", ValueError),
+        ("OSError", "[Errno 21] Is a directory: '/x'", OSError),
+        ("TypeError", "not a mapping", TypeError),
+        ("IndexError", "boolean index did not match", IndexError),
+        ("KeyError", "'bbox'", KeyError),
+        ("KeyError", "17", KeyError),
+        ("InterpolationError", "bad interpolation", configparser.InterpolationError),
+    ],
+)
+def test_rust_errors_are_raised_as_their_python_class(exception, message, cls):
+    err = python_error(exception, message)
+    assert type(err) is cls
+    assert str(err) == message
+
+
+def test_rust_json_errors_keep_their_position():
+    message = "Expecting property name enclosed in double quotes: line 2 column 3 (char 7)"
+    err = python_error("JSONDecodeError", message)
+    assert isinstance(err, json.JSONDecodeError)
+    assert str(err) == message
+    assert (err.msg, err.lineno, err.colno, err.pos) == (
+        "Expecting property name enclosed in double quotes",
+        2,
+        3,
+        7,
+    )

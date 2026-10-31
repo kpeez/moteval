@@ -7,11 +7,12 @@ Three ways in, all converging on `evaluate(dataset, predictions, metrics)`:
 - `load_motchallenge(root, split)` / `load_mots(root, split)` — any directory in
   the standard box/mask layout, no registration needed.
 - Construct a `MOTDataset` yourself from any source format.
+
+Loading, reading, scoring, and the CLI run in the Rust extension `moteval._moteval`
+(``rust/``); this package holds the public data types and thin functions over it.
 """
 
-from moteval.benchmarks import load_dataset
-from moteval.benchmarks.motchallenge import load_motchallenge
-from moteval.benchmarks.mots20 import load_mots
+from moteval.benchmarks import load_dataset, load_motchallenge, load_mots
 from moteval.data.model import (
     FrameConvention,
     GtSequence,

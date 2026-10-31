@@ -4,7 +4,7 @@ Writes ``rust/testdata/exports.json``, which ``rust/moteval/tests/exports.rs`` c
 for byte, and the messages of `evaluate`'s errors before scoring. Run with the reference
 interpreter from the repository root:
 
-    uv run python rust/scripts/dump_results.py
+    artifacts/rust-port/ref-venv/bin/python rust/scripts/dump_results.py
 
 Each case holds an `EvaluationResult` (scores as ``{"shape", "bits"}``, in dict order),
 plus what ``moteval.cli`` prints and writes for it: ``cli._table`` (or the exception it
@@ -23,8 +23,13 @@ from pathlib import Path
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
 if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.append(str(_REPO_ROOT))
+
+from rust.scripts.reference import require_reference
+
+require_reference()
 
 from moteval import (
     CLEAR,
@@ -40,16 +45,16 @@ from moteval import (
     TrackMAP,
     evaluate,
 )
-from moteval.cli import _table, _write_csv
+from moteval.cli import _table, _write_csv  # pyrefly: ignore[missing-module-attribute]
 from moteval.results import ClassResult, EvaluationResult, to_json_dict
 from rust.scripts.testgen import SplitMix64, f64_bits
 from tests.conftest import (
     load_toy,
     load_two_class,
+    write_flawed_predictions,
     write_perfect_predictions,
     write_two_class_predictions,
 )
-from tests.test_cli import _write_flawed_predictions
 
 OUT = Path(__file__).resolve().parents[1] / "testdata" / "exports.json"
 METRICS = {"HOTA": HOTA, "CLEAR": CLEAR, "Identity": Identity, "Count": Count}
@@ -123,7 +128,7 @@ def evaluated_cases() -> list[dict]:
         perfect, flawed, two = Path(tmp, "perfect"), Path(tmp, "flawed"), Path(tmp, "two")
         write_perfect_predictions(toy, perfect)
         flawed.mkdir()
-        _write_flawed_predictions(toy, flawed)
+        write_flawed_predictions(toy, flawed)
         write_two_class_predictions(two)
         two_class = load_two_class()
         runs = [
