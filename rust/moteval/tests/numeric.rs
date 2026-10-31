@@ -209,8 +209,9 @@ fn linspace_matches_numpy() {
 }
 
 /// The SVML `log10` port against numpy's SVML path, on every host: small integers, every
-/// binade, mantissas where the rounded `vrcp14pd` switches, subnormals, and a fingerprint
-/// of `np.log10(1..=1_000_000)`.
+/// binade, mantissas where the rounded `vrcp14pd` switches (13 of them change the result
+/// if `1/m` stands in for `vrcp14pd`), subnormals, and a fingerprint of
+/// `np.log10(1..=1_000_000)`.
 #[test]
 fn log10_svml_matches_numpy() {
     let json = numeric_json();

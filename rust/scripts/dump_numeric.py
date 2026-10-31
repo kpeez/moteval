@@ -234,6 +234,12 @@ def plain_sums() -> list[dict]:
 
 
 LOG10_INTEGERS = 1_000_000  # the fixture keeps a fingerprint of np.log10(1..N)
+RCP14_SENSITIVE = (
+    0x3FF040F0DAE11493, 0x3FF15B38BC4B53C2, 0x40329E477EC11054, 0x3FB3522A792225F0,
+    0x3FC41416CD5B8972, 0x4015C989A889F292, 0x4016C155ADAA507E, 0x3FA7D06F7954D294,
+    0x40F8F9C0BF3D3683, 0x3FEA41A32CEF80DE, 0x3F1BACFE59930D22, 0x3FED41C188011B15,
+    0x3FEF07E1F8AC6968,
+)  # fmt: skip
 
 
 def log10s() -> dict:
@@ -260,6 +266,9 @@ def log10s() -> dict:
         for j in range(-24, 25):
             m = 64 / d * (1 + j * 2.0**-17)
             xs.extend((m, m * 2.0**10, m * 2.0**-3))
+    # Inputs where vrcp14pd and an exact 1/m round to different multiples of 1/32 and
+    # SVML's result changes with it (found by a search on the reference host).
+    xs.extend(struct.unpack("<d", struct.pack("<Q", b))[0] for b in RCP14_SENSITIVE)
     xs.extend((5e-324, 2.2250738585072009e-308, 1e-310, 2.2250738585072014e-308, 0.1, 1e-300))
     xs.extend((10.0, 1e22, 2.0**52, 2.0**1023, 1.7976931348623157e308, 1.0 + 2.0**-52))
     ints = np.arange(1, LOG10_INTEGERS + 1, dtype=np.float64)
