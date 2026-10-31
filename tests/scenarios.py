@@ -784,6 +784,34 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
             },
         )
     },
+    # Both pred tracks hold the same twelve confidences in a different order, so their
+    # mean score is mathematically equal. `np.mean` (pairwise from eight values up) gives
+    # 0.7687499999999999 for track 1 and 0.7687500000000002 for track 9, so track 9 sorts
+    # first and claims the gt track at the IoU thresholds its shifted box reaches. A
+    # sequential mean gives both 0.7687499999999999, so track 1 keeps first place and the
+    # match order, and with it the precision curve, changes.
+    "dt_track_score_pairwise_mean": {
+        "seq": (
+            12,
+            {5: {t: [10, 10, 20, 20] for t in range(12)}},
+            {
+                1: {
+                    t: ([10, 10, 20, 20], c)
+                    for t, c in enumerate(
+                        [0.73, 0.531, 0.821, 0.926, 0.796, 0.63, 0.92, 0.755, 0.755, 0.877]
+                        + [0.574, 0.91]
+                    )
+                },
+                9: {
+                    t: ([14, 10, 20, 20], c)
+                    for t, c in enumerate(
+                        [0.574, 0.821, 0.531, 0.755, 0.796, 0.755, 0.877, 0.63, 0.73, 0.92]
+                        + [0.91, 0.926]
+                    )
+                },
+            },
+        )
+    },
     # Track IoU sums each frame's intersection and union in the iteration order of
     # upstream's `set(gt.keys()) | set(dt.keys())`. For this sparse pair that order is
     # [23, 5, 7, 9, 12], not ascending, so moteval's vectorized IoU must fall back to the
