@@ -51,10 +51,12 @@ jobs:
           args: --release --locked --out dist
 
       # The oldest supported interpreter imports the abi3 wheel and runs the Rust CLI.
+      # Run outside the checkout, so `import moteval` finds the wheel, not the sources.
       - name: Smoke test
         shell: bash
+        working-directory: ${{ runner.temp }}
         run: |
-          python -m pip install dist/*.whl
+          python -m pip install "$GITHUB_WORKSPACE"/dist/*.whl
           python -c "import moteval, moteval._moteval as m; code, out, err = m.cli_run(['run', '--pred', 'no-such-dir']); assert code == 2 and 'prediction directory not found' in err, (code, out, err)"
           moteval --help
 
