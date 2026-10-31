@@ -1,8 +1,11 @@
 # moteval Rust port
 
-A Rust port of moteval that must give the same bits as Python moteval, which gives the
-same bits as TrackEval `12c8791b`. The Python package stays and becomes a thin wrapper
-over `moteval-py` when the port is integrated.
+The Rust implementation of moteval. It gives the same bits as the pure-Python moteval
+of the `py-reference` tag, which gives the same bits as TrackEval `12c8791b`. The Python
+package (`moteval/`) is a thin wrapper over `moteval-py`: it keeps the public data types
+and calls Rust for loading, reading, scoring, the exports, and the CLI.
+`docs/rust-port.md` has the gate results, the benchmark, and the differences from the
+pure-Python package.
 
 ## Layout
 
@@ -12,7 +15,7 @@ rust/
   moteval/       lib + src/bin/moteval.rs; zero runtime dependencies
   moteval-py/    PyO3 cdylib built by maturin (pyo3 abi3-py310, numpy)
   testdata/      inputs and expected outputs dumped from Python (see its README)
-  scripts/       dump scripts (Python: standard library, numpy, scipy, pycocotools, pytest, moteval)
+  scripts/       dump scripts (Python, run with the reference venv: see below)
 ```
 
 Modules of the `moteval` crate, each ported from the Python module of the same role:
@@ -43,38 +46,64 @@ MOTEVAL_RUST_TESTDATA=artifacts/rust-port/testdata MOTEVAL_DATA_ROOT=/data/track
 The real-data loader gate (`tests/loaders_real.rs`) also loads the benchmarks themselves,
 so it needs `MOTEVAL_DATA_ROOT` as well as `MOTEVAL_RUST_TESTDATA`.
 
-Regenerate the test data with the reference interpreter:
+### The reference venv
+
+Expected values come from the pure-Python moteval, not from this checkout's package
+(which is Rust): the `py-reference` tag, installed into its own venv. Never install it
+into the project `.venv`; both packages are named `moteval`.
 
 ```sh
-uv run python rust/scripts/dump_numeric.py     # numeric.json, box_similarity.json
-uv run python rust/scripts/dump_lsap.py        # lsap/
-uv run python rust/scripts/dump_set_order.py   # set_order.json (TrackMAP frame-union order)
-uv run python rust/scripts/dump_metric_internals.py  # hota_trackmap_internals.json
-uv run python rust/scripts/dump_masks.py       # rle*.json, jf_boundary.json, jf_sequences.json
-uv run python rust/scripts/dump_scenarios.py   # scenarios/ (synthetic, committed)
-uv run python rust/scripts/dump_clear_identity_count.py   # fuzz/clear_identity_count/
+uv venv --python 3.14.8 artifacts/rust-port/ref-venv
+uv pip install --python artifacts/rust-port/ref-venv/bin/python \
+  "moteval @ git+file://$PWD@py-reference" numpy==2.5.1 scipy==1.18.0 \
+  pycocotools==2.0.11 pytest
+```
+
+Every dump script that reads moteval puts the repository root at the end of `sys.path`
+and calls `rust/scripts/reference.py`'s `require_reference()`, which exits unless
+`moteval` is the reference. `record_loader_cases.py` records the `py-reference` tag's
+own `tests/test_loaders.py` and `tests/test_data.py` (extracted with `git archive`).
+
+Regenerate the test data (`REF=artifacts/rust-port/ref-venv/bin/python`); every committed
+file comes back byte-identical:
+
+```sh
+$REF rust/scripts/dump_numeric.py     # numeric.json, box_similarity.json
+$REF rust/scripts/dump_lsap.py        # lsap/
+$REF rust/scripts/dump_set_order.py   # set_order.json (TrackMAP frame-union order)
+$REF rust/scripts/dump_metric_internals.py  # hota_trackmap_internals.json
+$REF rust/scripts/dump_masks.py       # rle*.json, jf_boundary.json, jf_sequences.json
+$REF rust/scripts/dump_scenarios.py   # scenarios/ (synthetic, committed)
+$REF rust/scripts/dump_clear_identity_count.py   # fuzz/clear_identity_count/
+$REF rust/scripts/dump_pytext.py         # pytext/ (CPython text verdicts)
+$REF rust/scripts/record_loader_cases.py # loader_cases/ (py-reference's test_loaders.py, test_data.py)
+$REF rust/scripts/dump_pyfmt.py       # pyfmt.json
+$REF rust/scripts/dump_results.py     # exports.json
+$REF rust/scripts/dump_cli.py         # cli.json
 MOTEVAL_DATA_ROOT=/data/tracking/external \
-  uv run python rust/scripts/dump_scenarios.py --real-data --jobs 8   # artifacts/rust-port/testdata
+  $REF rust/scripts/dump_loaders.py --jobs 8   # artifacts/rust-port/testdata/loaders_real
+MOTEVAL_DATA_ROOT=/data/tracking/external \
+  $REF rust/scripts/dump_scenarios.py --real-data --jobs 8   # artifacts/rust-port/testdata
 uv run python rust/scripts/gen_printable.py    # moteval/src/pyfmt/printable.rs
 uv run python rust/scripts/gen_pytext_tables.py   # moteval/src/formats/pytables.rs
-uv run python rust/scripts/dump_pytext.py         # pytext/ (CPython text verdicts)
-uv run python rust/scripts/record_loader_cases.py # loader_cases/ (test_loaders.py, test_data.py)
-MOTEVAL_DATA_ROOT=/data/tracking/external \
-  uv run python rust/scripts/dump_loaders.py --jobs 8   # artifacts/rust-port/testdata/loaders_real
-uv run python rust/scripts/dump_pyfmt.py       # pyfmt.json
-uv run python rust/scripts/dump_results.py     # exports.json
-uv run python rust/scripts/dump_cli.py         # cli.json
 ```
 
 `dump_loaders.py` writes the prediction files `dump_scenarios.py --real-data` scores, so
-regenerate both together.
+regenerate both together. `tests/reference_end_to_end.rs` reads both: it runs the whole
+Rust pipeline (`load_dataset`, then `evaluate` on `loaders_real/<case>/pred`) on all
+nine benchmarks and checks every combined field against
+`tests/fixtures/reference_benchmarks.json` and every per-sequence score against Python.
+
+`rust/scripts/bench_cli.py` times the reference CLI, the Rust-backed Python CLI, and the
+Rust binary on four benchmarks, after checking that their JSON outputs are byte-identical
+(`docs/rust-port.md` has the numbers).
 
 `moteval-py` builds the extension `moteval._moteval` (`pyproject.toml` uses maturin):
-`mise run install` (or any `uv run`) rebuilds it after a Rust change, and
-`tests/test_bindings.py` checks it against the Python code. Build a wheel with
-`uvx maturin build --release --locked`.
+`mise run install` (or any `uv run`) rebuilds it (release profile) after a Rust change,
+and the Python suite (`mise run test`, `mise run test-real`) runs through it. Build a
+wheel with `uvx maturin build --release --locked`.
 
-## Rules for every package
+## Rules
 
 - Bit-identical results. Compare `f64::to_bits` (any NaN equals any NaN); never a
   tolerance. Load the `moteval-float-parity` skill before writing numeric code.
