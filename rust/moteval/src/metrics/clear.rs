@@ -387,13 +387,12 @@ mod tests {
             res.insert("CLR_FP", Value::Float(fp));
             res.insert("IDSW", Value::Float(idsw));
             compute_final_fields(&mut res);
+            let with_svml = (tp - fp - crate::numeric::log10_svml(idsw)) / tp;
+            assert_eq!(with_svml.to_bits(), svml_bits, "SVML kernel, IDSW={idsw}");
             let with_libm = (tp - fp - idsw.log10()) / tp;
-            assert_ne!(
-                with_libm.to_bits(),
-                svml_bits,
-                "this case must tell libm from SVML"
-            );
             let want = if crate::numeric::numpy_uses_svml() {
+                // glibc's log10 gives other bits here, so the case tells the two apart.
+                assert_ne!(with_libm.to_bits(), svml_bits, "glibc, IDSW={idsw}");
                 svml_bits
             } else {
                 with_libm.to_bits()
