@@ -49,10 +49,12 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
   `ValueError` before scoring when a metric's `Metric.geometry` (boxes or masks) does not
   match a sequence.
 - `scripts/download_benchmarks.py` — dev-only benchmark downloader (`list/status/download`)
+- `scripts/reference_results.py` — scores the nine benchmarks with seeded predictions; writes
+  per-sequence and combined JSON and the reference fixture
 - `tests/` — flat suite (test_metrics.py, test_parity.py, test_parity_real.py, test_data.py,
-  test_loaders.py, test_loaders_real.py, test_masks.py, test_cli.py, test_download.py),
+  test_loaders.py, test_loaders_real.py, test_reference_real.py, test_masks.py, test_cli.py, test_download.py),
   `tests/fixtures/*.json`
-  (frozen TrackEval oracle numbers), `tests/scenarios.py` (shared scenario definitions),
+  (frozen TrackEval oracle numbers, except `reference_benchmarks.json`), `tests/scenarios.py` (shared scenario definitions),
   `tests/perturb.py` (seeded perturbed predictions), `tests/rle.py` (RLE encoding for mask
   fixtures), `tests/conftest.py` (in-memory toy dataset and a two-class dataset, with
   `write_perfect_predictions` and `write_two_class_predictions` to write their prediction
@@ -86,6 +88,14 @@ installs the git hooks only in the main checkout, because a worktree shares `.gi
   so the class-combination entries score one single-class view per class
   (`tests.scenarios.class_views`). The box entry treats a scenario's sequences as
   classes. The mask entry splits one sequence by track id (`MOTS_MULTI_CLASS_TRACKS`).
+- `tests/fixtures/reference_benchmarks.json` is not an oracle fixture. It freezes moteval's
+  own combined results (every applicable metric, floats exact) on all nine local
+  benchmarks and each split with ground truth, scored against seeded `tests/perturb.py`
+  predictions. The Rust port is checked against it, so it changes only when a metric
+  changes on purpose. Never hand-edit it. Regenerate with
+  `MOTEVAL_DATA_ROOT=<root> uv run python scripts/reference_results.py --out-dir artifacts/reference --reference-fixture tests/fixtures/reference_benchmarks.json`;
+  `tests/test_reference_real.py` (`real_data`, bit for bit, `np.array_equal` with
+  `equal_nan`) checks it, and skips loudly when a dataset is absent.
 - `data/benchmarks` is a symlink to external storage holding one dir per dataset.
   `moteval.benchmarks.default_data_root()` owns the data-root rule: `MOTEVAL_DATA_ROOT`
   if set (an empty value raises), else `data/benchmarks` relative to the working

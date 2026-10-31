@@ -77,18 +77,18 @@ def _group_tracks(
     ids, so no oracle exists for that key choice.
     """
     frames: list[dict[int, np.ndarray]] = [{} for _ in range(num_ids)]
-    conf_sums = np.zeros(num_ids) if confidences_per_frame is not None else None
+    confidences: list[dict[int, float]] = [{} for _ in range(num_ids)]
     for t, ids in enumerate(ids_per_frame):
         boxes = boxes_per_frame[t]
         for i, track_id in enumerate(ids):
             frames[track_id][t] = boxes[i]
-            if conf_sums is not None and confidences_per_frame is not None:
-                conf_sums[track_id] += confidences_per_frame[t][i]
+            if confidences_per_frame is not None:
+                confidences[track_id][t] = confidences_per_frame[t][i]
     lengths = [len(f) for f in frames]
     areas = [float(np.mean([box[2] * box[3] for box in f.values()])) if f else 0.0 for f in frames]
     scores = None
-    if conf_sums is not None:
-        scores = [conf_sums[i] / lengths[i] if lengths[i] else 0.0 for i in range(num_ids)]
+    if confidences_per_frame is not None:
+        scores = [float(np.mean(list(c.values()))) if c else 0.0 for c in confidences]
     return frames, lengths, areas, scores
 
 

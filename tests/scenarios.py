@@ -549,6 +549,26 @@ def build_mots_scenarios() -> tuple[Scenario, ...]:
     seq_b_gt = [_mask_row(f, 7, _lane_mask(0, 5 * f)) for f in (1, 2, 3, 4)]
     seq_b_pred = [_mask_row(f, 900, _lane_mask(0, 5 * f + 2)) for f in (1, 2)]  # partial, jittered
 
+    # Eight sequences with 1-3 tracks each, jittered by a different amount per sequence, so
+    # the combined J&F means add eight unequal float products: a compensated sum and
+    # upstream's plain left-to-right sum round differently.
+    many_sequences = []
+    for i in range(8):
+        seq_frames = 4 + i
+        tracks = 1 + i % 3
+        many_gt = [
+            _mask_row(f, lane + 1, _lane_mask(lane, 3 * f + 2 * lane))
+            for f in range(1, seq_frames + 1)
+            for lane in range(tracks)
+        ]
+        many_pred = [
+            _mask_row(f, 100 + lane, _lane_mask(lane, 3 * f + 2 * lane + (f * (i + 1) + lane) % 5))
+            for f in range(1, seq_frames + 1)
+            for lane in range(tracks)
+            if (f + lane + i) % 4
+        ]
+        many_sequences.append((f"SEQ-MANY-{i}", seq_frames, many_gt, many_pred))
+
     # J&F casts its decay-bin edges to uint8 (upstream quirk), so they wrap past 255
     # frames. At 350 frames the edges (0-based timesteps) [0, 87, 175, 262, 349] wrap to
     # [0, 87, 175, 6, 93]: the last bin covers timesteps 6-93, not 262-349. (At 257-341
@@ -575,6 +595,7 @@ def build_mots_scenarios() -> tuple[Scenario, ...]:
             "jf_multi_sequence_combine",
             (("SEQ-COMB-A", 3, seq_a_gt, seq_a_pred), ("SEQ-COMB-B", 4, seq_b_gt, seq_b_pred)),
         ),
+        Scenario("jf_many_sequence_combine", tuple(many_sequences)),
         Scenario("jf_decay_bins_wrap", (("SEQ-JF-LONG", long_frames, long_gt, long_pred),)),
     )
 
@@ -760,6 +781,34 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
             {
                 1: {t: ([10, 10, 20, 20], 0.5) for t in range(3)},  # low score, low id
                 9: {t: ([10, 10, 20, 20], 0.9) for t in range(3)},  # high score, high id
+            },
+        )
+    },
+    # Both pred tracks hold the same twelve confidences in a different order, so their
+    # mean score is mathematically equal. `np.mean` (pairwise from eight values up) gives
+    # 0.7687499999999999 for track 1 and 0.7687500000000002 for track 9, so track 9 sorts
+    # first and claims the gt track at the IoU thresholds its shifted box reaches. A
+    # sequential mean gives both 0.7687499999999999, so track 1 keeps first place and the
+    # match order, and with it the precision curve, changes.
+    "dt_track_score_pairwise_mean": {
+        "seq": (
+            12,
+            {5: {t: [10, 10, 20, 20] for t in range(12)}},
+            {
+                1: {
+                    t: ([10, 10, 20, 20], c)
+                    for t, c in enumerate(
+                        [0.73, 0.531, 0.821, 0.926, 0.796, 0.63, 0.92, 0.755, 0.755, 0.877]
+                        + [0.574, 0.91]
+                    )
+                },
+                9: {
+                    t: ([14, 10, 20, 20], c)
+                    for t, c in enumerate(
+                        [0.574, 0.821, 0.531, 0.755, 0.796, 0.755, 0.877, 0.63, 0.73, 0.92]
+                        + [0.91, 0.926]
+                    )
+                },
             },
         )
     },
