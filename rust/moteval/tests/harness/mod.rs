@@ -128,28 +128,16 @@ pub fn decode_metric_scores(json: &Json) -> Vec<(String, Scores)> {
         .collect()
 }
 
-/// A value's shape as `dump_scenarios.encode_value` writes it: `np.ascontiguousarray`
-/// returns at least one dimension, so a scalar is dumped with shape `[1]`.
-pub fn dumped_shape(value: &Value) -> Vec<usize> {
-    match value.shape() {
-        shape if shape.is_empty() => vec![1],
-        shape => shape,
-    }
-}
-
-/// Assert that every field of `expected` is in `got` with the same shape (as the dump
-/// writes it, so a scalar equals a 1-element array) and the same bits (any NaN equals any
-/// NaN). `got` may hold more fields (private state, or fields the oracle does not freeze).
+/// Assert that every field of `expected` is in `got` with the same shape and the same
+/// bits (any NaN equals any NaN). The shape tells a scalar (`[]`, a Python `float`) from a
+/// one-element array (`[1]`). `got` may hold more fields (private state, or fields the
+/// oracle does not freeze).
 pub fn assert_scores_bit_equal(expected: &Scores, got: &Scores, label: &str) {
     for (field, want) in expected.iter() {
         let have = got
             .get(field)
             .unwrap_or_else(|| panic!("{label}.{field} missing from the Rust scores"));
-        assert_eq!(
-            dumped_shape(have),
-            dumped_shape(want),
-            "{label}.{field}: shape differs"
-        );
+        assert_eq!(have.shape(), want.shape(), "{label}.{field}: shape differs");
         assert_f64s_bit_equal(
             want.as_slice(),
             have.as_slice(),

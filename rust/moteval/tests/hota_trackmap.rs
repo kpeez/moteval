@@ -5,13 +5,8 @@
 //! also cover the per-sequence private state (`_dt_matches_*`, `_num_dt_*`), every
 //! combiner's output, TrackMAP's det-averaged combiner (the one intended divergence from
 //! TrackEval, so the oracle does not freeze it), and the dict order, which is the export
-//! order.
-//!
-//! `rust/scripts/dump_scenarios.py` (`encode_value`) stores a Python scalar with shape
-//! `[1]`, not `[]`: `np.ascontiguousarray` turns a 0-d array into a 1-d one. The dumped
-//! data cannot tell a scalar from a one-element array, so these tests encode the Rust
-//! scores the same way before they compare them ([`as_dumped`]), and check separately
-//! that each field has the kind Python gives it ([`assert_value_kinds`]).
+//! order. The dumped shapes tell a Python scalar (`[]`) from a one-element array (`[1]`),
+//! so the comparison also checks that each field has the kind Python gives it.
 
 mod harness;
 
@@ -19,45 +14,9 @@ use harness::{
     Case, CaseView, assert_field_order, assert_scores_bit_equal, load_real_case,
     load_synthetic_case, metric_by_name, real_case_names, real_testdata_dir, synthetic_case_names,
 };
-use moteval::metrics::{Metric, Scores, Value};
+use moteval::metrics::{Metric, Scores};
 
 const PORTED: [&str; 2] = ["HOTA", "TrackMAP"];
-
-/// The fields each metric holds as a Python `float` (every other field is an array).
-fn python_scalar_fields(metric: &str) -> &'static [&'static str] {
-    match metric {
-        "HOTA" => &["HOTA(0)", "LocA(0)", "HOTALocA(0)"],
-        "TrackMAP" => &[],
-        other => panic!("not a ported metric: {other}"),
-    }
-}
-
-/// Assert each field is a `Float` exactly when Python holds it as a `float`.
-fn assert_value_kinds(metric: &str, scores: &Scores, label: &str) {
-    let scalars = python_scalar_fields(metric);
-    for (field, value) in scores.iter() {
-        let is_float = matches!(value, Value::Float(_));
-        assert_eq!(
-            is_float,
-            scalars.contains(&field),
-            "{label}.{field}: Rust value kind {value:?} differs from Python's"
-        );
-    }
-}
-
-/// `scores` as `dump_scenarios.encode_value` stores them: a scalar becomes a one-element
-/// array.
-fn as_dumped(scores: &Scores) -> Scores {
-    let mut out = Scores::new();
-    for (field, value) in scores.iter() {
-        let value = match value {
-            Value::Float(x) => Value::Array(vec![*x]),
-            other => other.clone(),
-        };
-        out.insert(field, value);
-    }
-    out
-}
 
 fn find<'a>(by_metric: &'a [(String, Scores)], metric: &str) -> Option<&'a Scores> {
     by_metric
@@ -67,12 +26,10 @@ fn find<'a>(by_metric: &'a [(String, Scores)], metric: &str) -> Option<&'a Score
 }
 
 /// Assert Rust's `got` equals Python's dumped `want`: the same fields in the same order,
-/// every value bit for bit, and each value of the kind Python gives it.
-fn assert_same_scores(metric: &str, want: &Scores, got: &Scores, label: &str) {
-    assert_value_kinds(metric, got, label);
-    let got = as_dumped(got);
-    assert_field_order(want, &got, label);
-    assert_scores_bit_equal(want, &got, label);
+/// every value bit for bit and of the same shape.
+fn assert_same_scores(want: &Scores, got: &Scores, label: &str) {
+    assert_field_order(want, got, label);
+    assert_scores_bit_equal(want, got, label);
 }
 
 /// Score one view's sequences and combine them, as `evaluate` does.
@@ -137,11 +94,11 @@ fn check_case(case: &Case, metric: &dyn Metric, raw_per_sequence: bool, tally: &
             } else {
                 got.declared(metric.fields())
             };
-            assert_same_scores(name, want, &got, &format!("{label} {key}"));
+            assert_same_scores(want, &got, &format!("{label} {key}"));
             tally.python_score_sets += 1;
         }
         let want = find(&view.moteval_combined, name).expect("Python combined scores");
-        assert_same_scores(name, want, &view_combined, &format!("{label} combined"));
+        assert_same_scores(want, &view_combined, &format!("{label} combined"));
         tally.python_score_sets += 1;
         declared_per_sequence.extend(per_sequence.iter().map(|s| s.declared(metric.fields())));
         combined.push(view_combined);
@@ -185,12 +142,11 @@ fn check_case(case: &Case, metric: &dyn Metric, raw_per_sequence: bool, tally: &
     for (section, got, python) in &results {
         if *section != "combined" {
             let want = find(python, name).expect("Python class combiner scores");
-            assert_same_scores(name, want, got, &format!("{label} {section}"));
+            assert_same_scores(want, got, &format!("{label} {section}"));
             tally.python_score_sets += 1;
         }
         if let Some(want) = case.oracle_section(section).and_then(|s| find(s, name)) {
-            let got = as_dumped(got);
-            assert_scores_bit_equal(want, &got, &format!("{label} oracle {section}"));
+            assert_scores_bit_equal(want, got, &format!("{label} oracle {section}"));
             tally.oracle_fields += want.len();
         }
     }
