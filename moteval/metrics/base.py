@@ -6,8 +6,10 @@ per-class results (class-averaged and detection-averaged). Values are field->flo
 or field->19-alpha-array dicts so combining is generic.
 """
 
+import functools
+import operator
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Literal
 
 import numpy as np
@@ -15,6 +17,15 @@ import numpy as np
 from moteval.data.model import SequenceData
 
 Scores = dict[str, float | np.ndarray]
+
+
+def _plain_sum(values: Iterable[float | np.ndarray]) -> float | np.ndarray:
+    """Add ``values`` left to right from 0, as upstream's ``sum`` over ``np.float64`` does.
+
+    Builtin ``sum`` over exact Python floats is compensated on Python 3.12+, so it would round
+    differently from upstream for fields that a metric holds as plain floats.
+    """
+    return functools.reduce(operator.add, values, 0)
 
 
 class Metric(ABC):
@@ -50,7 +61,7 @@ class Metric(ABC):
     def combine_classes_det_averaged(self, all_res: dict[str, Scores]) -> Scores: ...
 
     def _combine_sum(self, all_res: dict[str, Scores], field: str) -> float | np.ndarray:
-        return sum(res[field] for res in all_res.values())
+        return _plain_sum(res[field] for res in all_res.values())
 
     def _combine_weighted_av(
         self,
@@ -59,5 +70,5 @@ class Metric(ABC):
         comb_res: Mapping[str, float | np.ndarray],
         weight_field: str,
     ) -> float | np.ndarray:
-        weighted_sum = sum(res[field] * res[weight_field] for res in all_res.values())
+        weighted_sum = _plain_sum(res[field] * res[weight_field] for res in all_res.values())
         return weighted_sum / np.maximum(1.0, comb_res[weight_field])
