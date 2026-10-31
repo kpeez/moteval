@@ -40,8 +40,9 @@ NaN.
 
 ## Loader cases
 
-`record_loader_cases.py` runs `tests/test_loaders.py` and `tests/test_data.py` with a
-recording plugin. Each file is one test: `{"test": nodeid, "snapshots": {id: entries},
+`record_loader_cases.py` runs the `py-reference` tag's `tests/test_loaders.py` and
+`tests/test_data.py` (extracted with `git archive`; this checkout's versions call Rust)
+under the reference venv, with a recording plugin. Each file is one test: `{"test": nodeid, "snapshots": {id: entries},
 "cases": [...]}`. A case is one call into a ported function:
 
 - `kind`: the Python function (`read_mot`, `load_bft`, `build_sequence_data`, ...), or

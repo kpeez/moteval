@@ -86,7 +86,9 @@ Behavior (all non-numeric):
   sequences to score") before reading any file. Python gave integer zeros (CLEAR,
   Identity, Count), an `IndexError` (HOTA), or numpy's "need at least one array to
   concatenate" (TrackMAP). Called directly with no results, a combiner raises
-  `ValueError` ("HOTA: no results to combine").
+  `ValueError` ("HOTA: no results to combine"), and called with a score dict that lacks
+  a field the combiner reads, it raises `pyo3_runtime.PanicException`, which derives
+  from `BaseException`, not `Exception` (Python raised `KeyError`).
 - Scores are Python `float` or float64 numpy arrays. Some CLEAR fields were `np.float64`
   and the empty-dataset zeros were `int`; the values are the same.
 - Exceptions keep their class and text, with three exceptions: a file error is `OSError`
