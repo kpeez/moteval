@@ -282,10 +282,13 @@ fn compute_j(
             }
             // j[..., t] = ious broadcasts (1, 0) into (P, G).
             if num_gt_ids != 0 {
-                return Err(MetricError::Python(format!(
-                    "could not broadcast input array from shape (1,0) into shape \
-                     ({num_pred_ids},{num_gt_ids})"
-                )));
+                return Err(MetricError::Python {
+                    exception: "ValueError",
+                    message: format!(
+                        "could not broadcast input array from shape (1,0) into shape \
+                         ({num_pred_ids},{num_gt_ids})"
+                    ),
+                });
             }
             continue;
         }
@@ -295,10 +298,13 @@ fn compute_j(
         if (num_pred, num_gt) != (num_pred_ids, num_gt_ids) {
             // Padding makes every frame (P, G); a raw frame with both sides present only
             // occurs when padding ran, so this is unreachable.
-            return Err(MetricError::Python(format!(
-                "could not broadcast input array from shape ({num_pred},{num_gt}) into shape \
-                 ({num_pred_ids},{num_gt_ids})"
-            )));
+            return Err(MetricError::Python {
+                exception: "ValueError",
+                message: format!(
+                    "could not broadcast input array from shape ({num_pred},{num_gt}) into \
+                     shape ({num_pred_ids},{num_gt_ids})"
+                ),
+            });
         }
         for p in 0..num_pred {
             for g in 0..num_gt {
@@ -317,10 +323,13 @@ fn compute_j(
 
 /// numpy's `IndexError` for a boolean index whose shape does not match the array.
 fn bool_index_error(axis: usize, size: usize, bool_size: usize) -> MetricError {
-    MetricError::Python(format!(
-        "boolean index did not match indexed array along axis {axis}; size of axis is \
-         {size} but size of corresponding boolean axis is {bool_size}"
-    ))
+    MetricError::Python {
+        exception: "IndexError",
+        message: format!(
+            "boolean index did not match indexed array along axis {axis}; size of axis is \
+             {size} but size of corresponding boolean axis is {bool_size}"
+        ),
+    }
 }
 
 /// `_compute_f`: per-frame boundary F between one prediction track and one GT track.

@@ -287,6 +287,7 @@ def dump_jf() -> dict:
                 scores = metric.eval_sequence(data)
         except (IndexError, ValueError, ZeroDivisionError) as err:
             record["error"] = str(err)
+            record["error_type"] = type(err).__name__
         else:
             record["scores"] = scores_json(scores)
             scored.append((i, scores))

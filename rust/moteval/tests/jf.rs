@@ -168,6 +168,11 @@ fn random_sequences_match_python_jf_scores_errors_and_combiners() {
         match (record.get("error"), got) {
             (Some(want), Err(err)) => {
                 assert_eq!(err.to_string(), as_str(want), "seq{index}: error text");
+                assert_eq!(
+                    err.python_exception(),
+                    as_str(&record["error_type"]),
+                    "seq{index}: error class"
+                );
                 errors += 1;
                 scored.push(None);
             }

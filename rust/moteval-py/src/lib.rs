@@ -18,7 +18,7 @@ use std::path::PathBuf;
 
 use moteval::cli;
 use moteval::eval::{self, EvalError};
-use moteval::formats::{FormatError, MaskTrack, Track};
+use moteval::formats::{MaskTrack, Track};
 use moteval::metrics::{Clear, Count, Hota, Identity, JAndF, Metric, Scores, TrackMap, Value};
 use moteval::model::{
     FrameConvention, GtSequence, MOTDataset, MaskGtSequence, Matrix, Protocol, Sequence,
@@ -26,7 +26,7 @@ use moteval::model::{
 use moteval::results::{self, ClassResult, EvaluationResult, MetricScores};
 use numpy::prelude::*;
 use numpy::{PyArray1, PyReadonlyArrayDyn};
-use pyo3::exceptions::{PyOSError, PyValueError};
+use pyo3::exceptions::{PyIndexError, PyOSError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyString};
 
@@ -287,9 +287,12 @@ fn result_to_py<'py>(py: Python<'py>, result: &EvaluationResult) -> PyResult<Bou
 }
 
 fn eval_error_to_py(err: EvalError) -> PyErr {
-    match &err {
-        EvalError::Format(FormatError::Io(_)) => PyOSError::new_err(err.to_string()),
-        _ => PyValueError::new_err(err.to_string()),
+    let message = err.to_string();
+    match err.python_exception() {
+        "OSError" => PyOSError::new_err(message),
+        "TypeError" => PyTypeError::new_err(message),
+        "IndexError" => PyIndexError::new_err(message),
+        _ => PyValueError::new_err(message),
     }
 }
 

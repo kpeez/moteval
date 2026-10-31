@@ -20,8 +20,7 @@ use std::io::Write;
 use std::path::Path;
 
 use crate::benchmarks::{self, BenchmarkError};
-use crate::eval::{EvalError, evaluate};
-use crate::formats::FormatError;
+use crate::eval::{EvalError, evaluate, is_value_error};
 use crate::metrics::{Clear, Count, Hota, Identity, JAndF, Metric, TrackMap};
 use crate::model::MOTDataset;
 use crate::pyfmt::{self, repr_str};
@@ -767,23 +766,22 @@ fn resolve_metrics(raw: &str) -> Result<Vec<Box<dyn Metric>>, String> {
         .collect())
 }
 
-/// Python raises these as `OSError` (an uncaught traceback, exit 1), not `ValueError`.
-fn is_os_error(err: &FormatError) -> bool {
-    matches!(err, FormatError::Io(_))
+/// `_run` catches `ValueError` (and its subclasses) only; any other exception class is an
+/// uncaught traceback, exit 1.
+fn failure(exception: &str, message: String) -> Failure {
+    if is_value_error(exception) {
+        Failure::Usage(message)
+    } else {
+        Failure::Uncaught(message)
+    }
 }
 
 fn benchmark_failure(err: BenchmarkError) -> Failure {
-    match &err {
-        BenchmarkError::Format(format) if is_os_error(format) => Failure::Uncaught(err.to_string()),
-        _ => Failure::Usage(err.to_string()),
-    }
+    failure(err.python_exception(), err.to_string())
 }
 
 fn eval_failure(err: EvalError) -> Failure {
-    match &err {
-        EvalError::Format(format) if is_os_error(format) => Failure::Uncaught(err.to_string()),
-        _ => Failure::Usage(err.to_string()),
-    }
+    failure(err.python_exception(), err.to_string())
 }
 
 /// `_load`: a built-in benchmark by name, or `--gt` in the `--format` layout.

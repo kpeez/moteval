@@ -14,7 +14,10 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use crate::convert::{ConvertError, build_mask_sequence_data, build_sequence_data};
-use crate::formats::{FormatError, MaskTrack, Track, read_mot, read_mots};
+use crate::formats::pytext::py_join;
+use crate::formats::{
+    FormatError, MaskTrack, Track, missing_prediction_files, read_mot, read_mots,
+};
 use crate::metrics::{Metric, MetricError, Scores};
 use crate::model::{MOTDataset, Sequence, SequenceData};
 use crate::pyfmt;
@@ -111,6 +114,30 @@ impl fmt::Display for EvalError {
 
 impl std::error::Error for EvalError {}
 
+impl EvalError {
+    /// The Python exception class this error stands for (`"OSError"`, `"KeyError"`,
+    /// `"ValueError"`, ...); `"Unsupported"` where Python accepts the input.
+    pub fn python_exception(&self) -> &'static str {
+        match self {
+            Self::Format(err) => err.python_exception(),
+            Self::Convert(err) => err.python_exception(),
+            Self::Metric(err) => err.python_exception(),
+            _ => "ValueError",
+        }
+    }
+}
+
+/// Whether Python's `except ValueError` catches `exception` (a `python_exception()`
+/// class name). `UnicodeDecodeError` and `json.JSONDecodeError` subclass `ValueError`.
+/// `"Unsupported"` (an input Rust rejects and Python accepts) counts as caught, so it is
+/// reported as a usage error.
+pub fn is_value_error(exception: &str) -> bool {
+    matches!(
+        exception,
+        "ValueError" | "UnicodeDecodeError" | "JSONDecodeError" | "Unsupported"
+    )
+}
+
 impl From<FormatError> for EvalError {
     fn from(err: FormatError) -> Self {
         Self::Format(err)
@@ -194,12 +221,7 @@ fn preflight(
         }
     }
 
-    let missing: Vec<String> = dataset
-        .sequences
-        .iter()
-        .filter(|seq| !prediction_file(pred_dir, seq.name()).is_file())
-        .map(|seq| seq.name().to_string())
-        .collect();
+    let missing = missing_prediction_files(pred_dir, dataset.sequences.iter().map(Sequence::name));
     if !missing.is_empty() {
         return Err(EvalError::MissingPredictions {
             dir: shown_dir.to_string(),
@@ -211,7 +233,7 @@ fn preflight(
 
 /// `pred_dir / f"{name}.txt"`.
 fn prediction_file(pred_dir: &Path, name: &str) -> PathBuf {
-    pred_dir.join(format!("{name}.txt"))
+    py_join(pred_dir, format!("{name}.txt"))
 }
 
 /// `evaluate(dataset, predictions, metrics)`: score `dataset` against the `<seq>.txt`
