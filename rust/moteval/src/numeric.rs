@@ -22,6 +22,7 @@
 //! | `np.maximum`, `np.minimum` | [`maximum`], [`minimum`] |
 //! | builtin `max(a, b)`, `min(a, b)` | [`py_max`], [`py_min`] |
 //! | `np.finfo(float).eps`, `np.spacing(1)` | [`EPS`] |
+//! | `np.log10(x)` for finite `x > 0` | [`log10`] |
 
 use std::fmt;
 
@@ -320,6 +321,178 @@ pub fn py_max(a: f64, b: f64) -> f64 {
 pub fn py_min(a: f64, b: f64) -> f64 {
     if b < a { b } else { a }
 }
+
+/// `np.log10(x)` for a finite `x > 0`, as numpy 2.5.1 computes it on this host.
+///
+/// numpy's Linux x86-64 wheels compute float64 `log10` with Intel SVML
+/// (`__svml_log108_ha`) when the CPU has the `X86_V4` features (AVX-512 F, CD, BW, DQ,
+/// and VL), and with the platform libm otherwise (`loops_umath_fp.dispatch.c.src`). The
+/// two differ in the last bit for about 1.4% of integers, so this function makes the same
+/// choice at run time: [`log10_svml`] where numpy uses SVML, `f64::log10` (the same libm
+/// numpy calls) everywhere else. numpy's `NPY_DISABLE_CPU_FEATURES` setting can move
+/// numpy off SVML; this function does not read it.
+pub fn log10(x: f64) -> f64 {
+    if numpy_uses_svml() {
+        log10_svml(x)
+    } else {
+        x.log10()
+    }
+}
+
+/// Whether numpy 2.5.1 computes float64 `log10` with SVML on this host.
+pub fn numpy_uses_svml() -> bool {
+    #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
+    {
+        std::arch::is_x86_feature_detected!("avx512f")
+            && std::arch::is_x86_feature_detected!("avx512cd")
+            && std::arch::is_x86_feature_detected!("avx512bw")
+            && std::arch::is_x86_feature_detected!("avx512dq")
+            && std::arch::is_x86_feature_detected!("avx512vl")
+    }
+    #[cfg(not(all(target_arch = "x86_64", target_os = "linux")))]
+    {
+        false
+    }
+}
+
+const F64_FRACTION: u64 = (1 << 52) - 1;
+const F64_ONE: u64 = 0x3FF0_0000_0000_0000;
+
+/// numpy 2.5.1's `__svml_log108_ha` (`svml_z0_log10_d_ha.s`) for one finite `x > 0`, in
+/// plain scalar code on any host. Each vector instruction maps to one operation here:
+/// every `{rn-sae}` FMA is one `mul_add` (one rounding), and the constants are the bits
+/// of `__svml_dlog10_ha_data_internal_avx512`. Zero, negative, infinite, and NaN inputs
+/// take SVML's separate special-case path, which is not ported.
+///
+/// The kernel computes `log10(x) = k*log10(2) - log10(rcp) + log10(1 + R)`: `k` and the
+/// mantissa `m` in `[1, 2)` from `vgetexppd`/`vgetmantpd`, `rcp` = `vrcp14pd(m)` rounded
+/// to a multiple of 1/32 (`vrndscalepd $0x58`), and `R = rcp*m - 1`.
+pub fn log10_svml(x: f64) -> f64 {
+    debug_assert!(x > 0.0 && x.is_finite(), "log10_svml takes a finite x > 0");
+    // vgetmantpd $8 and vgetexppd: a subnormal is first scaled into the normal range.
+    let (bits, scale) = if x.to_bits() >> 52 == 0 {
+        ((x * f64::from_bits(0x4350_0000_0000_0000)).to_bits(), -54) // 2**54
+    } else {
+        (x.to_bits(), 0)
+    };
+    let mantissa = f64::from_bits((bits & F64_FRACTION) | F64_ONE);
+    let exponent = ((bits >> 52) as i64 - 1023 + scale) as f64;
+
+    let rcp = (rcp14(mantissa) * 32.0).round_ties_even() / 32.0;
+    let r = rcp.mul_add(mantissa, -1.0);
+    // Add 1 to the exponent when rcp < 0.75; the table index is rcp's top 4 fraction bits.
+    let k = if rcp < 0.75 { exponent + 1.0 } else { exponent };
+    let index = ((rcp.to_bits() >> 48) & 15) as usize;
+    let table_hi = f64::from_bits(SVML_LOG10_TABLE_HI[index]);
+    let table_lo = f64::from_bits(SVML_LOG10_TABLE_LO[index]);
+    let c = f64::from_bits;
+    let log10_2_hi = c(0x3fd3_4413_509f_0000);
+    let log10_2_lo = c(0x3d7e_7fbc_c47c_4acd);
+    let c0_hi = c(0x3fdb_cb7b_1526_e50e); // 1/ln(10), high part
+    let c0_lo = c(0x3c69_a5fd_aaf1_1825);
+
+    let p1 = c(0x3faf_c3f6_f38b_58a2).mul_add(r, c(0xbfb2_87a6_3464_dc80));
+    let p0 = c(0x3fa8_c2d8_2848_0370).mul_add(r, c(0xbfab_d80d_9602_9814));
+    let r2 = r * r;
+    let r4 = r2 * r2;
+    let q = r2.mul_add(p0, p1);
+    let k_hi = log10_2_hi.mul_add(k, table_hi);
+    let k_lo = log10_2_lo.mul_add(k, table_lo);
+    let s7 = c(0x3fc2_87a7_636f_428c).mul_add(r, c(0xbfcb_cb7b_1526_e4db));
+    let s9 = c(0x3fb6_3c62_777f_27d9).mul_add(r, c(0xbfbb_cb7b_153c_06a3));
+    let head = r.mul_add(c0_hi, k_hi);
+    let s9 = r2.mul_add(s9, s7);
+    let c0r_hi = head - k_hi;
+    let poly = r4.mul_add(q, s9);
+    let poly = r.mul_add(poly, c0_lo);
+    let c0r_lo = r.mul_add(c0_hi, -c0r_hi);
+    let tail = k_lo + c0r_lo;
+    let poly = r.mul_add(poly, tail);
+    head + poly
+}
+
+/// `-log10(rcp)` for each rounded reciprocal, high part, by permute index (SVML table
+/// offsets 0 and 64).
+const SVML_LOG10_TABLE_HI: [u64; 16] = [
+    0x0000_0000_0000_0000,
+    0xbf9a_f5f9_2b00_0000,
+    0xbfaa_30a9_d60a_0000,
+    0xbfb3_1b30_55c4_0000,
+    0xbfb8_cf18_3886_0000,
+    0xbfbe_3bc1_ab0e_0000,
+    0xbfc1_b3e7_1ec9_8000,
+    0xbfc4_2c7e_7fe4_0000,
+    0x3fbf_fbfc_2bbc_0000,
+    0x3fbb_721c_d171_0000,
+    0x3fb7_15d0_ce36_0000,
+    0x3fb2_e3a7_40b8_0000,
+    0x3fad_b11e_d766_0000,
+    0x3fa5_e396_6b7e_0000,
+    0x3f9c_b38f_ccd8_0000,
+    0x3f8c_3d08_3778_0000,
+];
+
+/// The low parts of [`SVML_LOG10_TABLE_HI`] (SVML table offsets 128 and 192).
+const SVML_LOG10_TABLE_LO: [u64; 16] = [
+    0x0000_0000_0000_0000,
+    0xbd4c_c1f4_dbc1_4db5,
+    0x3d20_163d_7e67_d282,
+    0xbd5c_4600_6d08_2e6d,
+    0xbd52_0326_ca2c_7e5f,
+    0xbd39_fe3d_562a_53f0,
+    0x3d58_42a2_2266_6db0,
+    0x3d1f_f1d2_2abd_8abe,
+    0x3d5e_00dd_60df_12c3,
+    0x3d55_f8a5_7d98_2e77,
+    0x3d5e_beeb_67bf_155a,
+    0xbd5f_fc5a_ef53_f2ed,
+    0x3d55_7e86_5b87_8377,
+    0x3d52_52a3_7739_a5f7,
+    0x3d47_fb6d_2d65_28c7,
+    0x3d23_1027_2fe1_7537,
+];
+
+/// `vrcp14pd` for `m` in `[1, 2)`: `RCP14D` from Intel's reference implementation
+/// (`RECIP14.c`, Intel Corporation 2015, BSD-3-Clause), which the instruction reference
+/// calls numerically exact. The result depends only on the top 16 fraction bits of `m`.
+/// On the AMD Zen 5 host that froze the reference, this equals the hardware instruction
+/// for every top-16-bit input.
+fn rcp14(m: f64) -> f64 {
+    const CLEAR_LOW_36_BITS: u64 = 0xFFFF_FFF0_0000_0000;
+    const EXPONENT_DELTA_18: u64 = 0x0120_0000_0000_0000; // divides by 2**18
+    let bits = m.to_bits();
+    if bits & F64_FRACTION == 0 {
+        return 1.0; // an exact power of two
+    }
+    let i = ((m - 1.0) * 64.0).floor() as usize;
+    let y = 1.0 + 1.0 / 128.0 + i as f64 / 64.0;
+    let x_minus_y = f64::from_bits(bits & CLEAR_LOW_36_BITS) - y; // exact
+    let a = f64::from(RCP14_COEFF[2 * i + 1]);
+    let b = 256.0 * f64::from(RCP14_COEFF[2 * i]);
+    let rcp = a - b * x_minus_y; // exact
+    f64::from_bits((rcp.to_bits() & CLEAR_LOW_36_BITS) - EXPONENT_DELTA_18)
+}
+
+/// `RCP14_Coeff` from `RECIP14.c`: `b[i]` at `2*i`, `a[i]` at `2*i + 1`.
+#[rustfmt::skip]
+const RCP14_COEFF: [u32; 128] = [
+    1009, 260119, 977, 256148, 949, 252296, 921, 248558,
+    893, 244929, 869, 241405, 843, 237981, 821, 234652,
+    797, 231416, 777, 228266, 755, 225202, 735, 222220,
+    717, 219314, 699, 216485, 681, 213727, 663, 211038,
+    647, 208417, 631, 205859, 617, 203364, 601, 200929,
+    587, 198551, 573, 196229, 561, 193960, 547, 191743,
+    535, 189576, 523, 187458, 513, 185387, 501, 183360,
+    491, 181377, 479, 179439, 469, 177540, 459, 175681,
+    451, 173860, 441, 172077, 433, 170330, 423, 168618,
+    415, 166940, 407, 165295, 399, 163682, 391, 162101,
+    385, 160550, 377, 159027, 369, 157535, 363, 156069,
+    357, 154631, 349, 153219, 343, 151832, 337, 150470,
+    331, 149133, 325, 147819, 319, 146528, 315, 145260,
+    309, 144012, 303, 142787, 299, 141582, 293, 140397,
+    289, 139232, 285, 138085, 279, 136959, 275, 135853,
+    271, 134763, 267, 133689, 263, 132631, 259, 131589,
+];
 
 #[cfg(test)]
 mod tests {

@@ -7,9 +7,10 @@
 //! dumped scores: per sequence, per view combined, class-averaged, and det-averaged,
 //! every field and its dict order.
 //!
-//! MOTAL takes `np.log10(IDSW)`; see `np_log10` in `metrics/clear.rs` for why libm
-//! `log10` is a parity risk. Every test here checks MOTAL like any other field, including
-//! cases whose `IDSW` (11, 53, 119, 174) is one where libm and numpy differ in `log10`.
+//! MOTAL takes `np.log10(IDSW)` through `numeric::log10`, which makes numpy's choice
+//! between SVML and libm. Some cases here have an `IDSW` (11, 53, 119, 174) where the two
+//! differ, but their `TP - FP` is large enough that MOTAL is the same either way.
+//! `metrics::clear::tests::motal_takes_numpy_log10` covers counts where it is not.
 
 mod harness;
 

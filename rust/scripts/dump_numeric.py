@@ -1,4 +1,4 @@
-"""Dump numpy's reductions, ranges, rounding, and moteval's box similarity as bits.
+"""Dump numpy's reductions, ranges, rounding, log10, and moteval's box similarity as bits.
 
 Writes ``rust/testdata/numeric.json`` and ``rust/testdata/box_similarity.json``, which
 ``rust/moteval/tests/numeric.rs`` and ``tests/box_similarity.rs`` check bit for bit.
@@ -11,6 +11,7 @@ Inputs come from ``testgen.py`` (seeded, regenerated in Rust); floats are stored
 import functools
 import json
 import operator
+import struct
 import sys
 import warnings
 from pathlib import Path
@@ -232,6 +233,45 @@ def plain_sums() -> list[dict]:
     return cases
 
 
+LOG10_INTEGERS = 1_000_000  # the fixture keeps a fingerprint of np.log10(1..N)
+
+
+def log10s() -> dict:
+    """``np.log10`` on finite ``x > 0``, which CLEAR's MOTAL takes of ``IDSW``.
+
+    numpy computes it with Intel SVML on an AVX-512 (``X86_V4``) Linux host and with libm
+    elsewhere; the two differ in the last bit for some integers. ``numeric::log10_svml``
+    ports the SVML kernel, so this fixture must come from the SVML path.
+    """
+    from numpy._core._multiarray_umath import (  # pyrefly: ignore[missing-import]
+        __cpu_features__,
+    )
+
+    if not (sys.platform == "linux" and __cpu_features__.get("X86_V4")):
+        sys.exit("dump the log10 fixture on a Linux host with X86_V4: numpy must use SVML")
+    xs = [float(i) for i in range(1, 1025)]
+    rng = SplitMix64(7000)
+    for _ in range(1000):  # positive normals across every binade
+        exponent = 1 + rng.below(2046)
+        xs.append(struct.unpack("<d", struct.pack("<Q", (exponent << 52) | (rng.next() >> 12)))[0])
+    # Mantissas within 2**-14 of 64/d for odd d in 33..63: where vrcp14pd, rounded to a
+    # multiple of 1/32, switches between two values.
+    for d in range(33, 64, 2):
+        for j in range(-24, 25):
+            m = 64 / d * (1 + j * 2.0**-17)
+            xs.extend((m, m * 2.0**10, m * 2.0**-3))
+    xs.extend((5e-324, 2.2250738585072009e-308, 1e-310, 2.2250738585072014e-308, 0.1, 1e-300))
+    xs.extend((10.0, 1e22, 2.0**52, 2.0**1023, 1.7976931348623157e308, 1.0 + 2.0**-52))
+    ints = np.arange(1, LOG10_INTEGERS + 1, dtype=np.float64)
+    return {
+        "kernel": "svml",
+        "x": [f64_bits(x) for x in xs],
+        "out": bits(np.log10(np.array(xs, dtype=np.float64))),
+        "integers": LOG10_INTEGERS,
+        "integers_fnv": fnv1a64(np.log10(ints).tolist()),
+    }
+
+
 def box_cases() -> list[dict]:
     cases = []
     for case in range(400):
@@ -270,6 +310,7 @@ def main() -> None:
         "linspace": linspaces(),
         "round": roundings(),
         "extrema": extrema(),
+        "log10": log10s(),
     }
     (OUT_DIR / "numeric.json").write_text(json.dumps(numeric, separators=(",", ":")) + "\n")
     boxes = {"numpy": np.__version__, "cases": box_cases()}

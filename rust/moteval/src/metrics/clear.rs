@@ -9,7 +9,7 @@
 use crate::lsap::linear_sum_assignment;
 use crate::metrics::{Metric, MetricError, Scores, Value, combine_sum};
 use crate::model::SequenceData;
-use crate::numeric::{EPS, mean, plain_sum, py_max, sum};
+use crate::numeric::{EPS, log10, mean, plain_sum, py_max, sum};
 
 /// The public fields, in the Python `fields` order (`_FLOAT_FIELDS + _INTEGER_FIELDS`).
 pub const FIELDS: &[&str] = &[
@@ -88,19 +88,6 @@ const SUMMED_FIELDS: &[&str] = &[
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Clear;
 
-/// `np.log10(x)` for MOTAL's positive integer `IDSW`.
-///
-/// Parity risk: this calls the platform libm (`f64::log10`, glibc on Linux). numpy 2.5.1
-/// on an AVX512 host computes `np.log10` with its own SIMD kernel, which differs from
-/// glibc in the last bit for about 1.4% of integers (the first are 11, 40, 43, 53, 85).
-/// MOTAL is `(TP - FP - log10(IDSW)) / max(1, TP + FN)`, so the subtraction rounds the
-/// difference away unless `TP - FP` is small; MOTAL can then differ in its last bit.
-/// No fixture, seeded case, or reference benchmark reaches that case. Replace this one
-/// function if the port settles on a different reference `log10`.
-fn np_log10(x: f64) -> f64 {
-    x.log10()
-}
-
 /// `numpy` fancy-index `counts[ids] += 1`: each distinct id gains one, however often it
 /// repeats in `ids`. `stamp` remembers the frame that last touched each id.
 fn add_once_per_frame(counts: &mut [f64], stamp: &mut [usize], ids: &[usize], frame: usize) {
@@ -138,7 +125,8 @@ fn compute_final_fields(res: &mut Scores) {
     set(res, "sMOTA", (motp_sum - fp - idsw) / py_max(1.0, tp + fn_));
     set(res, "CLR_F1", tp / py_max(1.0, tp + 0.5 * fn_ + 0.5 * fp));
     set(res, "FP_per_frame", fp / py_max(1.0, frames));
-    let safe_log_idsw = if idsw > 0.0 { np_log10(idsw) } else { idsw };
+    // np.log10 differs from libm log10 on some hosts; see numeric::log10.
+    let safe_log_idsw = if idsw > 0.0 { log10(idsw) } else { idsw };
     set(
         res,
         "MOTAL",
@@ -379,6 +367,35 @@ mod tests {
         add_once_per_frame(&mut counts, &mut stamp, &[0, 2, 0, 0], 0);
         add_once_per_frame(&mut counts, &mut stamp, &[2, 2], 1);
         assert_eq!(counts, [1.0, 0.0, 2.0]);
+    }
+
+    /// MOTAL takes `np.log10(IDSW)`. When `TP - FP` is small, the last bit of the
+    /// logarithm reaches MOTAL. The expected bits are the `py-reference` CLEAR's for these
+    /// counts on an AVX-512 Linux host, where numpy computes `log10` with SVML.
+    #[test]
+    fn motal_takes_numpy_log10() {
+        let cases = [
+            (12.0, 12.0, 11.0, 0xbfb6_3764_806b_b1e9_u64),
+            (41.0, 38.0, 40.0, 0x3fa1_750b_31b5_4707),
+        ];
+        for (tp, fp, idsw, svml_bits) in cases {
+            let mut res = Scores::new();
+            for &field in SUMMED_FIELDS {
+                res.insert(field, Value::Float(0.0));
+            }
+            res.insert("CLR_TP", Value::Float(tp));
+            res.insert("CLR_FP", Value::Float(fp));
+            res.insert("IDSW", Value::Float(idsw));
+            compute_final_fields(&mut res);
+            let with_libm = (tp - fp - idsw.log10()) / tp;
+            assert_ne!(with_libm.to_bits(), svml_bits, "this case must tell libm from SVML");
+            let want = if crate::numeric::numpy_uses_svml() {
+                svml_bits
+            } else {
+                with_libm.to_bits()
+            };
+            assert_eq!(res.float("MOTAL").to_bits(), want, "MOTAL for IDSW={idsw}");
+        }
     }
 
     #[test]

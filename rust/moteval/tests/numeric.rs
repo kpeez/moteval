@@ -208,6 +208,43 @@ fn linspace_matches_numpy() {
     }
 }
 
+/// The SVML `log10` port against numpy's SVML path, on every host: small integers, every
+/// binade, mantissas where the rounded `vrcp14pd` switches, subnormals, and a fingerprint
+/// of `np.log10(1..=1_000_000)`.
+#[test]
+fn log10_svml_matches_numpy() {
+    let json = numeric_json();
+    let case = &json["log10"];
+    assert_eq!(as_str(&case["kernel"]), "svml");
+    let xs = f64s_from_bits(&case["x"]);
+    let got: Vec<f64> = xs.iter().map(|&x| numeric::log10_svml(x)).collect();
+    assert_f64s_bit_equal(&f64s_from_bits(&case["out"]), &got, "log10_svml");
+    // The fixture is only a test if libm disagrees with numpy somewhere in it.
+    let libm_differs = xs
+        .iter()
+        .zip(&got)
+        .filter(|&(&x, &y)| !same_bits(x.log10(), y))
+        .count();
+    assert!(libm_differs > 0, "no input where libm log10 differs from SVML");
+    let n = harness::as_u64(&case["integers"]);
+    let ints: Vec<f64> = (1..=n).map(|i| numeric::log10_svml(i as f64)).collect();
+    assert_eq!(
+        fnv1a64(&ints),
+        harness::as_u64(&case["integers_fnv"]),
+        "log10_svml(1..={n}) differs from numpy"
+    );
+    eprintln!(
+        "log10: {} inputs ({libm_differs} where libm differs) and 1..={n}; numpy on this host \
+         uses {}",
+        xs.len(),
+        if numeric::numpy_uses_svml() {
+            "SVML"
+        } else {
+            "libm"
+        }
+    );
+}
+
 #[test]
 fn round_matches_numpy() {
     let json = numeric_json();
