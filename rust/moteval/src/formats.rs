@@ -122,6 +122,19 @@ impl fmt::Display for FormatError {
 
 impl std::error::Error for FormatError {}
 
+impl FormatError {
+    /// The Python exception class this error stands for (`OSError` for every subclass);
+    /// `"Unsupported"` where Python raises nothing.
+    pub fn python_exception(&self) -> &'static str {
+        match self {
+            Self::MalformedRow { .. } | Self::RowWithoutClass { .. } => "ValueError",
+            Self::IntegerOutOfRange { .. } => "Unsupported",
+            Self::Os(_) => "OSError",
+            Self::Decode(_) => "UnicodeDecodeError",
+        }
+    }
+}
+
 /// `Path.read_text()`: the file decoded as UTF-8, with Python's error text.
 pub fn read_text(path: &Path) -> Result<String, FormatError> {
     let path = pytext::py_path(path);

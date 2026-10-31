@@ -197,6 +197,28 @@ impl From<FormatError> for BenchmarkError {
 }
 
 impl BenchmarkError {
+    /// The Python exception class this error stands for (`OSError` for every subclass,
+    /// `InterpolationError` for configparser's); `"Unsupported"` where Python raises
+    /// nothing.
+    pub fn python_exception(&self) -> &'static str {
+        match self {
+            Self::Python { exception, .. } => match exception {
+                PyException::OsError => "OSError",
+                PyException::UnicodeDecodeError => "UnicodeDecodeError",
+                PyException::JsonDecodeError => "JSONDecodeError",
+                PyException::ValueError => "ValueError",
+                PyException::KeyError => "KeyError",
+                PyException::TypeError => "TypeError",
+                PyException::InterpolationError => "InterpolationError",
+            },
+            Self::Unsupported(_) => "Unsupported",
+            Self::Format(err) => err.python_exception(),
+            Self::Convert(err) => err.python_exception(),
+            Self::Model(ModelError::WrongGeometry { .. }) => "TypeError",
+            _ => "ValueError",
+        }
+    }
+
     fn python(exception: PyException, message: impl Into<String>) -> Self {
         Self::Python {
             exception,
@@ -304,8 +326,10 @@ fn glob_suffix(dir: &Path, suffix: &str) -> Result<Vec<String>, BenchmarkError> 
     Ok(names)
 }
 
-/// `default_data_root()` given the value of `MOTEVAL_DATA_ROOT`.
-fn data_root_from(value: Option<OsString>) -> Result<PathBuf, BenchmarkError> {
+/// `default_data_root()` given the value of `MOTEVAL_DATA_ROOT` (Rust tests cannot set
+/// the environment without `unsafe`).
+#[doc(hidden)]
+pub fn default_data_root_with_env(value: Option<OsString>) -> Result<PathBuf, BenchmarkError> {
     match value {
         None => Ok(PathBuf::from("data/benchmarks")),
         Some(raw) if pytext::strip(&raw.to_string_lossy()).is_empty() => {
@@ -318,7 +342,7 @@ fn data_root_from(value: Option<OsString>) -> Result<PathBuf, BenchmarkError> {
 /// `default_data_root()`: `MOTEVAL_DATA_ROOT` when set (an empty or blank value is an
 /// error), else `data/benchmarks` relative to the working directory.
 pub fn default_data_root() -> Result<PathBuf, BenchmarkError> {
-    data_root_from(std::env::var_os("MOTEVAL_DATA_ROOT"))
+    default_data_root_with_env(std::env::var_os("MOTEVAL_DATA_ROOT"))
 }
 
 /// `load_dataset(name, root, split)`: a built-in benchmark by name. `root` defaults to
@@ -345,7 +369,7 @@ pub fn load_dataset_with_env(
     };
     let root = match root {
         Some(root) => py_path(root),
-        None => py_join(&data_root_from(data_root)?, name),
+        None => py_join(&default_data_root_with_env(data_root)?, name),
     };
     loader(&root, split.unwrap_or(default_split))
 }

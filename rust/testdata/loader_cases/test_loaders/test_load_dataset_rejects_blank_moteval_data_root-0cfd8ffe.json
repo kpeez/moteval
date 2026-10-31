@@ -1,0 +1,1 @@
+{"test":"tests/test_loaders.py::test_load_dataset_rejects_blank_moteval_data_root[   ]","snapshots":{},"cases":[{"kind":"load_dataset","snapshot":null,"inputs":{"name":"dancetrack","root":null,"split":null,"env":"   "},"error":{"type":"ValueError","message":"MOTEVAL_DATA_ROOT must not be empty"}}]}

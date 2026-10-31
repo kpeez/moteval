@@ -79,6 +79,18 @@ impl fmt::Display for ConvertError {
 
 impl std::error::Error for ConvertError {}
 
+impl ConvertError {
+    /// The Python exception class this error stands for; `"Unsupported"` where Python
+    /// fails with pycocotools' own error instead.
+    pub fn python_exception(&self) -> &'static str {
+        match self {
+            Self::Model(ModelError::WrongGeometry { .. }) => "TypeError",
+            Self::NegativeMaskSize { .. } => "Unsupported",
+            _ => "ValueError",
+        }
+    }
+}
+
 impl From<ModelError> for ConvertError {
     fn from(err: ModelError) -> Self {
         Self::Model(err)
