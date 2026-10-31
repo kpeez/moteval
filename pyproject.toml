@@ -36,7 +36,7 @@ target-version = "py310"
 line-length = 100
 
 [tool.pyrefly]
-project-includes = ["moteval", "scripts", "tests"]
+project-includes = ["moteval", "scripts", "tests", "rust/scripts"]
 # Check against the requires-python floor, not whichever interpreter is on PATH.
 python-version = "3.10"
 

@@ -61,6 +61,11 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
   files; the `toy_benchmark` and `two_class_benchmark` fixtures register them by name for a
   single test). `tests/temp/` is gitignored scratch
   for data, not tests (see Gotchas).
+- `rust/` — the Rust port in progress: a Cargo workspace (`moteval` crate, `moteval-py`
+  PyO3 crate), dump scripts in `rust/scripts/`, and test data dumped from Python in
+  `rust/testdata/` (never hand-edited). `rust/README.md` has the layout, commands, and
+  rules; CI's `rust` job runs `cargo fmt --check`, `cargo clippy -D warnings`, and
+  `cargo test`.
 
 ## Commands
 
