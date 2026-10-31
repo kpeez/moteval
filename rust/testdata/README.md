@@ -15,6 +15,8 @@ NaN.
 | `box_similarity.json` | `dump_numeric.py` | `tests/box_similarity.rs` |
 | `lsap/<category>.json`, `lsap/special.json` | `dump_lsap.py` | `tests/lsap.rs` |
 | `scenarios/<fixture>/<case>.json` | `dump_scenarios.py` | `tests/harness_cases.rs` and the metric tests |
+| `rle.json`, `rle_iou.json` | `dump_masks.py` | `tests/rle.rs` |
+| `jf_boundary.json`, `jf_sequences.json` | `dump_masks.py` | `tests/jf.rs` |
 
 ## Seeded inputs
 
@@ -23,6 +25,11 @@ NaN.
 inputs from a seed, draw for draw (splitmix64; every draw is exact). Each case stores
 `inputs_fnv` (or `fnv`): FNV-1a 64 over the little-endian bytes of the generated floats.
 A generator mismatch fails as "generator drift", not as a wrong answer.
+
+`rle.json`, `rle_iou.json`, `jf_boundary.json`, and `jf_sequences.json` store seeds too. Their masks and
+J&F sequences come from `rust/scripts/maskgen.py` and `rust/moteval/tests/maskgen/mod.rs`
+(the same draws, from `testgen`'s splitmix64); each case stores FNV-1a 64 of the generated
+mask bytes.
 
 ## Scenario cases
 
