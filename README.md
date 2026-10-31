@@ -20,7 +20,7 @@ Requires [mise](https://mise.jdx.dev/), which installs the pinned uv:
 git clone https://github.com/kpeez/moteval.git
 cd moteval
 mise install         # pinned tools from mise.toml
-mise run install     # uv sync, pre-commit hooks, artifacts/ and .agents/docs links
+mise run install     # uv sync + pre-commit hooks
 mise run check       # ruff format + lint + pyrefly type-check
 mise run test        # pytest
 ```

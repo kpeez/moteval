@@ -49,7 +49,6 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
   `ValueError` before scoring when a metric's `Metric.geometry` (boxes or masks) does not
   match a sequence.
 - `scripts/download_benchmarks.py` — dev-only benchmark downloader (`list/status/download`)
-- `scripts/setup_checkout.py` — `mise run install` helper: hooks (main checkout only), `artifacts/` and `.agents/docs` links
 - `tests/` — flat suite (test_metrics.py, test_parity.py, test_parity_real.py, test_data.py,
   test_loaders.py, test_loaders_real.py, test_masks.py, test_cli.py, test_download.py),
   `tests/fixtures/*.json`
@@ -64,7 +63,7 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
 ## Commands
 
 ```sh
-mise run install   # uv sync --locked, prek hooks (main checkout), link artifacts/ and .agents/docs
+mise run install   # uv sync --locked, prek hooks (main checkout only)
 mise run check     # ruff format, ruff check --fix, pyrefly check
 mise run test      # pytest (testpaths: tests/; real-data gate deselected by default)
 mise run test-real # slow real-data gate: parity + raw-GT loader checks (needs the data root)
@@ -74,10 +73,7 @@ mise run test-real # slow real-data gate: parity + raw-GT loader checks (needs t
 
 `mise.toml` pins uv, rust, and hyperfine and holds the tasks. uv pins Python through
 `.python-version`; mise does not. Run `mise run install` first in every fresh clone or git
-worktree: the venv is an editable install, and the `artifacts/` and `.agents/docs` links
-are gitignored. `artifacts/` links to `~/artifacts/moteval` (override with
-`MOTEVAL_ARTIFACTS_DIR`) and holds all run output. `.agents/docs` links to the llmOS
-vault's `projects/moteval` notes and ADRs when the host has the vault. Host-only settings,
+worktree: the venv is an editable install. Host-only settings,
 such as `MOTEVAL_DATA_ROOT`, go in the gitignored `mise.local.toml`. `mise run` trusts its own
 config; run `mise trust` only to activate that env in your shell. `mise run install`
 installs the git hooks only in the main checkout, because a worktree shares `.git/hooks`.
