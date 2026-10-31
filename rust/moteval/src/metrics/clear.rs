@@ -388,7 +388,11 @@ mod tests {
             res.insert("IDSW", Value::Float(idsw));
             compute_final_fields(&mut res);
             let with_libm = (tp - fp - idsw.log10()) / tp;
-            assert_ne!(with_libm.to_bits(), svml_bits, "this case must tell libm from SVML");
+            assert_ne!(
+                with_libm.to_bits(),
+                svml_bits,
+                "this case must tell libm from SVML"
+            );
             let want = if crate::numeric::numpy_uses_svml() {
                 svml_bits
             } else {

@@ -226,7 +226,10 @@ fn log10_svml_matches_numpy() {
         .zip(&got)
         .filter(|&(&x, &y)| !same_bits(x.log10(), y))
         .count();
-    assert!(libm_differs > 0, "no input where libm log10 differs from SVML");
+    assert!(
+        libm_differs > 0,
+        "no input where libm log10 differs from SVML"
+    );
     let n = harness::as_u64(&case["integers"]);
     let ints: Vec<f64> = (1..=n).map(|i| numeric::log10_svml(i as f64)).collect();
     assert_eq!(
