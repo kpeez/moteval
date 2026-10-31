@@ -61,10 +61,18 @@ uv run python rust/scripts/dump_pytext.py         # pytext/ (CPython text verdic
 uv run python rust/scripts/record_loader_cases.py # loader_cases/ (test_loaders.py, test_data.py)
 MOTEVAL_DATA_ROOT=/data/tracking/external \
   uv run python rust/scripts/dump_loaders.py --jobs 8   # artifacts/rust-port/testdata/loaders_real
+uv run python rust/scripts/dump_pyfmt.py       # pyfmt.json
+uv run python rust/scripts/dump_results.py     # exports.json
+uv run python rust/scripts/dump_cli.py         # cli.json
 ```
 
 `dump_loaders.py` writes the prediction files `dump_scenarios.py --real-data` scores, so
 regenerate both together.
+
+`moteval-py` builds the extension `moteval._moteval` (`pyproject.toml` uses maturin):
+`mise run install` (or any `uv run`) rebuilds it after a Rust change, and
+`tests/test_bindings.py` checks it against the Python code. Build a wheel with
+`uvx maturin build --release --locked`.
 
 ## Rules for every package
 

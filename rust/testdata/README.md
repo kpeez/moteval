@@ -22,6 +22,9 @@ NaN.
 | `jf_boundary.json`, `jf_sequences.json` | `dump_masks.py` | `tests/jf.rs` |
 | `pytext/<topic>.json` | `dump_pytext.py` | `tests/pytext.rs`, unit tests in `formats.rs`, `benchmarks/pyjson.rs`, `benchmarks/ini.rs` |
 | `loader_cases/<test file>/<test>.json` | `record_loader_cases.py` | `tests/loader_cases.rs` |
+| `pyfmt.json` | `dump_pyfmt.py` | `tests/pyfmt.rs` |
+| `exports.json` | `dump_results.py` | `tests/exports.rs` |
+| `cli.json` | `dump_cli.py` | `tests/cli.rs` |
 
 ## Python text verdicts
 
@@ -81,6 +84,16 @@ words (frame keys, or float bits) instead of every value.
 J&F sequences come from `rust/scripts/maskgen.py` and `rust/moteval/tests/maskgen/mod.rs`
 (the same draws, from `testgen`'s splitmix64); each case stores FNV-1a 64 of the generated
 mask bytes.
+
+## Text output
+
+`pyfmt.json` holds CPython's `repr(float)` and `format(x, "1.5g")` for 110,000 seeded
+doubles (as FNV-1a hashes per chunk of 100 outputs; the test prints a differing chunk in
+full) plus edge cases, JSON strings, CSV rows, and paths in full. `exports.json` holds
+`EvaluationResult` values (scores in the scenario encoding below) with the exact table,
+JSON, and CSV text Python writes for them, and `evaluate`'s errors before scoring.
+`cli.json` holds argument lists with the Python CLI's stdout, stderr, and exit code;
+every case stops before a dataset is loaded.
 
 ## Scenario cases
 

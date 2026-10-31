@@ -12,15 +12,18 @@ moteval requires Python ≥ 3.10 and is not yet on PyPI; install from GitHub:
 pip install git+https://github.com/kpeez/moteval.git
 ```
 
+The package includes a Rust extension built with maturin, so an install from source
+needs a Rust toolchain (1.99 or later, for example from [rustup](https://rustup.rs/)).
+
 ### Development
 
-Requires [mise](https://mise.jdx.dev/), which installs the pinned uv:
+Requires [mise](https://mise.jdx.dev/), which installs the pinned uv and Rust:
 
 ```sh
 git clone https://github.com/kpeez/moteval.git
 cd moteval
 mise install         # pinned tools from mise.toml
-mise run install     # uv sync + pre-commit hooks
+mise run install     # uv sync (builds the Rust extension) + pre-commit hooks
 mise run check       # ruff format + lint + pyrefly type-check
 mise run test        # pytest
 ```
