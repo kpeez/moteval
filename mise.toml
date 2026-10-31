@@ -1,0 +1,27 @@
+[tools]
+uv = "0.13.6"
+rust = "1.99.1"
+hyperfine = "1.19.0"
+
+[tasks.install]
+description = "Sync the locked venv, install git hooks, link artifacts/ and .agents/docs"
+run = [
+  "uv sync --locked",
+  "uv run python scripts/setup_checkout.py",
+]
+
+[tasks.check]
+description = "ruff format, ruff check --fix, pyrefly check"
+run = [
+  "uv run ruff format .",
+  "uv run ruff check --fix .",
+  "uv run pyrefly check",
+]
+
+[tasks.test]
+description = "pytest (real-data gate deselected)"
+run = "uv run pytest"
+
+[tasks.test-real]
+description = "Slow real-data gate: parity + raw-GT loader checks (needs MOTEVAL_DATA_ROOT)"
+run = "uv run pytest -m real_data"

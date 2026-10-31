@@ -1,5 +1,7 @@
 /data/
+/artifacts
 .agents/docs
+mise.local.toml
 private
 tests/temp/
 
