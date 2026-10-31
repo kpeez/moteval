@@ -402,6 +402,24 @@ pub(crate) fn pytext_corpus(topic: &str) -> Vec<serde_json::Value> {
 mod tests {
     use super::*;
 
+    /// `str(OSError)` from `Path.read_text()`, as CPython 3.14.8 prints it.
+    #[test]
+    fn os_errors_print_as_python_does() {
+        let missing = read_text(Path::new("/nonexist/x.txt")).unwrap_err();
+        assert_eq!(
+            missing.to_string(),
+            "[Errno 2] No such file or directory: '/nonexist/x.txt'"
+        );
+        assert_eq!(missing.python_exception(), "OSError");
+        let dir = std::env::temp_dir();
+        let is_dir = read_text(&dir).unwrap_err();
+        assert_eq!(
+            is_dir.to_string(),
+            format!("[Errno 21] Is a directory: {}", repr_str(&py_str(&dir)))
+        );
+        assert_eq!(is_dir.python_exception(), "OSError");
+    }
+
     #[test]
     fn fixed_point_formatting_matches_python() {
         let cases = pytext_corpus("format");
