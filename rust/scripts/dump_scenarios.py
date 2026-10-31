@@ -80,7 +80,7 @@ Json = Any
 
 def encode_value(value: float | np.ndarray) -> Json:
     """A score value as its numpy shape plus each element's float64 bits."""
-    array = np.ascontiguousarray(np.asarray(value, dtype=np.float64))
+    array = np.asarray(value, dtype=np.float64, order="C")
     return {"shape": list(array.shape), "bits": array.view(np.uint64).ravel().tolist()}
 
 
