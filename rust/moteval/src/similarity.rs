@@ -2,11 +2,11 @@
 //!
 //! Boxes: Jaccard IoU and intersection-over-area on `xywh` rows, element for element as
 //! numpy computes them (TrackEval's `_calculate_box_ious`). Masks: pycocotools RLE IoU and
-//! IoA (the rle-masks-jf package fills those bodies).
+//! IoA through `moteval::rle`, as TrackEval's `_calculate_mask_ious` calls them.
 
 use crate::model::{BoxXywh, Matrix};
 use crate::numeric::{EPS, maximum, minimum};
-use crate::rle::{RleError, RleMask};
+use crate::rle::{self, RleError, RleMask};
 
 /// Corners and corner-derived area of one `xywh` box, as `box_iou` derives them.
 struct Corners {
@@ -95,23 +95,43 @@ pub fn box_ioa(boxes_a: &[BoxXywh], boxes_b: &[BoxXywh]) -> Matrix {
 }
 
 /// `mask_iou(masks_a, masks_b)`: `pycocotools.mask.iou` with every `iscrowd` false, as a
-/// `(len(a), len(b))` matrix.
-pub fn mask_iou(_masks_a: &[RleMask], _masks_b: &[RleMask]) -> Result<Matrix, RleError> {
-    todo!("rle-masks-jf: port moteval.data.similarity.mask_iou")
+/// `(len(a), len(b))` matrix. Pairs whose boxes do not overlap are `0.0`; a compared pair
+/// of different sizes is `-1.0`, as pycocotools gives.
+pub fn mask_iou(masks_a: &[RleMask], masks_b: &[RleMask]) -> Result<Matrix, RleError> {
+    let ious = rle::iou(masks_a, masks_b, &vec![false; masks_b.len()])?;
+    Ok(matrix(masks_a.len(), masks_b.len(), ious))
 }
 
 /// `mask_ioa(masks_a, masks_b)`: `pycocotools.mask.iou` with every `iscrowd` true, so the
 /// denominator is each `masks_a` mask's own area.
-pub fn mask_ioa(_masks_a: &[RleMask], _masks_b: &[RleMask]) -> Result<Matrix, RleError> {
-    todo!("rle-masks-jf: port moteval.data.similarity.mask_ioa")
+pub fn mask_ioa(masks_a: &[RleMask], masks_b: &[RleMask]) -> Result<Matrix, RleError> {
+    let ioas = rle::iou(masks_a, masks_b, &vec![true; masks_b.len()])?;
+    Ok(matrix(masks_a.len(), masks_b.len(), ioas))
 }
 
-/// `merge_masks(rles)`: the union of the masks (`mask.merge(intersect=False)`).
-pub fn merge_masks(_rles: &[RleMask]) -> Result<RleMask, RleError> {
-    todo!("rle-masks-jf: port moteval.data.similarity.merge_masks")
+/// A `pycocotools.mask.iou` result as a matrix; empty input keeps its `(n, 0)` or `(0, m)`
+/// shape, as `similarity.py` reshapes it.
+fn matrix(n: usize, m: usize, values: Vec<f64>) -> Matrix {
+    if n == 0 || m == 0 {
+        return Matrix::zeros(n, m);
+    }
+    Matrix::new(n, m, values).expect("pycocotools iou returns n * m values")
+}
+
+/// `merge_masks(rles)`: the union of the masks (`mask.merge(intersect=False)`). No masks
+/// give the `0 x 0` empty mask, and so do masks of different sizes.
+pub fn merge_masks(rles: &[RleMask]) -> Result<RleMask, RleError> {
+    rle::merge(rles, false)
 }
 
 /// `masks_overlap(rles)`: whether any two masks in the list overlap.
-pub fn masks_overlap(_rles: &[RleMask]) -> Result<bool, RleError> {
-    todo!("rle-masks-jf: port moteval.data.similarity.masks_overlap")
+///
+/// Python compares `sum(area(rle) for rle in rles)` with the merged mask's area. Both are
+/// `np.uint32`, so the sum wraps at `2**32` as it does here.
+pub fn masks_overlap(rles: &[RleMask]) -> Result<bool, RleError> {
+    let merged_area = rle::area_u32(&rle::merge(rles, false)?);
+    let total_area = rles
+        .iter()
+        .fold(0u32, |total, mask| total.wrapping_add(rle::area_u32(mask)));
+    Ok(total_area > merged_area)
 }

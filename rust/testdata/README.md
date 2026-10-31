@@ -18,6 +18,8 @@ NaN.
 | `fuzz/clear_identity_count/<case>.json` | `dump_clear_identity_count.py` | `tests/clear_identity_count.rs` |
 | `set_order.json` | `dump_set_order.py` | `tests/set_order.rs` |
 | `hota_trackmap_internals.json` | `dump_metric_internals.py` | unit tests in `src/metrics/hota.rs` and `src/metrics/track_map.rs` |
+| `rle.json`, `rle_iou.json` | `dump_masks.py` | `tests/rle.rs` |
+| `jf_boundary.json`, `jf_sequences.json` | `dump_masks.py` | `tests/jf.rs` |
 
 ## Seeded inputs
 
@@ -30,6 +32,11 @@ A generator mismatch fails as "generator drift", not as a wrong answer. `set_ord
 and `hota_trackmap_internals.json` use the same splitmix64, but their generators live in
 their dump scripts and the tests that read them, and they store FNV-1a digests of `u64`
 words (frame keys, or float bits) instead of every value.
+
+`rle.json`, `rle_iou.json`, `jf_boundary.json`, and `jf_sequences.json` store seeds too. Their masks and
+J&F sequences come from `rust/scripts/maskgen.py` and `rust/moteval/tests/maskgen/mod.rs`
+(the same draws, from `testgen`'s splitmix64); each case stores FNV-1a 64 of the generated
+mask bytes.
 
 ## Scenario cases
 

@@ -174,6 +174,10 @@ pub enum MetricError {
     NoResults {
         metric: &'static str,
     },
+    /// An error Python or numpy raises inside a metric (`IndexError`, `ValueError`,
+    /// `ZeroDivisionError`), with its message text. J&F raises these on sequences
+    /// TrackEval cannot score either, such as no GT ids and two or more predicted ids.
+    Python(String),
 }
 
 impl fmt::Display for MetricError {
@@ -184,6 +188,7 @@ impl fmt::Display for MetricError {
             Self::Rle(err) => err.fmt(f),
             Self::Numeric(err) => err.fmt(f),
             Self::NoResults { metric } => write!(f, "{metric}: no results to combine"),
+            Self::Python(message) => f.write_str(message),
         }
     }
 }

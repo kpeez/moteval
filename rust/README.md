@@ -12,7 +12,7 @@ rust/
   moteval/       lib + src/bin/moteval.rs; zero runtime dependencies
   moteval-py/    PyO3 cdylib built by maturin (pyo3 abi3-py310, numpy)
   testdata/      inputs and expected outputs dumped from Python (see its README)
-  scripts/       dump scripts (Python: standard library, numpy, scipy, moteval)
+  scripts/       dump scripts (Python: standard library, numpy, scipy, pycocotools, moteval)
 ```
 
 Modules of the `moteval` crate, each ported from the Python module of the same role:
@@ -46,6 +46,7 @@ uv run python rust/scripts/dump_numeric.py     # numeric.json, box_similarity.js
 uv run python rust/scripts/dump_lsap.py        # lsap/
 uv run python rust/scripts/dump_set_order.py   # set_order.json (TrackMAP frame-union order)
 uv run python rust/scripts/dump_metric_internals.py  # hota_trackmap_internals.json
+uv run python rust/scripts/dump_masks.py       # rle*.json, jf_boundary.json, jf_sequences.json
 uv run python rust/scripts/dump_scenarios.py   # scenarios/ (synthetic, committed)
 uv run python rust/scripts/dump_clear_identity_count.py   # fuzz/clear_identity_count/
 MOTEVAL_DATA_ROOT=/data/tracking/external \
