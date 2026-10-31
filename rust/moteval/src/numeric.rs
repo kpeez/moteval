@@ -112,9 +112,15 @@ pub fn mean(a: &[f64]) -> f64 {
 }
 
 /// `np.sum(m, axis=0)` over a C-order `rows x cols` array: row by row, in order, from
-/// zeros. Not pairwise.
+/// zeros. Not pairwise, because numpy's inner loop runs along the contiguous last axis.
+///
+/// A single column (`cols == 1`) is the exception: numpy drops the length-1 axis, the
+/// reduced axis is then contiguous, and it reduces like [`sum`] (pairwise).
 pub fn sum_axis0(data: &[f64], rows: usize, cols: usize) -> Vec<f64> {
     assert_eq!(data.len(), rows * cols, "data is not rows x cols");
+    if cols == 1 {
+        return vec![sum(data)];
+    }
     let mut acc = vec![0.0; cols];
     for row in data.chunks_exact(cols.max(1)).take(rows) {
         for (a, &x) in acc.iter_mut().zip(row) {
