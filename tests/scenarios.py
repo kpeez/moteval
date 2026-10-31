@@ -549,6 +549,26 @@ def build_mots_scenarios() -> tuple[Scenario, ...]:
     seq_b_gt = [_mask_row(f, 7, _lane_mask(0, 5 * f)) for f in (1, 2, 3, 4)]
     seq_b_pred = [_mask_row(f, 900, _lane_mask(0, 5 * f + 2)) for f in (1, 2)]  # partial, jittered
 
+    # Eight sequences with 1-3 tracks each, jittered by a different amount per sequence, so
+    # the combined J&F means add eight unequal float products: a compensated sum and
+    # upstream's plain left-to-right sum round differently.
+    many_sequences = []
+    for i in range(8):
+        seq_frames = 4 + i
+        tracks = 1 + i % 3
+        many_gt = [
+            _mask_row(f, lane + 1, _lane_mask(lane, 3 * f + 2 * lane))
+            for f in range(1, seq_frames + 1)
+            for lane in range(tracks)
+        ]
+        many_pred = [
+            _mask_row(f, 100 + lane, _lane_mask(lane, 3 * f + 2 * lane + (f * (i + 1) + lane) % 5))
+            for f in range(1, seq_frames + 1)
+            for lane in range(tracks)
+            if (f + lane + i) % 4
+        ]
+        many_sequences.append((f"SEQ-MANY-{i}", seq_frames, many_gt, many_pred))
+
     # J&F casts its decay-bin edges to uint8 (upstream quirk), so they wrap past 255
     # frames. At 350 frames the edges (0-based timesteps) [0, 87, 175, 262, 349] wrap to
     # [0, 87, 175, 6, 93]: the last bin covers timesteps 6-93, not 262-349. (At 257-341
@@ -575,6 +595,7 @@ def build_mots_scenarios() -> tuple[Scenario, ...]:
             "jf_multi_sequence_combine",
             (("SEQ-COMB-A", 3, seq_a_gt, seq_a_pred), ("SEQ-COMB-B", 4, seq_b_gt, seq_b_pred)),
         ),
+        Scenario("jf_many_sequence_combine", tuple(many_sequences)),
         Scenario("jf_decay_bins_wrap", (("SEQ-JF-LONG", long_frames, long_gt, long_pred),)),
     )
 
