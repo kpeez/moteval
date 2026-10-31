@@ -1,0 +1,1 @@
+{"test":"tests/test_data.py::test_box_ioa_empty_sides","snapshots":{},"cases":[{"kind":"box_ioa","snapshot":null,"inputs":{"a":{"boxes":[]},"b":{"boxes":[[0,0,4621819117588971520,4621819117588971520]]}},"ok":[0,1,[]]},{"kind":"box_ioa","snapshot":null,"inputs":{"a":{"boxes":[[0,0,4621819117588971520,4621819117588971520]]},"b":{"boxes":[]}},"ok":[1,0,[]]}]}

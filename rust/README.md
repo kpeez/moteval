@@ -12,7 +12,7 @@ rust/
   moteval/       lib + src/bin/moteval.rs; zero runtime dependencies
   moteval-py/    PyO3 cdylib built by maturin (pyo3 abi3-py310, numpy)
   testdata/      inputs and expected outputs dumped from Python (see its README)
-  scripts/       dump scripts (Python: standard library, numpy, scipy, pycocotools, moteval)
+  scripts/       dump scripts (Python: standard library, numpy, scipy, pycocotools, pytest, moteval)
 ```
 
 Modules of the `moteval` crate, each ported from the Python module of the same role:
@@ -36,8 +36,12 @@ From the repository root (Rust comes from `mise.toml`):
 cargo fmt --manifest-path rust/Cargo.toml --all --check
 cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
 cargo test --manifest-path rust/Cargo.toml
-MOTEVAL_RUST_TESTDATA=artifacts/rust-port/testdata cargo test --manifest-path rust/Cargo.toml
+MOTEVAL_RUST_TESTDATA=artifacts/rust-port/testdata MOTEVAL_DATA_ROOT=/data/tracking/external \
+  cargo test --manifest-path rust/Cargo.toml
 ```
+
+The real-data loader gate (`tests/loaders_real.rs`) also loads the benchmarks themselves,
+so it needs `MOTEVAL_DATA_ROOT` as well as `MOTEVAL_RUST_TESTDATA`.
 
 Regenerate the test data with the reference interpreter:
 
@@ -52,7 +56,15 @@ uv run python rust/scripts/dump_clear_identity_count.py   # fuzz/clear_identity_
 MOTEVAL_DATA_ROOT=/data/tracking/external \
   uv run python rust/scripts/dump_scenarios.py --real-data --jobs 8   # artifacts/rust-port/testdata
 uv run python rust/scripts/gen_printable.py    # moteval/src/pyfmt/printable.rs
+uv run python rust/scripts/gen_pytext_tables.py   # moteval/src/formats/pytables.rs
+uv run python rust/scripts/dump_pytext.py         # pytext/ (CPython text verdicts)
+uv run python rust/scripts/record_loader_cases.py # loader_cases/ (test_loaders.py, test_data.py)
+MOTEVAL_DATA_ROOT=/data/tracking/external \
+  uv run python rust/scripts/dump_loaders.py --jobs 8   # artifacts/rust-port/testdata/loaders_real
 ```
+
+`dump_loaders.py` writes the prediction files `dump_scenarios.py --real-data` scores, so
+regenerate both together.
 
 ## Rules for every package
 

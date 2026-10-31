@@ -20,6 +20,50 @@ NaN.
 | `hota_trackmap_internals.json` | `dump_metric_internals.py` | unit tests in `src/metrics/hota.rs` and `src/metrics/track_map.rs` |
 | `rle.json`, `rle_iou.json` | `dump_masks.py` | `tests/rle.rs` |
 | `jf_boundary.json`, `jf_sequences.json` | `dump_masks.py` | `tests/jf.rs` |
+| `pytext/<topic>.json` | `dump_pytext.py` | `tests/pytext.rs`, unit tests in `formats.rs`, `benchmarks/pyjson.rs`, `benchmarks/ini.rs` |
+| `loader_cases/<test file>/<test>.json` | `record_loader_cases.py` | `tests/loader_cases.rs` |
+
+## Python text verdicts
+
+`pytext/` holds CPython's answer for adversarial inputs, one topic per file:
+`numbers` (`float()` bits and `int()` value or error text), `text` (`strip`, `split`,
+`splitlines`), `utf8` and `utf8_chunked` (`UnicodeDecodeError` text, one-shot and as
+`TextIOWrapper` reads 8192-byte chunks), `paths` (`str(Path)`, `.name`, `.stem`), `json`
+(`json.loads` value as a typed tree, or the error), `ini` (`read_seq_length` on a
+`seqinfo.ini` text, with the sequence directory written `<SEQ>`), and `format`
+(`format(x, ".2f")`, `".4f"`, `repr(x)`). Each case is `{"input": ..., <verdict>}`;
+`{"unsupported": true}` marks an input Python accepts and Rust reports as `Unsupported`
+(a lone surrogate, an integer beyond `i128`, a negative sequence length).
+
+## Loader cases
+
+`record_loader_cases.py` runs `tests/test_loaders.py` and `tests/test_data.py` with a
+recording plugin. Each file is one test: `{"test": nodeid, "snapshots": {id: entries},
+"cases": [...]}`. A case is one call into a ported function:
+
+- `kind`: the Python function (`read_mot`, `load_bft`, `build_sequence_data`, ...), or
+  `missing_predictions` for `evaluate`'s check of `<seq>.txt` files;
+- `snapshot`: the id of the files under the test's `tmp_path` just before the call
+  (`{"path", "text" | "hex" | "dir"}` entries);
+- `inputs`: the arguments, every path under `tmp_path` written `<TMP>`;
+- `ok`: the result, or `error`: `{"type", "message"}` (`<TMP>` again);
+- `geometry` (mask conversions): every `masks_overlap`, `merge_masks`, `mask_ioa`, and
+  `mask_iou` call in order, inputs and output, so the conversion replays without RLE.
+
+Floats are bits; a `Track` is `[frame, track_id, class_id, x, y, w, h, conf]`, a
+`MaskTrack` is `[frame, track_id, class_id, img_h, img_w, rle]`, a matrix is
+`[rows, cols, [bits]]`, and a mask is `[h, w, counts]`.
+
+## Real-data loader cases
+
+`dump_loaders.py` writes `loaders_real/<benchmark>_<split>/` under
+`artifacts/rust-port/testdata` (too large to commit): `pred/<seq>.txt` (the seeded
+predictions), `data.bin` with `header.json` (the loaded dataset, its protocol, and per
+sequence the GT tracks, ignore regions, and Python's parse of the predictions as flat
+arrays, `{"dtype", "offset", "len"}` as below), and for MOTS `geometry_<view * n +
+sequence>.json` (the mask geometry calls, each input list as an FNV-1a 64 digest of
+`"{h} {w} {counts}\n"` per mask). `tests/loaders_real.rs` compares the Rust-built class
+views with `reference_benchmarks/<benchmark>_<split>`.
 
 ## Seeded inputs
 
