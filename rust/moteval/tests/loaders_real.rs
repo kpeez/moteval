@@ -37,9 +37,9 @@ impl Blob {
     fn words(&self, rec: &Json) -> impl Iterator<Item = [u8; 8]> + '_ {
         let offset = usize::try_from(as_u64(&rec["offset"])).expect("usize");
         let len = usize::try_from(as_u64(&rec["len"])).expect("usize");
-        self.data[offset..offset + 8 * len]
-            .chunks_exact(8)
-            .map(|c| c.try_into().expect("8 bytes"))
+        let (words, rest) = self.data[offset..offset + 8 * len].as_chunks::<8>();
+        assert!(rest.is_empty());
+        words.iter().copied()
     }
 
     fn i64s(&self, rec: &Json) -> Vec<i64> {
@@ -59,8 +59,13 @@ impl Blob {
     fn box_rows(&self, rec: &Json) -> Vec<Track> {
         let ints = self.i64s(&rec["ints"]);
         let floats = self.f64s(&rec["floats"]);
-        ints.chunks_exact(3)
-            .zip(floats.chunks_exact(5))
+        let (ints, ints_rest) = ints.as_chunks::<3>();
+        let (floats, floats_rest) = floats.as_chunks::<5>();
+        let rows = usize::try_from(as_u64(&rec["len"])).expect("usize");
+        assert!(ints_rest.is_empty() && floats_rest.is_empty());
+        assert_eq!((ints.len(), floats.len()), (rows, rows), "row arrays");
+        ints.iter()
+            .zip(floats)
             .map(|(i, f)| Track {
                 frame: i[0],
                 track_id: i[1],
@@ -79,7 +84,11 @@ impl Blob {
         let lens = self.i64s(&rec["rle_lens"]);
         let bytes = self.bytes(&rec["rle_bytes"]);
         let mut at = 0;
-        ints.chunks_exact(5)
+        let (ints, ints_rest) = ints.as_chunks::<5>();
+        let rows = usize::try_from(as_u64(&rec["len"])).expect("usize");
+        assert!(ints_rest.is_empty());
+        assert_eq!((ints.len(), lens.len()), (rows, rows), "row arrays");
+        ints.iter()
             .zip(lens)
             .map(|(i, len)| {
                 let len = usize::try_from(len).expect("usize");
