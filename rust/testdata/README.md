@@ -15,14 +15,17 @@ NaN.
 | `box_similarity.json` | `dump_numeric.py` | `tests/box_similarity.rs` |
 | `lsap/<category>.json`, `lsap/special.json` | `dump_lsap.py` | `tests/lsap.rs` |
 | `scenarios/<fixture>/<case>.json` | `dump_scenarios.py` | `tests/harness_cases.rs` and the metric tests |
+| `set_order.json` | `dump_set_order.py` | `tests/set_order.rs` |
 
 ## Seeded inputs
 
-`numeric.json`, `box_similarity.json`, and `lsap/` store seeds, not inputs.
+`numeric.json`, `box_similarity.json`, `lsap/`, and `set_order.json` store seeds, not inputs.
 `rust/scripts/testgen.py` and `rust/moteval/tests/harness/testgen.rs` generate the same
 inputs from a seed, draw for draw (splitmix64; every draw is exact). Each case stores
 `inputs_fnv` (or `fnv`): FNV-1a 64 over the little-endian bytes of the generated floats.
-A generator mismatch fails as "generator drift", not as a wrong answer.
+A generator mismatch fails as "generator drift", not as a wrong answer. `set_order.json`
+uses the same splitmix64, but its key-set generator lives in `dump_set_order.py` and
+`tests/set_order.rs`, and its FNV hashes run over `u64` frame keys.
 
 ## Scenario cases
 
