@@ -38,6 +38,12 @@ pub enum EvalError {
         protocol: String,
         classes: Vec<i64>,
     },
+    /// `dataset {name!r} has no sequences to score`. Rust only: Python's metrics gave
+    /// zeros (CLEAR, Identity, Count) or failed in their combiners (HOTA, TrackMAP) on an
+    /// empty dataset. A score of no data is never meant, so `evaluate` stops instead.
+    NoSequences {
+        dataset: String,
+    },
     /// `{metric} reads {geometry}, but sequence {seq!r} of dataset {dataset!r} holds {kind}`.
     GeometryMismatch {
         metric: String,
@@ -85,6 +91,9 @@ impl fmt::Display for EvalError {
                     "protocol {} repeats a class in {tuple}",
                     repr_str(protocol)
                 )
+            }
+            Self::NoSequences { dataset } => {
+                write!(f, "dataset {} has no sequences to score", repr_str(dataset))
             }
             Self::GeometryMismatch {
                 metric,
@@ -166,9 +175,9 @@ fn upsert<V>(map: &mut Vec<(String, V)>, key: &str, value: V) {
 }
 
 /// Every check `evaluate` makes before it reads a prediction file, in Python's order:
-/// duplicate metric classes, `eval_classes` empty or repeated, a metric geometry that
-/// does not match a sequence (metric by metric, sequence by sequence), and missing
-/// `<seq>.txt` files (every one named, in dataset order).
+/// duplicate metric classes, `eval_classes` empty or repeated, no sequences at all (Rust
+/// only), a metric geometry that does not match a sequence (metric by metric, sequence by
+/// sequence), and missing `<seq>.txt` files (every one named, in dataset order).
 fn preflight(
     dataset: &MOTDataset,
     pred_dir: &Path,
@@ -201,6 +210,12 @@ fn preflight(
         return Err(EvalError::RepeatedClass {
             protocol: protocol.name.clone(),
             classes: classes.clone(),
+        });
+    }
+
+    if dataset.sequences.is_empty() {
+        return Err(EvalError::NoSequences {
+            dataset: dataset.name.clone(),
         });
     }
 
@@ -240,7 +255,8 @@ fn prediction_file(pred_dir: &Path, name: &str) -> PathBuf {
 /// files in `predictions` with each metric, class by class.
 ///
 /// Raises before reading any prediction file on duplicate metric classes, empty or
-/// repeated `eval_classes`, a metric geometry that does not match a sequence, or a
+/// repeated `eval_classes`, a dataset with no sequences, a metric geometry that does not
+/// match a sequence, or a
 /// missing `<seq>.txt` (every missing sequence named). Box predictions give their class
 /// in column 8, read only for a multi-class protocol.
 pub fn evaluate(

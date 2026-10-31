@@ -327,6 +327,14 @@ def test_evaluate_rejects_a_protocol_without_eval_classes(tmp_path):
         evaluate(dataset, tmp_path, [Count()])
 
 
+def test_evaluate_rejects_a_dataset_without_sequences(tmp_path):
+    # Python moteval scored zeros here for CLEAR, Identity and Count and failed inside the
+    # HOTA and TrackMAP combiners; a score of no data is never meant.
+    dataset = replace(load_toy(), sequences=())
+    with pytest.raises(ValueError, match="^dataset 'toy' has no sequences to score$"):
+        evaluate(dataset, tmp_path, [HOTA(), CLEAR(), Identity(), Count(), TrackMAP()])
+
+
 def test_evaluate_rejects_a_repeated_eval_class(tmp_path):
     # Unchecked, (1, 1) scores class 1 once and reports a multi-class result over it.
     dataset = _toy_with_eval_classes((1, 1))
