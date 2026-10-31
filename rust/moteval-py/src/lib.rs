@@ -24,7 +24,7 @@
 
 use std::path::PathBuf;
 
-use moteval::benchmarks::{self, BenchmarkError, BENCHMARKS};
+use moteval::benchmarks::{self, BENCHMARKS, BenchmarkError};
 use moteval::cli;
 use moteval::eval::{self, EvalError};
 use moteval::formats::{self, FormatError, MaskTrack, Track};
@@ -224,13 +224,11 @@ fn box_frames(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Vec<Vec<[f64; 
     obj.try_iter()?
         .map(|frame| {
             let (data, _) = flat_array::<f64>(py, &frame?, "float64")?;
-            if data.len() % 4 != 0 {
+            let (boxes, rest) = data.as_chunks::<4>();
+            if !rest.is_empty() {
                 return Err(value_error("a box array does not hold 4 columns"));
             }
-            Ok(data
-                .chunks_exact(4)
-                .map(|b| [b[0], b[1], b[2], b[3]])
-                .collect())
+            Ok(boxes.to_vec())
         })
         .collect()
 }
@@ -412,7 +410,10 @@ type ProtocolRow = (
 fn protocol_row(p: &Protocol) -> ProtocolRow {
     (
         p.name.clone(),
-        (p.frame_convention.name.clone(), p.frame_convention.first_frame),
+        (
+            p.frame_convention.name.clone(),
+            p.frame_convention.first_frame,
+        ),
         p.eval_classes.clone(),
         p.distractor_classes.clone(),
         p.distractor_iou_threshold,

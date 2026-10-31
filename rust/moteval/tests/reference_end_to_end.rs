@@ -43,10 +43,9 @@ const EXPECTED_CASES: usize = 20;
 
 #[test]
 fn rust_pipeline_equals_the_reference_on_nine_benchmarks() {
-    let (Some(testdata), Some(data_root)) = (
-        real_testdata_dir("reference_end_to_end"),
-        data_root(),
-    ) else {
+    let (Some(testdata), Some(data_root)) =
+        (real_testdata_dir("reference_end_to_end"), data_root())
+    else {
         return;
     };
     let names = real_case_names(&testdata, "reference_benchmarks");
@@ -73,19 +72,19 @@ fn rust_pipeline_equals_the_reference_on_nine_benchmarks() {
             "{name}: {} missing - run rust/scripts/dump_loaders.py",
             pred_dir.display()
         );
-        let dataset = benchmarks::load_dataset(
-            benchmark,
-            Some(&data_root.join(benchmark)),
-            Some(split),
-        )
-        .unwrap_or_else(|err| panic!("{name}: load_dataset: {err}"));
+        let dataset =
+            benchmarks::load_dataset(benchmark, Some(&data_root.join(benchmark)), Some(split))
+                .unwrap_or_else(|err| panic!("{name}: load_dataset: {err}"));
         let metrics: Vec<_> = as_array(&case["metrics"])
             .iter()
             .map(|m| metric_by_name(as_str(m)))
             .collect();
         let result = eval::evaluate(&dataset, &pred_dir, &metrics)
             .unwrap_or_else(|err| panic!("{name}: evaluate: {err}"));
-        assert!(!result.is_multi_class(), "{name}: the reference is single-class");
+        assert!(
+            !result.is_multi_class(),
+            "{name}: the reference is single-class"
+        );
 
         for (metric, want) in decode_metric_scores(&case["oracle"]["combined"]) {
             let got = result
@@ -97,7 +96,11 @@ fn rust_pipeline_equals_the_reference_on_nine_benchmarks() {
         }
 
         let python = as_array(&case["moteval"]["views"][0]["per_sequence"]);
-        let keys: Vec<&str> = result.per_sequence.iter().map(|(k, _)| k.as_str()).collect();
+        let keys: Vec<&str> = result
+            .per_sequence
+            .iter()
+            .map(|(k, _)| k.as_str())
+            .collect();
         let want_keys: Vec<&str> = python.iter().map(|pair| as_str(&pair[0])).collect();
         assert_eq!(keys, want_keys, "{name}: sequence order");
         for (pair, (seq, got)) in python.iter().zip(&result.per_sequence) {
