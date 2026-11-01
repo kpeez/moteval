@@ -61,15 +61,16 @@ and outputs).
 `rust/scripts/bench_cli.py` on this host (AVX-512 x86-64, single thread): seeded predictions
 from `dump_loaders.py`, every applicable metric (boxes: HOTA, CLEAR, Identity, Count,
 TrackMAP; MOTS20: HOTA, CLEAR, Identity, Count, J&F). Wall time is the hyperfine mean of 10
-runs after 3 warm-ups; peak RSS is the largest of three `/usr/bin/time -v` runs. Raw output:
-`artifacts/rust-port/bench/`.
+runs after 3 warm-ups; peak RSS is the largest of three `/usr/bin/time -v` runs. Measured on
+the final tree of the integration branch; raw output: `artifacts/rust-port/bench-e5efe3e/`.
+An earlier run on the integration merge gave means within 7% of these.
 
 | Case | Reference CLI | Python CLI (Rust) | Rust binary | Speed-up (binary) | Peak RSS: reference / Python / binary |
 | --- | --- | --- | --- | --- | --- |
-| DanceTrack val (25 seqs) | 4.84 s | 0.49 s | 0.39 s | 12.3x | 257 / 72 / 41 MiB |
-| SportsMOT val (45 seqs) | 5.78 s | 0.58 s | 0.48 s | 12.1x | 278 / 78 / 48 MiB |
-| MOTS20 train (4 seqs) | 38.59 s | 4.18 s | 3.82 s | 10.1x | 233 / 174 / 143 MiB |
-| ChimpACT val (17 seqs) | 2.19 s | 0.20 s | 0.11 s | 19.6x | 126 / 47 / 16 MiB |
+| DanceTrack val (25 seqs) | 4.93 s | 0.51 s | 0.41 s | 12.2x | 258 / 71 / 41 MiB |
+| SportsMOT val (45 seqs) | 5.65 s | 0.61 s | 0.48 s | 11.9x | 280 / 78 / 48 MiB |
+| MOTS20 train (4 seqs) | 39.49 s | 3.90 s | 3.72 s | 10.6x | 233 / 173 / 144 MiB |
+| ChimpACT val (17 seqs) | 2.24 s | 0.20 s | 0.11 s | 19.9x | 126 / 47 / 15 MiB |
 
 The Python CLI is the console script, which runs the same Rust CLI after the interpreter
 and numpy start (about 0.1 s). The real-data Python gate (`mise run test-real`) went from
