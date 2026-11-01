@@ -528,6 +528,29 @@ def test_custom_dataset_evaluates_through_public_api(tmp_path):
     }
 
 
+def test_distractor_and_ignore_thresholds_are_eps_guarded(tmp_path):
+    """A distractor match needs IoU ``>= 0.5 - eps``; an ignore drop needs IoA ``> 0.5 + eps``.
+
+    Unit boxes on separate rows. Prediction 12 overlaps the class-2 distractor at IoU
+    0.49999999999999994, inside the eps window, so it is matched and removed. Prediction
+    13 overlaps an ignore region at IoA 0.5000000000000001, inside the eps window, so it
+    is kept. Without either eps the count of surviving predictions changes.
+    """
+    distractor = Track(frame=1, track_id=2, x=0.0, y=0.0, w=1.0, h=1.0, conf=1, class_id=2)
+    ignore = Track(frame=1, track_id=-1, x=0.4999999999999999, y=300.0, w=5.0, h=1.0, conf=1)
+    sequence = GtSequence(
+        name="edge", num_timesteps=1, tracks=(distractor,), ignore_regions=(ignore,)
+    )
+    protocol = Protocol(
+        name="t-eps", frame_convention=CONVENTION, eval_classes=(1,), distractor_classes=(2,)
+    )
+    dataset = MOTDataset(name="t", split="test", sequences=(sequence,), protocol=protocol)
+    # Written by hand: write_mot rounds boxes to two decimals.
+    (tmp_path / "edge.txt").write_text("1,12,0.33333333333333337,0,1,1,0.8\n1,13,0,300,1,1,0.7\n")
+    result = evaluate(dataset, tmp_path, [Count()])
+    assert result.combined["Count"]["Dets"] == 1.0
+
+
 def test_matching_fill_decides_which_prediction_a_distractor_removes(tmp_path):
     """The engine reads ``Protocol.matching_fill`` (0 on the box path, -10000 on MOTS).
 
