@@ -37,7 +37,7 @@ from moteval.data.model import BoxGeometry
 from scripts import reference_results
 from tests import scenarios
 
-SYNTHETIC_OUT = Path(__file__).resolve().parents[2] / "tests" / "integration" / "data" / "scenarios"
+SYNTHETIC_OUT = _REPO_ROOT / "tests" / "integration" / "data" / "scenarios"
 REAL_OUT = _REPO_ROOT / "artifacts" / "rust-port" / "testdata"
 FIXTURES = _REPO_ROOT / "tests" / "fixtures"
 FORMAT_VERSION = 1

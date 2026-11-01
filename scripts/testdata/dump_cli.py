@@ -16,7 +16,7 @@ require_reference()
 
 from moteval import cli
 
-OUT = Path(__file__).resolve().parents[2] / "tests" / "integration" / "data" / "cli.json"
+OUT = _REPO_ROOT / "tests" / "integration" / "data" / "cli.json"
 FIXTURE = {"dirs": ["pred", "gt"], "files": ["file.txt"]}
 
 RUN = ["run", "--pred", "pred"]

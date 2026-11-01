@@ -12,7 +12,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from scripts.testdata.testgen import FNV_OFFSET, FNV_PRIME, MASK64, SplitMix64, f64_bits, fnv1a64
 
-OUT = Path(__file__).resolve().parents[2] / "tests" / "integration" / "data" / "pyfmt.json"
+OUT = _REPO_ROOT / "tests" / "integration" / "data" / "pyfmt.json"
 CHUNK = 100
 
 

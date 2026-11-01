@@ -22,13 +22,7 @@ from moteval.metrics.track_map import (
 )
 from scripts.testdata.testgen import MASK64, SplitMix64, f64_bits
 
-OUT = (
-    Path(__file__).resolve().parents[2]
-    / "tests"
-    / "integration"
-    / "data"
-    / "hota_trackmap_internals.json"
-)
+OUT = _REPO_ROOT / "tests" / "integration" / "data" / "hota_trackmap_internals.json"
 
 FNV_OFFSET = 0xCBF29CE484222325
 FNV_PRIME = 0x100000001B3

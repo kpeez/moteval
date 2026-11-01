@@ -17,7 +17,7 @@ require_reference()
 
 from moteval.benchmarks.motchallenge import read_seq_length  # pyrefly: ignore[missing-import]
 
-OUT = Path(__file__).resolve().parents[2] / "tests" / "integration" / "data" / "pytext"
+OUT = _REPO_ROOT / "tests" / "integration" / "data" / "pytext"
 Json = Any
 
 

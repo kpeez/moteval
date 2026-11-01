@@ -20,7 +20,7 @@ from moteval.data.similarity import box_ioa, box_iou  # pyrefly: ignore[missing-
 
 from scripts.testdata.testgen import SplitMix64, f64_bits, fnv1a64, pattern, random_box
 
-OUT_DIR = Path(__file__).resolve().parents[2] / "tests" / "integration" / "data"
+OUT_DIR = _REPO_ROOT / "tests" / "integration" / "data"
 
 LENGTHS = (
     *range(18),

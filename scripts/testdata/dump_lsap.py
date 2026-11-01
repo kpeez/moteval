@@ -19,7 +19,7 @@ from scripts.testdata.testgen import (
     lsap_seed,
 )
 
-OUT_DIR = Path(__file__).resolve().parents[2] / "tests" / "integration" / "data" / "lsap"
+OUT_DIR = _REPO_ROOT / "tests" / "integration" / "data" / "lsap"
 
 INF = math.inf
 NAN = math.nan

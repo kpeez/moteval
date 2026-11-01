@@ -40,7 +40,7 @@ from tests.conftest import (
     write_two_class_predictions,
 )
 
-OUT = Path(__file__).resolve().parents[2] / "tests" / "integration" / "data" / "exports.json"
+OUT = _REPO_ROOT / "tests" / "integration" / "data" / "exports.json"
 METRICS = {"HOTA": HOTA, "CLEAR": CLEAR, "Identity": Identity, "Count": Count}
 METRICS |= {"TrackMAP": TrackMAP, "JAndF": JAndF}
 

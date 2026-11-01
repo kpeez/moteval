@@ -16,14 +16,7 @@ from moteval import SequenceData
 from moteval.data.model import BoxGeometry
 from scripts.testdata import dump_scenarios as ds
 
-OUT = (
-    Path(__file__).resolve().parents[2]
-    / "tests"
-    / "integration"
-    / "data"
-    / "fuzz"
-    / "clear_identity_count"
-)
+OUT = _REPO_ROOT / "tests" / "integration" / "data" / "fuzz" / "clear_identity_count"
 METRICS = ("CLEAR", "Identity", "Count")
 NUM_CASES = 48
 NUM_MANY_CLASS_CASES = 6

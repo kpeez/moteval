@@ -33,7 +33,7 @@ from scripts.testdata.maskgen import (
 )
 from scripts.testdata.testgen import SplitMix64, f64_bits
 
-OUT_DIR = Path(__file__).resolve().parents[2] / "tests" / "integration" / "data"
+OUT_DIR = _REPO_ROOT / "tests" / "integration" / "data"
 JF_SEQUENCES = 300
 BOUNDARY_PAIRS = 1000
 GROUP_SIZES = (1, 2, 3, 5, 8)

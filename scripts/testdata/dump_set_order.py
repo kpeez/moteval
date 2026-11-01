@@ -17,7 +17,7 @@ require_reference()
 from moteval.metrics.track_map import _union_frames  # pyrefly: ignore[missing-module-attribute]
 from scripts.testdata.testgen import MASK64, SplitMix64
 
-OUT = Path(__file__).resolve().parents[2] / "tests" / "integration" / "data" / "set_order.json"
+OUT = _REPO_ROOT / "tests" / "integration" / "data" / "set_order.json"
 
 FNV_OFFSET = 0xCBF29CE484222325
 FNV_PRIME = 0x100000001B3
