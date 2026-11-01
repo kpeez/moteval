@@ -1,4 +1,4 @@
-"""Type stubs for the Rust extension `moteval._moteval` (rust/moteval-py/src/lib.rs)."""
+"""Type stubs for the Rust extension `moteval._moteval` (src/python.rs)."""
 
 from collections.abc import Iterable
 from os import PathLike

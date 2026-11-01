@@ -11,7 +11,7 @@ matched track id, a latent bug for id 0, which densified ids use).
 Documented divergence (the sole permitted one, see README's "Known divergences"):
 upstream's ``combine_classes_det_averaged`` is a copy-paste of the class-averaged
 combiner (never actually weights by detections). moteval implements the intended
-behavior instead. Implemented in ``rust/moteval/src/metrics/track_map.rs``.
+behavior instead. Implemented in ``src/metrics/track_map.rs``.
 """
 
 from moteval.metrics.base import RustMetric, rust_metric_info

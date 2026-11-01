@@ -31,8 +31,8 @@ _PROTOCOL = Protocol(name="t", frame_convention=CONVENTION, eval_classes=(1,))
 # --------------------------------------------------------------------- model
 #
 # Conversion (id densification, class views, ignore regions), the preprocessing engine,
-# and box IoU/IoA run in Rust. rust/moteval/tests/loader_cases.rs replays every call
-# the pure-Python versions of these tests made, bit for bit (rust/testdata/loader_cases).
+# and box IoU/IoA run in Rust. tests/integration/loader_cases.rs replays every call
+# the pure-Python versions of these tests made, bit for bit (tests/integration/data/loader_cases).
 
 
 def test_sequence_data_is_frozen():

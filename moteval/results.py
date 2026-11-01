@@ -13,7 +13,7 @@ single-class JSON and CSV keep their original shape:
   then ``COMBINED``), then ``class_averaged`` and ``det_averaged`` rows with
   ``seq = COMBINED``. An array field is reduced to its mean.
 
-The Rust extension writes both exports (``rust/moteval/src/results.rs``), so the CLI and
+The Rust extension writes both exports (``src/results.rs``), so the CLI and
 the Python API give the same bytes.
 """
 

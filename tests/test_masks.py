@@ -39,7 +39,7 @@ def test_rle_round_trip_from_c_order_input():
 
 # ------------------------------------------------------------------- mask IoU
 #
-# Mask IoU and IoA run in Rust: rust/moteval/tests/rle.rs checks them against
+# Mask IoU and IoA run in Rust: tests/integration/rle.rs checks them against
 # pycocotools on 1,000 seeded masks, and tests/jf.rs against the dumped similarity of
 # every MOTS frame.
 

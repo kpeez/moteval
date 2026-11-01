@@ -1,6 +1,6 @@
 """Command-line interface for moteval.
 
-The CLI is the Rust binary's (``rust/moteval/src/cli.rs``): `main` runs it in-process
+The CLI is the Rust binary's (``src/cli.rs``): `main` runs it in-process
 and writes its output to `sys.stdout` and `sys.stderr`, so the ``moteval`` console
 script (``moteval._moteval:main``) and this function behave the same.
 """

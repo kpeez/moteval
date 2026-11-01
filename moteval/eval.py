@@ -21,7 +21,7 @@ combined state, which can carry private keys (TrackMAP's match arrays and
 ``_num_dt_*`` weights), stays inside `evaluate`, where the class combiners use it.
 
 The whole run (reading, conversion, scoring, combining) happens in the Rust extension
-(``rust/moteval/src/eval.rs``) with the GIL released, so `evaluate` takes the built-in
+(``src/eval.rs``) with the GIL released, so `evaluate` takes the built-in
 metrics only.
 """
 

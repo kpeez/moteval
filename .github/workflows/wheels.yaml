@@ -46,8 +46,6 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          # Keep in step with the rust pin in mise.toml.
-          rust-toolchain: "1.99.1"
           args: --release --locked --out dist
 
       # The oldest supported interpreter imports the abi3 wheel and runs the Rust CLI.

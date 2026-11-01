@@ -1,39 +1,24 @@
 name: "Setup Python Environment"
-description: "Install uv and Rust from mise.toml, then sync the locked environment for one Python version"
+description: "Install uv and the pinned Rust toolchain, then sync the locked environment for one Python version"
 
 inputs:
   python-version:
     description: "Python version"
     required: true
-  install-args:
-    description: "Extra args for uv sync (e.g., --group ci)"
-    required: false
-    default: "--frozen"
 
 runs:
   using: "composite"
   steps:
-    # `uv sync` builds the editable install with maturin, which compiles the Rust
-    # extension `moteval._moteval`, so the Python jobs need Rust too.
-    - name: Install uv and Rust (versions from mise.toml)
-      uses: jdx/mise-action@v5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v10
       with:
-        install_args: uv rust
+        python-version: ${{ inputs.python-version }}
+        enable-cache: true
 
-    - name: Cache uv downloads
-      uses: actions/cache@v6
-      with:
-        path: ~/.cache/uv
-        key: uv-${{ runner.os }}-${{ inputs.python-version }}-${{ hashFiles('uv.lock') }}
-        restore-keys: uv-${{ runner.os }}-${{ inputs.python-version }}-
+    - name: Install Rust from rust-toolchain.toml
+      shell: bash
+      run: rustup toolchain install
 
     - name: Install Python dependencies
       shell: bash
-      env:
-        UV_PYTHON: ${{ inputs.python-version }}
-      run: |
-        uv --version
-        uv sync ${{ inputs.install-args }}
-        echo "UV_PYTHON=$UV_PYTHON" >> "$GITHUB_ENV"
-        # Stop `mise run` from installing the remaining tools (hyperfine).
-        echo "MISE_TASK_RUN_AUTO_INSTALL=false" >> "$GITHUB_ENV"
+      run: uv sync --frozen

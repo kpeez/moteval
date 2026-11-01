@@ -8,7 +8,7 @@ patched in place for numpy>=2 (``np.float``->``float``, ``np.int``->``int``,
 tests/oracle/VENDORED.md).
 
 Run from the repo root with the reference venv, whose ``moteval`` is the pure-Python
-``py-reference`` tag (``rust/scripts/reference.py``; the project venv's moteval is the
+``py-reference`` tag (``scripts/testdata/reference.py``; the project venv's moteval is the
 Rust port, which the fixtures check):
 
     uv pip install --python artifacts/rust-port/ref-venv/bin/python \
@@ -63,11 +63,11 @@ from types import SimpleNamespace
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
+# After site-packages: `moteval` is the pure-Python reference (scripts/testdata/reference.py).
 if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
-from rust.scripts.reference import require_reference
+from scripts.testdata.reference import require_reference
 
 require_reference()
 

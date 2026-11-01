@@ -23,7 +23,6 @@ jobs:
         uses: ./.github/actions/setup-python
         with:
           python-version: "3.14"
-          install-args: "--frozen"
 
       - name: Run checks
         run: uv run prek run --all-files
@@ -43,27 +42,17 @@ jobs:
         uses: ./.github/actions/setup-python
         with:
           python-version: ${{ matrix.python-version }}
-          install-args: "--frozen"
 
       - name: Run tests
-        run: mise run test
+        run: uv run pytest
 
   rust:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: rust
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust (version from mise.toml)
-        uses: jdx/mise-action@v5
-        with:
-          install_args: rust
-
-      # mise installs the minimal rustup profile, which lacks rustfmt and clippy.
-      - name: Add rustfmt and clippy
-        run: rustup component add rustfmt clippy
+      - name: Install Rust from rust-toolchain.toml
+        run: rustup toolchain install
 
       - name: Cache cargo
         uses: actions/cache@v6
@@ -71,16 +60,17 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock', 'mise.toml') }}
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: cargo-${{ runner.os }}-
 
       - name: Format
         run: cargo fmt --all --check
 
-      # --workspace also checks the PyO3 crate, which `cargo test` (default member) skips.
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: |
+          cargo clippy --all-targets --locked -- -D warnings
+          cargo clippy --all-targets --all-features --locked -- -D warnings
 
       - name: Test
         run: cargo test --locked

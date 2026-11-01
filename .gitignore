@@ -72,4 +72,4 @@ coverage.xml
 cover/
 
 # Rust
-/rust/target/
+/target/

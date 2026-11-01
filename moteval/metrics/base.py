@@ -6,7 +6,7 @@ per-class results (class-averaged and detection-averaged). Values are field->flo
 or field->19-alpha-array dicts so combining is generic.
 
 The six built-in metrics (`HOTA`, `CLEAR`, `Identity`, `Count`, `TrackMAP`, `JAndF`)
-run in the Rust extension (``rust/moteval/src/metrics/``): `RustMetric` sends the
+run in the Rust extension (``src/metrics/``): `RustMetric` sends the
 `SequenceData` or the score dicts across and returns plain ``float`` and float64 numpy
 values.
 """

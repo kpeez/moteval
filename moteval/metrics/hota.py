@@ -3,7 +3,7 @@
 
 TrackEval's global alignment (Hungarian assignment weighted by a Jaccard-normalized
 potential-match count) and eps-guarded alpha thresholding, bit-identical to the oracle.
-Implemented in ``rust/moteval/src/metrics/hota.rs``.
+Implemented in ``src/metrics/hota.rs``.
 """
 
 from moteval.metrics.base import RustMetric, rust_metric_info

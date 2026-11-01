@@ -6,7 +6,7 @@ caller passes ``root``. Custom data never registers anything: standard-layout
 directories load through `load_motchallenge` / `load_mots`, and any other source format
 just constructs a `MOTDataset` directly and calls `evaluate`.
 
-Every loader runs in the Rust extension (``rust/moteval/src/benchmarks/``, one module per
+Every loader runs in the Rust extension (``src/benchmarks/``, one module per
 benchmark); this module turns its plain data into the frozen dataclasses. Each loader
 takes a required ``root`` and a ``split`` with the benchmark's default.
 """

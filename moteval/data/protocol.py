@@ -3,7 +3,7 @@
 A `Protocol` is a value object: it declares *what* preprocessing a benchmark
 needs (evaluated classes, distractor classes, ignore-region IoA threshold,
 GT conf-zero semantics, frame convention) but never *how* to run it. One shared
-engine in the Rust extension (``rust/moteval/src/protocol.rs``) executes any Protocol
+engine in the Rust extension (``src/protocol.rs``) executes any Protocol
 on each frame, replicating TrackEval ``get_preprocessed_seq_data`` semantics (commit
 12c8791b) exactly:
 

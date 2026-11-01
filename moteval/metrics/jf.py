@@ -6,7 +6,7 @@ padded tracker tracks when there are fewer tracker ids than GT ids), the
 both-masks-empty IoU := 1 rule, the decay bin edges cast to uint8 (which wraps for
 sequences longer than 255 frames), and GT-to-pred assignment on mean-over-time J only.
 Boundary matches are counted exactly on integer boundary coordinates, as upstream's
-disk dilation counts them. Implemented in ``rust/moteval/src/metrics/jf.rs``.
+disk dilation counts them. Implemented in ``src/metrics/jf.rs``.
 """
 
 from moteval.metrics.base import RustMetric, rust_metric_info
