@@ -1,46 +1,49 @@
-"""CLI tests: run in-process via `moteval.cli.main(argv)` -- the installed
-console script isn't used because "toy" is registered in `BENCHMARKS` only
-inside the test process (the `toy_benchmark` fixture in tests/conftest.py) and
-a subprocess entry point never sees it, and because a nested `uv run` under
-`uv run pytest` deadlocks on uv's project lock.
+"""CLI tests: run in-process via `moteval.cli.main(argv)`, which runs the Rust CLI and
+writes its output to `sys.stdout` and `sys.stderr` (a nested `uv run` under `uv run
+pytest` deadlocks on uv's project lock).
+
+The toy dataset is written to disk in the MOTChallenge layout (`write_toy_layout`) and
+read with ``--gt``: the Rust CLI cannot see a dataset registered in Python.
 """
 
 import csv
+import io
 import json
-from dataclasses import replace
 
 import numpy as np
 import pytest
 
-from moteval import evaluate
+from moteval import _moteval, evaluate, load_motchallenge
 from moteval.cli import main
-from moteval.formats import Track, write_mot
-from moteval.results import EvaluationResult
-from tests.conftest import load_toy, write_perfect_predictions, write_two_class_predictions
+from moteval.formats import write_mot
+from moteval.results import EvaluationResult, to_csv, to_json_dict
+from tests.conftest import (
+    load_two_class,
+    write_flawed_predictions,
+    write_perfect_predictions,
+    write_toy_layout,
+    write_two_class_predictions,
+)
 
 
 @pytest.fixture
-def toy_predictions(tmp_path, toy_benchmark):
-    dataset = load_toy()
+def toy_gt(tmp_path):
+    """The toy dataset on disk; ``--gt <root> --split val`` loads it as dataset "toy"."""
+    root = tmp_path / "toy"
+    write_toy_layout(root)
+    return root
+
+
+@pytest.fixture
+def toy_predictions(tmp_path, toy_gt):
+    dataset = load_motchallenge(toy_gt, "val")
     pred_dir = tmp_path / "predictions"
     write_perfect_predictions(dataset, pred_dir)
     return dataset, pred_dir
 
 
-def _write_flawed_predictions(dataset, pred_dir):
-    """Per sequence: GT 1 -> ids 11 (frames 1-2), 12 (frames 3-5); GT 2 -> ids 13
-    (frames 1-2), 14 (frames 3-4), frame 5 dropped; id 15 is a far-away box in
-    frames 1-2. Every kept box copies its GT box, so each IoU is exactly 1 or 0."""
-    pred_ids = {(1, 1): 11, (1, 2): 11, (1, 3): 12, (1, 4): 12, (1, 5): 12}
-    pred_ids |= {(2, 1): 13, (2, 2): 13, (2, 3): 14, (2, 4): 14}
-    for sequence in dataset.sequences:
-        preds = [
-            replace(t, track_id=pred_ids[t.track_id, t.frame])
-            for t in sequence.tracks
-            if (t.track_id, t.frame) in pred_ids
-        ]
-        preds += [Track(frame=f, track_id=15, x=500, y=500, w=10, h=10, conf=1.0) for f in (1, 2)]
-        write_mot(pred_dir / f"{sequence.name}.txt", preds)
+def _toy_args(toy_gt) -> list[str]:
+    return ["--gt", str(toy_gt), "--split", "val"]
 
 
 def _python_scores(scores):
@@ -57,11 +60,11 @@ def _python_scores(scores):
     }
 
 
-def test_toy_run_prints_sequence_and_combined_headlines(tmp_path, toy_benchmark, capsys):
+def test_toy_run_prints_sequence_and_combined_headlines(tmp_path, toy_gt, capsys):
     pred_dir = tmp_path / "predictions"
-    _write_flawed_predictions(load_toy(), pred_dir)
+    write_flawed_predictions(load_motchallenge(toy_gt, "val"), pred_dir)
 
-    exit_code = main(["run", "--dataset", "toy", "--pred", str(pred_dir)])
+    exit_code = main(["run", *_toy_args(toy_gt), "--pred", str(pred_dir)])
 
     assert exit_code == 0
     lines = capsys.readouterr().out.splitlines()
@@ -94,7 +97,6 @@ def test_toy_run_prints_sequence_and_combined_headlines(tmp_path, toy_benchmark,
 
 def test_result_serializers_follow_stable_schemas(toy_predictions):
     from moteval import CLEAR, HOTA, Count, Identity
-    from moteval.results import iter_csv_rows, to_json_dict
 
     dataset, pred_dir = toy_predictions
     result = evaluate(dataset, pred_dir, [HOTA(), CLEAR(), Identity(), Count()])
@@ -108,22 +110,22 @@ def test_result_serializers_follow_stable_schemas(toy_predictions):
     assert len(hota) == 19
     assert hota == [1.0] * 19
 
-    rows = list(iter_csv_rows(result))
-    assert rows[0] == ("toy-0001", "HOTA", "HOTA", 1.0)
-    assert ("toy-0001", "HOTA", "HOTA_TP", 10.0) in rows
-    assert ("COMBINED", "Count", "GT_Dets", 20.0) in rows
-    assert all(isinstance(row[-1], (int, float)) for row in rows)
+    header, *rows = csv.reader(io.StringIO(to_csv(result), newline=""))
+    assert header == ["seq", "metric", "field", "value"]
+    assert rows[0] == ["toy-0001", "HOTA", "HOTA", "1.0"]
+    assert ["toy-0001", "HOTA", "HOTA_TP", "10.0"] in rows
+    assert ["COMBINED", "Count", "GT_Dets", "20.0"] in rows
+    assert all(isinstance(float(row[-1]), float) for row in rows)
 
 
-def test_cli_writes_csv_with_stable_schema(toy_predictions, tmp_path):
+def test_cli_writes_csv_with_stable_schema(toy_predictions, toy_gt, tmp_path):
     _dataset, pred_dir = toy_predictions
     out_csv = tmp_path / "exports" / "result.csv"
 
     exit_code = main(
         [
             "run",
-            "--dataset",
-            "toy",
+            *_toy_args(toy_gt),
             "--pred",
             str(pred_dir),
             "--metrics",
@@ -150,12 +152,12 @@ def test_cli_writes_csv_with_stable_schema(toy_predictions, tmp_path):
     )
 
 
-def test_cli_writes_json_with_stable_schema(toy_predictions, tmp_path):
+def test_cli_writes_json_with_stable_schema(toy_predictions, toy_gt, tmp_path):
     _dataset, pred_dir = toy_predictions
     out_json = tmp_path / "exports" / "result.json"
 
     exit_code = main(
-        ["run", "--dataset", "toy", "--pred", str(pred_dir), "--out-json", str(out_json)]
+        ["run", *_toy_args(toy_gt), "--pred", str(pred_dir), "--out-json", str(out_json)]
     )
 
     assert exit_code == 0
@@ -166,7 +168,7 @@ def test_cli_writes_json_with_stable_schema(toy_predictions, tmp_path):
     assert exported["split"] == "val"
 
 
-def test_json_export_round_trips_direct_evaluate_values(toy_predictions, tmp_path):
+def test_json_export_round_trips_direct_evaluate_values(toy_predictions, toy_gt, tmp_path):
     from moteval import CLEAR, HOTA, Count, Identity
 
     dataset, pred_dir = toy_predictions
@@ -174,7 +176,7 @@ def test_json_export_round_trips_direct_evaluate_values(toy_predictions, tmp_pat
     direct: EvaluationResult = evaluate(dataset, pred_dir, [HOTA(), CLEAR(), Identity(), Count()])
 
     exit_code = main(
-        ["run", "--dataset", "toy", "--pred", str(pred_dir), "--out-json", str(out_json)]
+        ["run", *_toy_args(toy_gt), "--pred", str(pred_dir), "--out-json", str(out_json)]
     )
 
     assert exit_code == 0
@@ -186,7 +188,7 @@ def test_json_export_round_trips_direct_evaluate_values(toy_predictions, tmp_pat
     assert exported["combined"] == _python_scores(direct.combined)
 
 
-def test_single_class_outputs_keep_their_exact_format(toy_predictions, tmp_path, capsys):
+def test_single_class_outputs_keep_their_exact_format(toy_predictions, toy_gt, tmp_path, capsys):
     # Hand-written expected bytes: a single-class run keeps the original table, CSV
     # and JSON shapes, with no class column and no class-combination keys.
     # Perfect predictions on both toy sequences: 10 GT dets and 10 predicted dets on
@@ -198,8 +200,7 @@ def test_single_class_outputs_keep_their_exact_format(toy_predictions, tmp_path,
     exit_code = main(
         [
             "run",
-            "--dataset",
-            "toy",
+            *_toy_args(toy_gt),
             "--pred",
             str(pred_dir),
             "--metrics",
@@ -235,32 +236,21 @@ def test_single_class_outputs_keep_their_exact_format(toy_predictions, tmp_path,
     )
 
 
-def test_multi_class_outputs_add_a_class_column_and_both_combinations(
-    tmp_path, two_class_benchmark, capsys
-):
+def test_multi_class_outputs_add_a_class_column_and_both_combinations(tmp_path):
+    # No built-in benchmark has two classes, so the CLI never prints a multi-class run;
+    # this checks the table, CSV and JSON text it would print and write.
+    from moteval import HOTA, Count
+
     pred_dir = tmp_path / "predictions"
     write_two_class_predictions(pred_dir)
+    dataset = load_two_class()
+    result = evaluate(dataset, pred_dir, [HOTA(), Count()])
     out_csv = tmp_path / "result.csv"
     out_json = tmp_path / "result.json"
+    out_csv.write_text(to_csv(result), newline="")
+    out_json.write_text(_moteval.results_to_json(result, dataset.name, dataset.split))
 
-    exit_code = main(
-        [
-            "run",
-            "--dataset",
-            "two-class",
-            "--pred",
-            str(pred_dir),
-            "--metrics",
-            "hota,count",
-            "--out-csv",
-            str(out_csv),
-            "--out-json",
-            str(out_json),
-        ]
-    )
-
-    assert exit_code == 0
-    raw_lines = capsys.readouterr().out.splitlines()
+    raw_lines = _moteval.results_table(result).splitlines()
     lines = [line.split() for line in raw_lines]
     # Both label columns are left-aligned: every seq label starts under "seq".
     seq_start = raw_lines[0].index("seq")
@@ -333,11 +323,11 @@ def test_unknown_dataset_is_reported_without_traceback(toy_predictions, capsys):
     assert "Traceback" not in err
 
 
-def test_unknown_metric_lists_available_names(toy_predictions, capsys):
+def test_unknown_metric_lists_available_names(toy_predictions, toy_gt, capsys):
     _dataset, pred_dir = toy_predictions
 
     with pytest.raises(SystemExit):
-        main(["run", "--dataset", "toy", "--pred", str(pred_dir), "--metrics", "hota,not-a-metric"])
+        main(["run", *_toy_args(toy_gt), "--pred", str(pred_dir), "--metrics", "hota,not-a-metric"])
 
     err = capsys.readouterr().err
     assert "unknown metric(s): not-a-metric" in err
@@ -348,7 +338,7 @@ def test_unknown_metric_lists_available_names(toy_predictions, capsys):
 @pytest.mark.parametrize(
     ("args", "message"),
     [
-        (["--dataset", "toy", "--pred", "missing-predictions"], "prediction directory"),
+        (["--dataset", "dancetrack", "--pred", "missing-predictions"], "prediction directory"),
         (
             ["--dataset", "dancetrack", "--pred", ".", "--gt", "missing-ground-truth"],
             "ground-truth root",
@@ -365,12 +355,12 @@ def test_missing_input_paths_are_actionable(args, message, capsys):
     assert "Traceback" not in err
 
 
-def test_missing_prediction_file_is_reported_without_traceback(tmp_path, toy_benchmark, capsys):
+def test_missing_prediction_file_is_reported_without_traceback(tmp_path, toy_gt, capsys):
     pred_dir = tmp_path / "predictions"
     write_mot(pred_dir / "toy-0001.txt", [])
 
     with pytest.raises(SystemExit) as exc:
-        main(["run", "--dataset", "toy", "--pred", str(pred_dir)])
+        main(["run", *_toy_args(toy_gt), "--pred", str(pred_dir)])
 
     assert exc.value.code == 2
     err = capsys.readouterr().err
@@ -379,11 +369,13 @@ def test_missing_prediction_file_is_reported_without_traceback(tmp_path, toy_ben
     assert "Traceback" not in err
 
 
-def test_metric_on_the_other_geometry_is_reported_without_traceback(toy_predictions, capsys):
+def test_metric_on_the_other_geometry_is_reported_without_traceback(
+    toy_predictions, toy_gt, capsys
+):
     _, pred_dir = toy_predictions
 
     with pytest.raises(SystemExit) as exc:
-        main(["run", "--dataset", "toy", "--pred", str(pred_dir), "--metrics", "jf"])
+        main(["run", *_toy_args(toy_gt), "--pred", str(pred_dir), "--metrics", "jf"])
 
     assert exc.value.code == 2
     err = capsys.readouterr().err

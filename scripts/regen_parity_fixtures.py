@@ -7,10 +7,13 @@ patched in place for numpy>=2 (``np.float``->``float``, ``np.int``->``int``,
 ``np.bool_`` etc. are never touched — the exact patch set documented in the old
 tests/oracle/VENDORED.md).
 
-Run from the repo root:
+Run from the repo root with the reference venv, whose ``moteval`` is the pure-Python
+``py-reference`` tag (``rust/scripts/reference.py``; the project venv's moteval is the
+Rust port, which the fixtures check):
 
-    uv run --with opencv-python-headless --with scikit-image \
-        python scripts/regen_parity_fixtures.py
+    uv pip install --python artifacts/rust-port/ref-venv/bin/python \
+        opencv-python-headless scikit-image
+    artifacts/rust-port/ref-venv/bin/python scripts/regen_parity_fixtures.py
 
 (cv2/scikit-image are needed only by the oracle's JAndF metric on the MOTS path;
 moteval itself needs neither.)
@@ -60,8 +63,13 @@ from types import SimpleNamespace
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+# After site-packages: `moteval` is the pure-Python reference (rust/scripts/reference.py).
 if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.append(str(_REPO_ROOT))
+
+from rust.scripts.reference import require_reference
+
+require_reference()
 
 from moteval import HOTA, TrackMAP, evaluate
 from moteval.benchmarks import default_data_root

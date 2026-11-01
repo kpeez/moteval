@@ -11,13 +11,27 @@ Every fixture runs through the full public path: `GtSequence` -> `MOTDataset`
 -> `evaluate()` (which reads predictions from a `<seq>.txt` directory, runs the
 protocol engine, densifies ids, and combines sequences). No metric internals
 are called. Geometry uses exactly-overlapping or disjoint boxes so IoU is
-exactly 1.0 or 0.0 and every expected value is exact in float64 — assertions
+exactly 1.0 or 0.0 (the two HOTA eps-guard tests add an IoU of exactly 0.75 and
+one of about 7e-17) and every expected value is exact in float64 — assertions
 are exact equality, never approx.
+
+The last test calls each combiner directly with a score dict that lacks every field.
 """
 
 import numpy as np
+import pytest
 
-from moteval import CLEAR, HOTA, Count, Identity, MOTDataset, Protocol, evaluate
+from moteval import (
+    CLEAR,
+    HOTA,
+    Count,
+    Identity,
+    JAndF,
+    MOTDataset,
+    Protocol,
+    TrackMAP,
+    evaluate,
+)
 from moteval.data.model import FrameConvention, GtSequence
 from moteval.formats import Track, write_mot
 
@@ -285,6 +299,57 @@ def test_conf_zero_gt_dropped_but_matched_pred_stays(tmp_path) -> None:
     )
 
 
+def test_hota_alignment_ignores_overlap_at_or_below_eps(tmp_path) -> None:
+    # HOTA's global alignment adds sim / (row sum + column sum - sim) only where that
+    # denominator is above eps. GT ids 1 and 2 and pred id 1 are 100x100 boxes at the
+    # origin in frame 1 (IoU 1 each, a tie). In frames 2 and 3 only GT 2 is there, its left
+    # edge 2**-46 short of the prediction's right edge: IoU ~7e-17, below eps, so it adds
+    # nothing (it would add 1 per frame without the guard and pull frame 1 to GT 2). In
+    # frame 4 only GT 1 is there (IoU 1). Alignment: GT 1 1.5/(2+4-1.5), GT 2
+    # 0.5/(3+4-0.5), so frame 1 matches GT 1. TP=2 (frames 1 and 4), FN=3, FP=2:
+    # DetA=2/7, DetRe=2/5, DetPr=1/2. One pair, matched twice: ass_a = 2/(2+4-2) = 0.5,
+    # AssRe = 2/2, AssPr = 2/4.
+    box = {"y": 0.0, "w": 100.0, "h": 100.0, "conf": 1.0}
+    gt = [Track(frame=f, track_id=1, x=0.0, **box) for f in (1, 4)]
+    gt += [Track(frame=1, track_id=2, x=0.0, **box)]
+    gt += [Track(frame=f, track_id=2, x=100.0 - 2.0**-46, **box) for f in (2, 3)]
+    pred = [Track(frame=f, track_id=1, x=0.0, **box) for f in (1, 2, 3, 4)]
+    dataset = _dataset(GtSequence(name="seq", num_timesteps=4, tracks=tuple(gt)))
+    result = _evaluate(dataset, {"seq": pred}, tmp_path)
+
+    assert_scores_exact(
+        result.per_sequence["seq"]["HOTA"],
+        _hota_expected(
+            tp=2,
+            fn=3,
+            fp=2,
+            det_a=2 / 7,
+            det_re=2 / 5,
+            det_pr=0.5,
+            ass_a=0.5,
+            ass_re=1.0,
+            ass_pr=0.5,
+            loca=1.0,
+        ),
+    )
+
+
+def test_hota_alpha_threshold_is_eps_guarded(tmp_path) -> None:
+    # One frame, one GT box and one prediction, 7 wide and shifted by 1: IoU = 60/80 =
+    # 0.75 exactly. The 15th alpha, np.arange(0.05, 0.99, 0.05)[14], is
+    # 0.7500000000000001; HOTA matches at `similarity >= alpha - eps`, so the pair counts
+    # at the first 15 alphas and not at the last 4 (0.8 and up).
+    gt = [Track(frame=1, track_id=1, x=0.0, y=0.0, w=7.0, h=10.0, conf=1.0)]
+    pred = [Track(frame=1, track_id=1, x=1.0, y=0.0, w=7.0, h=10.0, conf=1.0)]
+    dataset = _dataset(GtSequence(name="seq", num_timesteps=1, tracks=tuple(gt)))
+    scores = _evaluate(dataset, {"seq": pred}, tmp_path).per_sequence["seq"]["HOTA"]
+
+    matched = np.array([1.0] * 15 + [0.0] * 4)
+    assert np.array_equal(scores["HOTA_TP"], matched)
+    assert np.array_equal(scores["HOTA_FN"], 1.0 - matched)
+    assert np.array_equal(scores["HOTA_FP"], 1.0 - matched)
+
+
 def test_multi_sequence_combine_is_detection_weighted(tmp_path) -> None:
     # Sequence "perfect" is tracked perfectly; sequence "missed" has an empty file.
     # Combining sums TP/FN/FP (TrackEval-style detection weighting), it does NOT
@@ -382,3 +447,27 @@ def test_empty_predictions_sequence(tmp_path) -> None:
     clear_expected["MLR"] = 1.0
     assert_scores_exact(scores["CLEAR"], clear_expected)
     assert_scores_exact(scores["Identity"], _identity_expected(idtp=0, idfn=10, idfp=0))
+
+
+# The first field each combiner reads, as the `py-reference` pure-Python metrics raise it.
+FIRST_FIELD_READ = {
+    HOTA: ("HOTA_TP", "HOTA_TP", "HOTA_TP"),
+    CLEAR: ("CLR_TP", "CLR_TP", "CLR_TP"),
+    Identity: ("IDTP", "IDTP", "IDTP"),
+    Count: ("Dets", "Dets", "Dets"),
+    TrackMAP: ("_dt_scores", "AP_all", "_num_dt_all"),
+    JAndF: ("num_gt_tracks", "num_gt_tracks", "num_gt_tracks"),
+}
+COMBINERS = (
+    "combine_sequences",
+    "combine_classes_class_averaged",
+    "combine_classes_det_averaged",
+)
+
+
+@pytest.mark.parametrize("metric", list(FIRST_FIELD_READ), ids=lambda m: m.__name__)
+def test_combiner_input_missing_a_field_raises_key_error(metric) -> None:
+    for method, field in zip(COMBINERS, FIRST_FIELD_READ[metric], strict=True):
+        with pytest.raises(KeyError) as info:
+            getattr(metric(), method)({"seq": {}})
+        assert info.value.args == (field,), method

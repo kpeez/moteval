@@ -8,21 +8,23 @@ from pathlib import Path
 
 import pytest
 
-from moteval import evaluate, load_dataset
-from moteval.benchmarks.animaltrack import load_animaltrack
-from moteval.benchmarks.bft import load_bft
-from moteval.benchmarks.chimpact import _CLASS_ID, _TEST_CLIPS, _VAL_CLIPS, load_chimpact
-from moteval.benchmarks.dancetrack import load_dancetrack
-from moteval.benchmarks.gmot40 import load_gmot40
-from moteval.benchmarks.motchallenge import MOTChallengeConfig, load_layout, load_motchallenge
-from moteval.benchmarks.panaf500 import load_panaf500
-from moteval.benchmarks.sportsmot import load_sportsmot
-from moteval.benchmarks.uavdt import load_uavdt
-from moteval.data.convert import build_sequence_data
-from moteval.data.model import FrameConvention
-from moteval.data.protocol import Protocol
+from moteval import CLEAR, Count, evaluate, load_dataset, load_motchallenge
+from moteval.benchmarks import BENCHMARKS
 from moteval.formats import Track, write_mot
-from moteval.metrics.count import Count
+
+load_animaltrack = BENCHMARKS["animaltrack"]
+load_bft = BENCHMARKS["bft"]
+load_chimpact = BENCHMARKS["chimpact"]
+load_dancetrack = BENCHMARKS["dancetrack"]
+load_gmot40 = BENCHMARKS["gmot40"]
+load_panaf500 = BENCHMARKS["panaf500"]
+load_sportsmot = BENCHMARKS["sportsmot"]
+load_uavdt = BENCHMARKS["uavdt"]
+
+# ChimpACT's evaluated class, and the first clip of its official val and test splits.
+_CHIMPACT_CLASS_ID = 1
+_CHIMPACT_VAL_CLIP = "Azibo_ObsChimp_2015_11_25_d_clip_23000_24000"
+_CHIMPACT_TEST_CLIP = "Azibo_ObsChimp_2015_11_25_d_clip_1000_2000"
 
 # ------------------------------------------------------------ common matrix
 #
@@ -227,12 +229,13 @@ def test_gmot40_frame_zero_contributes(tmp_path):
 
     # Raw frame numbers are kept, not shifted to 1-indexed like the legacy loader.
     assert sorted(t.frame for t in seq.tracks) == [0, 1]
-    # The loader's own protocol must accept them (a 1-indexed one raises on 0).
-    data = build_sequence_data(seq, (), dataset.protocol, 1)
-    # Frame 0 (the first timestep) must contribute -- the silent-drop bug this
-    # rewrite exists to kill would have discarded it.
-    assert data.gt_ids[0].shape[0] == 1
-    assert data.num_gt_dets == 2
+    # The loader's own protocol must accept them (a 1-indexed one raises on 0), and
+    # frame 0 (the first timestep) must contribute -- the silent-drop bug this rewrite
+    # exists to kill would have discarded it. A prediction only at frame 0 matches.
+    pred_dir = tmp_path / "pred"
+    write_mot(pred_dir / "bird-0.txt", [Track(frame=0, track_id=5, x=10, y=20, w=30, h=40, conf=1)])
+    clear = evaluate(dataset, pred_dir, [CLEAR()]).combined["CLEAR"]
+    assert (clear["CLR_TP"], clear["CLR_FN"]) == (1.0, 1.0)
 
 
 def _coco_image(image_id: int, block: int) -> dict:
@@ -258,11 +261,16 @@ def test_chimpact_frame_zero_contributes(tmp_path):
 
     dataset = load_chimpact(root=tmp_path, split="train")
     (seq,) = dataset.sequences
+    pred_dir = tmp_path / "pred"
+    write_mot(
+        pred_dir / f"{seq.name}.txt",
+        [Track(frame=0, track_id=5, x=1.0, y=2.0, w=3.0, h=4.0, conf=1.0)],
+    )
 
-    data = build_sequence_data(seq, (), dataset.protocol, _CLASS_ID)
     # Frame 0 is the first timestep -- the silent-drop bug this rewrite
-    # exists to kill would have discarded it.
-    assert data.gt_ids[0].shape[0] == 1
+    # exists to kill would have discarded it. A prediction only at frame 0 matches.
+    assert min(t.frame for t in seq.tracks) == 0
+    assert evaluate(dataset, pred_dir, [CLEAR()]).combined["CLEAR"]["CLR_TP"] == 1.0
 
 
 # ------------------------------------------------------------------ chimpact
@@ -454,7 +462,7 @@ def test_chimpact_gt_class_id_matches_declared_constant_not_raw_coco_category(tm
     dataset = load_chimpact(root=tmp_path, split="train")
     (seq,) = dataset.sequences
 
-    assert all(track.class_id == _CLASS_ID for track in seq.tracks)
+    assert all(track.class_id == _CHIMPACT_CLASS_ID for track in seq.tracks)
     assert all(track.class_id != 0 for track in seq.tracks)
 
 
@@ -473,8 +481,8 @@ def test_chimpact_missing_labels_dir_raises(tmp_path):
 
 
 def test_chimpact_split_partition_uses_official_clip_names(tmp_path):
-    val_clip = _VAL_CLIPS[0]
-    test_clip = _TEST_CLIPS[0]
+    val_clip = _CHIMPACT_VAL_CLIP
+    test_clip = _CHIMPACT_TEST_CLIP
     train_clip = "not-an-official-clip-name"
     tiny_labels = {"images": [_coco_image(0, 0)], "annotations": [_coco_ann(0, 0, 1, [0, 0, 1, 1])]}
     for clip in (val_clip, test_clip, train_clip):
@@ -511,20 +519,11 @@ def _make_mc_sequence(
     return seq_dir
 
 
-_MC_CONVENTION = FrameConvention(name="1-indexed", first_frame=1)
-_MC_TEST_PROTOCOL = Protocol(
-    name="test-motchallenge", frame_convention=_MC_CONVENTION, eval_classes=(1,)
-)
-
-
-_MC_CONFIG = MOTChallengeConfig(name="test-motchallenge", protocol=_MC_TEST_PROTOCOL)
-
-
 def test_motchallenge_sequence_discovery_sorted_by_name(tmp_path):
     for name in ("seq-02", "seq-10", "seq-01"):
         _make_mc_sequence(tmp_path, "val", name, 1, ["1,1,10,10,20,20,1,1,1"])
 
-    dataset = load_layout(_MC_CONFIG, root=tmp_path, split="val")
+    dataset = load_motchallenge(tmp_path, "val")
 
     assert [seq.name for seq in dataset.sequences] == ["seq-01", "seq-02", "seq-10"]
 
@@ -542,7 +541,7 @@ def test_motchallenge_seq_length_comes_from_seqinfo_not_max_gt_frame(tmp_path):
         ],
     )
 
-    dataset = load_layout(_MC_CONFIG, root=tmp_path, split="val")
+    dataset = load_motchallenge(tmp_path, "val")
 
     (seq,) = dataset.sequences
     assert seq.num_timesteps == 10
@@ -553,7 +552,7 @@ def test_motchallenge_missing_seqinfo_raises(tmp_path):
     _write_mc_gt(seq_dir, ["1,1,10,10,20,20,1,1,1"])
 
     with pytest.raises(ValueError, match="seqinfo.ini"):
-        load_layout(_MC_CONFIG, root=tmp_path, split="val")
+        load_motchallenge(tmp_path, "val")
 
 
 def test_motchallenge_seqinfo_missing_seqlength_key_raises(tmp_path):
@@ -563,7 +562,7 @@ def test_motchallenge_seqinfo_missing_seqlength_key_raises(tmp_path):
     _write_mc_gt(seq_dir, ["1,1,10,10,20,20,1,1,1"])
 
     with pytest.raises(ValueError, match="seqLength"):
-        load_layout(_MC_CONFIG, root=tmp_path, split="val")
+        load_motchallenge(tmp_path, "val")
 
 
 def test_motchallenge_seqinfo_non_integer_seqlength_raises(tmp_path):
@@ -572,7 +571,7 @@ def test_motchallenge_seqinfo_non_integer_seqlength_raises(tmp_path):
     )
 
     with pytest.raises(ValueError, match="seqLength"):
-        load_layout(_MC_CONFIG, root=tmp_path, split="val")
+        load_motchallenge(tmp_path, "val")
 
 
 def test_motchallenge_missing_gt_txt_raises(tmp_path):
@@ -580,7 +579,7 @@ def test_motchallenge_missing_gt_txt_raises(tmp_path):
     _write_seqinfo(seq_dir, 5)
 
     with pytest.raises(ValueError, match="gt.txt"):
-        load_layout(_MC_CONFIG, root=tmp_path, split="val")
+        load_motchallenge(tmp_path, "val")
 
 
 def test_motchallenge_malformed_gt_row_raises_and_names_file(tmp_path):
@@ -589,31 +588,8 @@ def test_motchallenge_malformed_gt_row_raises_and_names_file(tmp_path):
     )
 
     with pytest.raises(ValueError) as exc:
-        load_layout(_MC_CONFIG, root=tmp_path, split="val")
+        load_motchallenge(tmp_path, "val")
     assert str(seq_dir / "gt" / "gt.txt") in str(exc.value)
-
-
-def test_motchallenge_gt_class_id_explicitly_stamped_from_config(tmp_path):
-    # read_mot defaults every row to class_id=1, so this only passes if
-    # `_load_sequence` actually stamps `config.class_id` rather than passing
-    # rows through untouched.
-    _make_mc_sequence(
-        tmp_path,
-        "val",
-        "seq-01",
-        seq_length=2,
-        rows=["1,1,10,10,20,20,1,1,1", "2,1,12,10,20,20,1,1,1"],
-    )
-    config = MOTChallengeConfig(
-        name="test-motchallenge-class7",
-        protocol=Protocol(name="test-class7", frame_convention=_MC_CONVENTION, eval_classes=(7,)),
-        class_id=7,
-    )
-
-    dataset = load_layout(config, root=tmp_path, split="val")
-
-    (seq,) = dataset.sequences
-    assert all(track.class_id == 7 for track in seq.tracks)
 
 
 def test_motchallenge_frames_binned_regardless_of_file_order(tmp_path):
@@ -629,12 +605,16 @@ def test_motchallenge_frames_binned_regardless_of_file_order(tmp_path):
         ],
     )
 
-    dataset = load_layout(_MC_CONFIG, root=tmp_path, split="val")
+    dataset = load_motchallenge(tmp_path, "val")
     (seq,) = dataset.sequences
-    data = build_sequence_data(seq, (), _MC_TEST_PROTOCOL, 1)
+    # Predictions sorted by frame, as write_mot writes them. Binning GT by file order
+    # would put frame 3's box (x=14) at the first timestep and lower MOTP below 1.
+    pred_dir = tmp_path / "pred"
+    write_mot(pred_dir / "seq-01.txt", [t for t in seq.tracks])
 
-    assert data.num_timesteps == 3
-    assert [frame.shape[0] for frame in data.gt_ids] == [1, 1, 1]
+    clear = evaluate(dataset, pred_dir, [CLEAR()]).combined["CLEAR"]
+    assert seq.num_timesteps == 3
+    assert (clear["CLR_TP"], clear["MOTP"]) == (3.0, 1.0)
 
 
 # --------------------------------------------------------------------- uavdt

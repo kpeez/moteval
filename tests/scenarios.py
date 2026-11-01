@@ -29,14 +29,11 @@ old tests/parity/test_real_data.py setup exactly.
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
-from moteval.benchmarks import default_data_root
-from moteval.benchmarks.dancetrack import load_dancetrack
-from moteval.benchmarks.mots20 import MOTS20_IGNORE_CLASS, MOTS20_PROTOCOL, load_mots20
-from moteval.benchmarks.sportsmot import load_sportsmot
+from moteval.benchmarks import default_data_root, load_dataset
 from moteval.data.model import (
     BoxGeometry,
     FrameConvention,
@@ -46,10 +43,49 @@ from moteval.data.model import (
     SequenceData,
 )
 from moteval.data.protocol import Protocol
-from moteval.data.similarity import box_iou
 from moteval.formats import MaskTrack, read_mot, read_mots, write_mot, write_mots
 from tests.perturb import perturb_box_tracks, perturb_mask_tracks
 from tests.rle import encode_mask
+
+# MOTS20's protocol and its ignore class, as the MOTS20 loader declares them.
+MOTS20_IGNORE_CLASS = 10
+MOTS20_PROTOCOL = Protocol(
+    name="mots20",
+    frame_convention=FrameConvention(name="1-indexed", first_frame=1),
+    eval_classes=(2,),
+    drop_zero_conf_gt=False,
+    matching_fill=-10000.0,
+)
+
+
+def box_iou(boxes_a: np.ndarray, boxes_b: np.ndarray) -> np.ndarray:
+    """IoU matrix between two sets of xywh boxes, as TrackEval computes it.
+
+    Convert xywh to corners, clamp negative overlaps, derive the areas from the corners
+    (``(x0 + w) - x0`` can differ from ``w`` by an ulp), and guard a zero union to 0.
+    """
+    n, m = boxes_a.shape[0], boxes_b.shape[0]
+    if n == 0 or m == 0:
+        return np.zeros((n, m), dtype=np.float64)
+    a = boxes_a.astype(np.float64)
+    b = boxes_b.astype(np.float64)
+    ax1, ay1, ax2, ay2 = a[:, 0], a[:, 1], a[:, 0] + a[:, 2], a[:, 1] + a[:, 3]
+    bx1, by1, bx2, by2 = b[:, 0], b[:, 1], b[:, 0] + b[:, 2], b[:, 1] + b[:, 3]
+    ix1 = np.maximum(ax1[:, None], bx1[None, :])
+    iy1 = np.maximum(ay1[:, None], by1[None, :])
+    ix2 = np.minimum(ax2[:, None], bx2[None, :])
+    iy2 = np.minimum(ay2[:, None], by2[None, :])
+    inter = np.maximum(ix2 - ix1, 0.0) * np.maximum(iy2 - iy1, 0.0)
+    area_a = (ax2 - ax1) * (ay2 - ay1)
+    area_b = (bx2 - bx1) * (by2 - by1)
+    union = area_a[:, None] + area_b[None, :] - inter
+    eps = np.finfo("float").eps
+    inter[area_a <= eps, :] = 0.0
+    inter[:, area_b <= eps] = 0.0
+    inter[union <= eps] = 0.0
+    union[union <= eps] = 1.0
+    return inter / union
+
 
 BOX_PROTOCOL = Protocol(
     name="parity",
@@ -930,21 +966,21 @@ def prepare_dancetrack_val(tmp_dir: Path) -> tuple[MOTDataset, Path, dict[str, i
     ``predictions_dir(tmp_dir)``.
     """
     root = default_data_root() / "dancetrack"
-    dataset = load_dancetrack(root=root, split="val")
+    dataset = load_dataset("dancetrack", root=root, split="val")
     return dataset, root / "val", _write_perturbed_box_predictions(dataset, tmp_dir)
 
 
 def prepare_sportsmot_val(tmp_dir: Path) -> tuple[MOTDataset, Path, dict[str, int]]:
     """Same contract as `prepare_dancetrack_val`, for SportsMOT val."""
     root = default_data_root() / "sportsmot"
-    dataset = load_sportsmot(root=root, split="val")
+    dataset = load_dataset("sportsmot", root=root, split="val")
     return dataset, root / "val", _write_perturbed_box_predictions(dataset, tmp_dir)
 
 
 def prepare_mots20_sequence(tmp_dir: Path) -> tuple[MOTDataset, Path, dict[str, int]]:
     """Load MOTS20 train restricted to its first sequence, with seeded mask predictions."""
     root = default_data_root() / "mots20"
-    dataset = load_mots20(root=root, split="train")
+    dataset = cast(MOTDataset[MaskGtSequence], load_dataset("mots20", root=root, split="train"))
     seq = dataset.sequences[0]
     dataset = type(dataset)(
         name=dataset.name, split=dataset.split, sequences=(seq,), protocol=dataset.protocol

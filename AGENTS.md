@@ -5,6 +5,9 @@ GitHub Issues on this repo instead and close it with `Fixes #N`.
 
 MOT evaluation library: a from-scratch TrackEval rewrite that must produce **bit-identical
 numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never runs models.
+The implementation is Rust (`rust/`); the Python package `moteval/` is a thin wrapper that
+keeps the public names. It must give the same bits as the pure-Python moteval of the
+`py-reference` tag (`docs/rust-port.md`).
 
 ## Non-negotiables
 
@@ -29,15 +32,25 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
 
 ## Layout
 
-- `moteval/data/` — model, convert, similarity, protocol
-- `moteval/formats.py` — MOT box rows (`Track`) and MOTS mask rows (`MaskTrack`)
-- `moteval/metrics/` — base ABC + hota/clear/identity/count/jf/track_map
-- `moteval/benchmarks/` — one loader module per benchmark; `__init__.py` holds the
-  explicit `BENCHMARKS` dict + `load_dataset(name, root, split)` (no registration —
-  custom data loads by path via `load_motchallenge`/`load_mots` or builds a `MOTDataset`
-  directly); see that directory's `README.md` for loader conventions
-- `moteval/eval.py` (`evaluate`), `moteval/results.py`, `moteval/cli.py`. `evaluate`
-  scores each class in `protocol.eval_classes`. A single-class run fills
+- `rust/` — the implementation: a Cargo workspace with the `moteval` crate (library plus
+  the `moteval` binary; zero runtime dependencies) and the `moteval-py` PyO3 crate,
+  which maturin builds into the extension `moteval._moteval` (stubs in
+  `moteval/_moteval.pyi`). `rust/README.md` has the module map, commands, rules, and how
+  to regenerate `rust/testdata/` (dumped from the pure-Python reference, never
+  hand-edited). One crate module per old Python module: `model`, `numeric` (every numpy
+  and builtin reduction order), `lsap` (scipy's solver), `similarity`, `rle`
+  (pycocotools), `metrics/`, `formats`, `convert`, `protocol`, `benchmarks/`, `eval`,
+  `results`, `pyfmt` (Python-compatible text), `cli`.
+- `moteval/` — the Python package: the frozen dataclasses (`data/model.py`,
+  `data/protocol.py` `Protocol`, `formats.py` `Track`/`MaskTrack`, `results.py`) and thin
+  functions over the extension: `evaluate` (`eval.py`), the loaders
+  (`benchmarks/__init__.py`: `BENCHMARKS`, `load_dataset`, `load_motchallenge`,
+  `load_mots`, `default_data_root`), the readers and writers, the exports
+  (`results.to_json`/`to_csv`/`to_json_dict`), the metric classes (`metrics/`:
+  `RustMetric` subclasses whose `eval_sequence` and combiners run in Rust), and
+  `cli.main`. Rust errors cross as `RustError(class, message)`; `moteval/_rust.py`
+  re-raises the Python class. `evaluate` takes the built-in metrics only.
+- `evaluate` scores each class in `protocol.eval_classes`. A single-class run fills
   `EvaluationResult.per_sequence`/`combined`; a multi-class run fills `per_class`,
   `class_averaged` and `det_averaged` instead (the class combiners take the raw per-class
   state, because TrackMAP weights by private `_num_dt_*` fields). Box predictions give
@@ -48,19 +61,28 @@ numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never 
   does. Tests that mean "no predictions" write an empty file. `evaluate` also raises
   `ValueError` before scoring when a metric's `Metric.geometry` (boxes or masks) does not
   match a sequence.
+- The `moteval` console script is the Rust CLI (`moteval._moteval:main`), the same code
+  as the `moteval` binary; `moteval.cli.main(argv)` runs it in-process.
 - `scripts/download_benchmarks.py` — dev-only benchmark downloader (`list/status/download`)
 - `scripts/reference_results.py` — scores the nine benchmarks with seeded predictions; writes
   per-sequence and combined JSON and the reference fixture
-- `tests/` — flat suite (test_metrics.py, test_parity.py, test_parity_real.py, test_data.py,
-  test_loaders.py, test_loaders_real.py, test_reference_real.py, test_masks.py, test_cli.py, test_download.py),
+- `tests/` — flat Python suite (test_metrics.py, test_parity.py, test_parity_real.py,
+  test_data.py, test_loaders.py, test_loaders_real.py, test_reference_real.py,
+  test_masks.py, test_cli.py, test_download.py) that runs through the extension,
   `tests/fixtures/*.json`
   (frozen TrackEval oracle numbers, except `reference_benchmarks.json`), `tests/scenarios.py` (shared scenario definitions),
   `tests/perturb.py` (seeded perturbed predictions), `tests/rle.py` (RLE encoding for mask
   fixtures), `tests/conftest.py` (in-memory toy dataset and a two-class dataset, with
-  `write_perfect_predictions` and `write_two_class_predictions` to write their prediction
-  files; the `toy_benchmark` and `two_class_benchmark` fixtures register them by name for a
-  single test). `tests/temp/` is gitignored scratch
-  for data, not tests (see Gotchas).
+  `write_perfect_predictions`, `write_flawed_predictions` and
+  `write_two_class_predictions` to write their prediction files, and `write_toy_layout`
+  to write the toy dataset to disk for CLI tests). The shared helpers use the public API
+  only, because the dump scripts import them under the reference venv. `tests/temp/` is
+  gitignored scratch for data, not tests (see Gotchas). The Rust tests live in
+  `rust/moteval/tests/`.
+- CI: `ci` runs `check`, the Python suite on 3.10 to 3.14 (every Python job installs
+  Rust, because `uv sync` builds the extension), and `rust` (`cargo fmt --check`,
+  `cargo clippy -D warnings`, `cargo test`); `wheels` builds abi3 wheels for Linux
+  x86_64 and macOS arm64.
 
 ## Commands
 
@@ -69,13 +91,20 @@ mise run install   # uv sync --locked, prek hooks (main checkout only)
 mise run check     # ruff format, ruff check --fix, pyrefly check
 mise run test      # pytest (testpaths: tests/; real-data gate deselected by default)
 mise run test-real # slow real-data gate: parity + raw-GT loader checks (needs the data root)
+cargo fmt --manifest-path rust/Cargo.toml --all --check
+cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
+cargo test --manifest-path rust/Cargo.toml   # real-data tests skip loudly without the env:
+MOTEVAL_RUST_TESTDATA=artifacts/rust-port/testdata MOTEVAL_DATA_ROOT=<root> \
+  cargo test --manifest-path rust/Cargo.toml
 ```
 
-`check`, `test`, and `test-real` must pass before any PR.
+`check`, `test`, and `test-real` must pass before any PR, and so must the three cargo
+commands when the PR touches `rust/` (CI runs them without real data).
 
 `mise.toml` pins uv, rust, and hyperfine and holds the tasks. uv pins Python through
 `.python-version`; mise does not. Run `mise run install` first in every fresh clone or git
-worktree: the venv is an editable install. Host-only settings,
+worktree: the venv is an editable install, and it rebuilds the Rust extension when a
+Rust source changes (`[tool.uv] cache-keys`). Host-only settings,
 such as `MOTEVAL_DATA_ROOT`, go in the gitignored `mise.local.toml`. `mise run` trusts its own
 config; run `mise trust` only to activate that env in your shell. `mise run install`
 installs the git hooks only in the main checkout, because a worktree shares `.git/hooks`.
@@ -84,7 +113,10 @@ installs the git hooks only in the main checkout, because a worktree shares `.gi
 
 - Parity fixtures (`tests/fixtures/*.json`) are never hand-edited — regenerate with
   `scripts/regen_parity_fixtures.py`, which clones TrackEval @ `12c8791b`, applies
-  numpy>=2 alias patches, and rewrites the JSONs. The oracle datasets score one class,
+  numpy>=2 alias patches, and rewrites the JSONs. It runs under the reference venv
+  (`artifacts/rust-port/ref-venv/bin/python`, with opencv-python-headless and
+  scikit-image added), not the project venv: it feeds moteval's own per-sequence HOTA to
+  the oracle, and that moteval must be the pure-Python reference. The oracle datasets score one class,
   so the class-combination entries score one single-class view per class
   (`tests.scenarios.class_views`). The box entry treats a scenario's sequences as
   classes. The mask entry splits one sequence by track id (`MOTS_MULTI_CLASS_TRACKS`).
@@ -95,7 +127,27 @@ installs the git hooks only in the main checkout, because a worktree shares `.gi
   changes on purpose. Never hand-edit it. Regenerate with
   `MOTEVAL_DATA_ROOT=<root> uv run python scripts/reference_results.py --out-dir artifacts/reference --reference-fixture tests/fixtures/reference_benchmarks.json`;
   `tests/test_reference_real.py` (`real_data`, bit for bit, `np.array_equal` with
-  `equal_nan`) checks it, and skips loudly when a dataset is absent.
+  `equal_nan`) checks it through Python, `rust/moteval/tests/reference_end_to_end.rs`
+  through the Rust pipeline alone, and both skip loudly when data is absent.
+- The dump scripts in `rust/scripts/` (and `scripts/regen_parity_fixtures.py`) take
+  their expected values from the pure-Python reference: the `py-reference` tag installed
+  in `artifacts/rust-port/ref-venv` (`rust/README.md` shows how to build it). Never
+  install it into the project `.venv`; both packages are named `moteval`. Each script
+  appends the repository root to `sys.path` and exits unless `moteval` is the reference
+  (`rust/scripts/reference.py`). Run with the project venv, they would test Rust against
+  itself.
+- `rust/testdata/loader_cases/` records the `py-reference` tag's `test_loaders.py` and
+  `test_data.py`, not this checkout's (`record_loader_cases.py` extracts them with
+  `git archive`). Python tests whose subject moved to Rust were removed; the Rust tests
+  that cover them are listed in `docs/rust-port.md`.
+- The Rust CLI cannot see a dataset built or registered in Python. CLI tests write the
+  toy dataset to disk (`write_toy_layout`) and pass `--gt <root> --split val`.
+- numpy's float64 `log10` (CLEAR's MOTAL) is Intel SVML on an AVX-512 Linux host and
+  libm elsewhere, and the two differ in the last bit. `numeric::log10` makes numpy's
+  choice at run time; `rust/testdata/numeric.json` holds SVML's output, so dump it on an
+  AVX-512 Linux host (`dump_numeric.py` refuses otherwise).
+- `mise run install` (and any `uv run`) rebuilds the extension in release mode after a
+  Rust source change; a build error there is a Rust compile error.
 - `data/benchmarks` is a symlink to external storage holding one dir per dataset.
   `moteval.benchmarks.default_data_root()` owns the data-root rule: `MOTEVAL_DATA_ROOT`
   if set (an empty value raises), else `data/benchmarks` relative to the working
