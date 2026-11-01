@@ -14,11 +14,24 @@ are called. Geometry uses exactly-overlapping or disjoint boxes so IoU is
 exactly 1.0 or 0.0 (the two HOTA eps-guard tests add an IoU of exactly 0.75 and
 one of about 7e-17) and every expected value is exact in float64 — assertions
 are exact equality, never approx.
+
+The last test calls each combiner directly with a score dict that lacks every field.
 """
 
 import numpy as np
+import pytest
 
-from moteval import CLEAR, HOTA, Count, Identity, MOTDataset, Protocol, evaluate
+from moteval import (
+    CLEAR,
+    HOTA,
+    Count,
+    Identity,
+    JAndF,
+    MOTDataset,
+    Protocol,
+    TrackMAP,
+    evaluate,
+)
 from moteval.data.model import FrameConvention, GtSequence
 from moteval.formats import Track, write_mot
 
@@ -434,3 +447,27 @@ def test_empty_predictions_sequence(tmp_path) -> None:
     clear_expected["MLR"] = 1.0
     assert_scores_exact(scores["CLEAR"], clear_expected)
     assert_scores_exact(scores["Identity"], _identity_expected(idtp=0, idfn=10, idfp=0))
+
+
+# The first field each combiner reads, as the `py-reference` pure-Python metrics raise it.
+FIRST_FIELD_READ = {
+    HOTA: ("HOTA_TP", "HOTA_TP", "HOTA_TP"),
+    CLEAR: ("CLR_TP", "CLR_TP", "CLR_TP"),
+    Identity: ("IDTP", "IDTP", "IDTP"),
+    Count: ("Dets", "Dets", "Dets"),
+    TrackMAP: ("_dt_scores", "AP_all", "_num_dt_all"),
+    JAndF: ("num_gt_tracks", "num_gt_tracks", "num_gt_tracks"),
+}
+COMBINERS = (
+    "combine_sequences",
+    "combine_classes_class_averaged",
+    "combine_classes_det_averaged",
+)
+
+
+@pytest.mark.parametrize("metric", list(FIRST_FIELD_READ), ids=lambda m: m.__name__)
+def test_combiner_input_missing_a_field_raises_key_error(metric) -> None:
+    for method, field in zip(COMBINERS, FIRST_FIELD_READ[metric], strict=True):
+        with pytest.raises(KeyError) as info:
+            getattr(metric(), method)({"seq": {}})
+        assert info.value.args == (field,), method

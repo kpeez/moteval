@@ -7,7 +7,9 @@
 //! line (see the comments that quote it).
 
 use crate::lsap::linear_sum_assignment;
-use crate::metrics::{Metric, MetricError, Scores, Value, combine_sum, combine_weighted_av};
+use crate::metrics::{
+    Metric, MetricError, Scores, Value, combine_sum, combine_weighted_av, require_all,
+};
 use crate::model::SequenceData;
 use crate::numeric::{self, EPS, maximum};
 
@@ -360,16 +362,18 @@ impl Metric for Hota {
         }
         let mut arrays = Scores::new();
         for field in INTEGER_ARRAY_FIELDS {
-            arrays.insert(field, combine_sum(all_res, field));
+            arrays.insert(field, combine_sum(all_res, field)?);
         }
         for field in ["AssRe", "AssPr", "AssA"] {
-            let value = combine_weighted_av(all_res, field, &arrays, "HOTA_TP");
+            let value = combine_weighted_av(all_res, field, &arrays, "HOTA_TP")?;
             arrays.insert(field, value);
         }
         // sum(scores["LocA"] * scores["HOTA_TP"] for scores in all_res.values()): builtin
         // sum over arrays, elementwise in order from 0.
         let mut loca_weighted_sum = [0.0; NUM_ALPHAS];
         for res in all_res {
+            res.require("LocA")?;
+            res.require("HOTA_TP")?;
             let (loca, tp) = (alpha_array(res, "LocA"), alpha_array(res, "HOTA_TP"));
             for a in 0..NUM_ALPHAS {
                 loca_weighted_sum[a] += loca[a] * tp[a];
@@ -390,11 +394,12 @@ impl Metric for Hota {
         }
         let mut scores = Scores::new();
         for field in INTEGER_ARRAY_FIELDS {
-            scores.insert(field, combine_sum(all_res, field));
+            scores.insert(field, combine_sum(all_res, field)?);
         }
         // np.mean(np.asarray([scores[field] ...]), axis=0) over a (classes, 19) array: row
         // by row, in order.
         for field in FLOAT_ARRAY_FIELDS {
+            require_all(all_res, field)?;
             let stacked: Vec<f64> = all_res
                 .iter()
                 .flat_map(|res| alpha_array(res, field))
@@ -404,7 +409,10 @@ impl Metric for Hota {
         }
         // float(np.mean(np.asarray([scores[field] ...]), axis=0)) over a 1-D array: pairwise.
         for field in FLOAT_FIELDS {
-            let values: Vec<f64> = all_res.iter().map(|res| res.float(field)).collect();
+            let values = all_res
+                .iter()
+                .map(|res| res.require(field).map(Value::float))
+                .collect::<Result<Vec<f64>, _>>()?;
             scores.insert(field, Value::Float(numeric::mean(&values)));
         }
         Ok(scores)

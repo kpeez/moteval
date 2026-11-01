@@ -49,7 +49,7 @@ fn sum_every_field(all_res: &[&Scores]) -> Result<Scores, MetricError> {
     }
     let mut res = Scores::new();
     for &field in FIELDS {
-        res.insert(field, combine_sum(all_res, field));
+        res.insert(field, combine_sum(all_res, field)?);
     }
     Ok(res)
 }

@@ -11,7 +11,7 @@
 //! count. This is the one intended divergence from TrackEval (whose det-averaged combiner
 //! is a copy of the class-averaged one); it matches Python moteval.
 
-use crate::metrics::{Metric, MetricError, Scores, Value};
+use crate::metrics::{Metric, MetricError, Scores, Value, require_all};
 use crate::model::{BoxXywh, GeometryKind, Matrix, SequenceData};
 use crate::numeric::{self, EPS, maximum, minimum, py_max, py_min};
 
@@ -611,6 +611,11 @@ impl Metric for TrackMap {
         let mut det_weight = vec![0.0; NUM_IOU_THRESHOLDS * num_labels];
 
         for (lbl_idx, label) in LABELS.iter().enumerate() {
+            // Python reads these four fields of every input in this order.
+            require_all(all_res, DT_SCORES)?;
+            require_all(all_res, &format!("{DT_MATCHES}{label}"))?;
+            require_all(all_res, &format!("{DT_IGNORE}{label}"))?;
+            require_all(all_res, &format!("{GT_IGNORE}{label}"))?;
             let dt_scores: Vec<f64> = all_res
                 .iter()
                 .flat_map(|res| res.array(DT_SCORES).iter().copied())
@@ -709,6 +714,7 @@ impl Metric for TrackMap {
         }
         let mut scores = Scores::new();
         for field in FIELDS {
+            require_all(all_res, field)?;
             let out: Vec<f64> = (0..NUM_IOU_THRESHOLDS)
                 .map(|a| mean_of_valid(all_res.iter().map(|res| res.array(field)[a])))
                 .collect();
@@ -724,7 +730,9 @@ impl Metric for TrackMap {
         let mut scores = Scores::new();
         for label in LABELS {
             let weight_field = format!("{WEIGHT_PREFIX}{label}");
+            require_all(all_res, &weight_field)?;
             for field in [format!("AP_{label}"), format!("AR_{label}")] {
+                require_all(all_res, &field)?;
                 let mut out = Vec::with_capacity(NUM_IOU_THRESHOLDS);
                 for a in 0..NUM_IOU_THRESHOLDS {
                     let mut values = Vec::new();

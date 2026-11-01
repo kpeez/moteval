@@ -67,9 +67,9 @@ impl Metric for JAndF {
             return Err(MetricError::NoResults { metric: "JAndF" });
         }
         let mut res = Scores::new();
-        res.insert("num_gt_tracks", combine_sum(all_res, "num_gt_tracks"));
+        res.insert("num_gt_tracks", combine_sum(all_res, "num_gt_tracks")?);
         for field in FLOAT_FIELDS {
-            let value = combine_weighted_av(all_res, field, &res, "num_gt_tracks");
+            let value = combine_weighted_av(all_res, field, &res, "num_gt_tracks")?;
             res.insert(field, value);
         }
         Ok(res)
@@ -80,10 +80,13 @@ impl Metric for JAndF {
             return Err(MetricError::NoResults { metric: "JAndF" });
         }
         let mut res = Scores::new();
-        res.insert("num_gt_tracks", combine_sum(all_res, "num_gt_tracks"));
+        res.insert("num_gt_tracks", combine_sum(all_res, "num_gt_tracks")?);
         for field in FLOAT_FIELDS {
             // float(np.mean(np.asarray([scores[field] for scores in all_res.values()])))
-            let values: Vec<f64> = all_res.iter().map(|scores| scores.float(field)).collect();
+            let values = all_res
+                .iter()
+                .map(|scores| scores.require(field).map(Value::float))
+                .collect::<Result<Vec<f64>, _>>()?;
             res.insert(field, Value::Float(numeric::mean(&values)));
         }
         Ok(res)

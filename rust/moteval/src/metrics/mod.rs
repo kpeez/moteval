@@ -51,6 +51,30 @@ impl Value {
         }
     }
 
+    /// The scalar. Panics if this is an array.
+    pub fn float(&self) -> f64 {
+        match self {
+            Self::Float(x) => *x,
+            other => panic!("score value is not a float: {other:?}"),
+        }
+    }
+
+    /// The 1-D array. Panics if this is not one.
+    pub fn array(&self) -> &[f64] {
+        match self {
+            Self::Array(values) => values,
+            other => panic!("score value is not a 1-D array: {other:?}"),
+        }
+    }
+
+    /// The 2-D array. Panics if this is not one.
+    pub fn matrix(&self) -> &Matrix {
+        match self {
+            Self::Matrix(matrix) => matrix,
+            other => panic!("score value is not a 2-D array: {other:?}"),
+        }
+    }
+
     /// The numpy shape: `[]`, `[n]`, or `[rows, cols]`.
     pub fn shape(&self) -> Vec<usize> {
         match self {
@@ -104,6 +128,15 @@ impl Scores {
             .iter()
             .find(|(name, _)| name == field)
             .map(|(_, value)| value)
+    }
+
+    /// `res[field]` on a combiner input. A caller can pass any dict, so a missing field
+    /// is Python's `KeyError`, not a panic.
+    pub fn require(&self, field: &str) -> Result<&Value, MetricError> {
+        self.get(field).ok_or_else(|| MetricError::Python {
+            exception: "KeyError",
+            message: crate::pyfmt::repr_str(field),
+        })
     }
 
     /// The scalar `field`. Panics if it is missing or not a `Float`: a metric reading its
@@ -260,11 +293,12 @@ pub trait Metric: Send + Sync {
     fn combine_classes_det_averaged(&self, all_res: &[&Scores]) -> Result<Scores, MetricError>;
 }
 
-fn values_of<'a>(all_res: &'a [&'a Scores], field: &str) -> impl Iterator<Item = &'a Value> {
-    all_res.iter().map(move |res| {
-        res.get(field)
-            .unwrap_or_else(|| panic!("score field {field:?} is missing"))
-    })
+/// Fail as Python's `[res[field] for res in all_res.values()]` does, before any value is
+/// read: the first input that lacks `field` is a `KeyError`.
+pub fn require_all(all_res: &[&Scores], field: &str) -> Result<(), MetricError> {
+    all_res
+        .iter()
+        .try_for_each(|res| res.require(field).map(|_| ()))
 }
 
 /// Elementwise `a op b` with numpy broadcasting between a scalar and an array (or two
@@ -322,8 +356,12 @@ fn plain_sum_values<'a>(values: impl Iterator<Item = Value> + 'a) -> Value {
 ///
 /// With no results Python returns the integer `0`; this returns `Float(0.0)`, and each
 /// metric must decide (see `MetricError::NoResults`).
-pub fn combine_sum(all_res: &[&Scores], field: &str) -> Value {
-    plain_sum_values(values_of(all_res, field).cloned())
+pub fn combine_sum(all_res: &[&Scores], field: &str) -> Result<Value, MetricError> {
+    let values = all_res
+        .iter()
+        .map(|res| res.require(field).cloned())
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(plain_sum_values(values.into_iter()))
 }
 
 /// `Metric._combine_weighted_av(all_res, field, comb_res, weight_field)`:
@@ -335,22 +373,21 @@ pub fn combine_weighted_av(
     field: &str,
     comb_res: &Scores,
     weight_field: &str,
-) -> Value {
-    let products = all_res.iter().map(|res| {
-        let value = res
-            .get(field)
-            .unwrap_or_else(|| panic!("score field {field:?} is missing"));
-        let weight = res
-            .get(weight_field)
-            .unwrap_or_else(|| panic!("score field {weight_field:?} is missing"));
-        broadcast(value, weight, |a, b| a * b)
-    });
-    let weighted_sum = plain_sum_values(products);
+) -> Result<Value, MetricError> {
+    let products = all_res
+        .iter()
+        .map(|res| {
+            let value = res.require(field)?;
+            let weight = res.require(weight_field)?;
+            Ok(broadcast(value, weight, |a, b| a * b))
+        })
+        .collect::<Result<Vec<_>, MetricError>>()?;
+    let weighted_sum = plain_sum_values(products.into_iter());
     let total_weight = comb_res
         .get(weight_field)
         .unwrap_or_else(|| panic!("combined field {weight_field:?} is missing"));
     let denominator = map_value(total_weight, |w| maximum(1.0, w));
-    broadcast(&weighted_sum, &denominator, |a, b| a / b)
+    Ok(broadcast(&weighted_sum, &denominator, |a, b| a / b))
 }
 
 #[cfg(test)]
@@ -392,10 +429,10 @@ mod tests {
             ("v", Value::Array(vec![-0.0, 2.0])),
         ]);
         assert_eq!(
-            combine_sum(&[&a, &b], "x").as_slice()[0].to_bits(),
+            combine_sum(&[&a, &b], "x").unwrap().as_slice()[0].to_bits(),
             0.0f64.to_bits()
         );
-        let v = combine_sum(&[&a, &b], "v");
+        let v = combine_sum(&[&a, &b], "v").unwrap();
         assert!(v.bits_eq(&Value::Array(vec![0.0, 3.0])));
     }
 
@@ -404,12 +441,17 @@ mod tests {
         let a = scores(&[("f", Value::Float(0.5)), ("w", Value::Float(2.0))]);
         let b = scores(&[("f", Value::Float(0.25)), ("w", Value::Float(4.0))]);
         let comb = scores(&[("w", Value::Float(6.0))]);
-        let got = combine_weighted_av(&[&a, &b], "f", &comb, "w");
+        let got = combine_weighted_av(&[&a, &b], "f", &comb, "w").unwrap();
         assert!(got.bits_eq(&Value::Float((0.5 * 2.0 + 0.25 * 4.0) / 6.0)));
         let comb_nan = scores(&[("w", Value::Float(f64::NAN))]);
-        assert!(combine_weighted_av(&[&a, &b], "f", &comb_nan, "w").as_slice()[0].is_nan());
+        assert!(
+            combine_weighted_av(&[&a, &b], "f", &comb_nan, "w")
+                .unwrap()
+                .as_slice()[0]
+                .is_nan()
+        );
         let comb_zero = scores(&[("w", Value::Float(0.0))]);
-        let got = combine_weighted_av(&[&a, &b], "f", &comb_zero, "w");
+        let got = combine_weighted_av(&[&a, &b], "f", &comb_zero, "w").unwrap();
         assert!(got.bits_eq(&Value::Float(2.0)));
     }
 }

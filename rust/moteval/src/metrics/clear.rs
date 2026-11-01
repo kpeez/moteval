@@ -316,7 +316,7 @@ impl Metric for Clear {
         }
         let mut res = Scores::new();
         for &field in SUMMED_FIELDS {
-            res.insert(field, combine_sum(all_res, field));
+            res.insert(field, combine_sum(all_res, field)?);
         }
         compute_final_fields(&mut res);
         Ok(res)
@@ -329,11 +329,14 @@ impl Metric for Clear {
         // Float fields (MOTP_sum included) are averaged, not recomputed from the counts.
         let mut res = Scores::new();
         for &field in INTEGER_FIELDS {
-            res.insert(field, combine_sum(all_res, field));
+            res.insert(field, combine_sum(all_res, field)?);
         }
         for &field in FLOAT_FIELDS {
             // float(np.mean(np.asarray([...])))
-            let values: Vec<f64> = all_res.iter().map(|r| r.float(field)).collect();
+            let values = all_res
+                .iter()
+                .map(|r| r.require(field).map(Value::float))
+                .collect::<Result<Vec<f64>, _>>()?;
             res.insert(field, Value::Float(mean(&values)));
         }
         Ok(res)
