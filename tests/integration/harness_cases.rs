@@ -1,10 +1,3 @@
-//! The scenario harness itself: it loads dumped cases end to end, and
-//! `assert_scores_bit_equal` accepts equal bits and rejects any difference.
-//!
-//! These tests do not run Rust metrics (the metric packages add those). They check the
-//! loader and the comparator on Python moteval's own dumped scores, which the dump script
-//! already proved equal to the oracle.
-
 use std::panic;
 
 use crate::harness::{
@@ -14,8 +7,6 @@ use crate::harness::{
 use moteval::metrics::{Scores, Value};
 use moteval::model::Geometry;
 
-/// Every oracle section of a case equals Python moteval's dumped results, through the
-/// Rust decoder and comparator. Returns the number of metric sections compared.
 fn oracle_equals_dumped_moteval(case: &Case) -> usize {
     let mut compared = 0;
     for (section, by_metric) in &case.oracle {
@@ -65,7 +56,6 @@ fn harness_loads_one_fixture_end_to_end() {
     assert_eq!(dets, seq.data.num_gt_dets());
     assert_eq!(oracle_equals_dumped_moteval(&case), 4);
 
-    // The comparator must reject a one-ulp change and a NaN where a number was.
     let want = &case.oracle_section("combined").expect("combined")[0].1;
     for perturb in [|x: f64| f64::from_bits(x.to_bits() ^ 1), |_: f64| f64::NAN] {
         let mut got = Scores::new();

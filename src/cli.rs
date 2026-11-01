@@ -1,20 +1,3 @@
-//! The `moteval` command-line interface, ported from `moteval/cli.py`.
-//!
-//! One subcommand (`run`) and eight flags, parsed by hand (no `clap`) with the rules of
-//! CPython 3.14's `argparse` for this parser: unique-prefix abbreviations, `--opt=value`,
-//! `--` handling, unknown options collected and reported as unrecognized, and the same
-//! error texts, usage lines, and exit codes. The Python console script calls this entry
-//! point, so one CLI implementation exists.
-//!
-//! Table, JSON, and CSV output equal the Python CLI's byte for byte
-//! (`tests/integration/exports.rs`, `tests/integration/cli.rs`). Known differences, all
-//! outside those outputs:
-//! - Usage and help text are argparse's layout for an 80-column terminal without color.
-//!   Python wraps them to the terminal width and colors them on a color terminal.
-//! - Where Python dies with a traceback (an `OSError` while reading or writing a file, an
-//!   infinite count in the table), this prints `moteval: error: <message>` and exits 1, as
-//!   Python's uncaught exception does.
-
 use std::fmt;
 use std::io::Write;
 use std::path::Path;
@@ -29,7 +12,6 @@ use crate::results::{self, EvaluationResult};
 const TOP_PROG: &str = "moteval";
 const RUN_PROG: &str = "moteval run";
 
-// argparse's usage and help text at its default width (an 80-column terminal).
 const TOP_USAGE: &str = "usage: moteval [-h] {run} ...\n";
 const TOP_HELP: &str = concat!(
     "usage: moteval [-h] {run} ...\n",
@@ -65,11 +47,9 @@ const RUN_HELP: &str = concat!(
 );
 
 const DEFAULT_METRICS: &str = "hota,clear,identity,count";
-/// `_METRICS`, in Python's dict order (the order of the "available" list).
 const METRIC_NAMES: &[&str] = &["hota", "clear", "identity", "count", "track_map", "jf"];
 const FORMAT_CHOICES: &[&str] = &["mot", "mots"];
 
-/// `_HEADLINES`: (metric, field, column label), in table order.
 const HEADLINES: &[(&str, &str, &str)] = &[
     ("HOTA", "HOTA", "HOTA"),
     ("HOTA", "DetA", "DetA"),
@@ -83,17 +63,12 @@ const HEADLINES: &[(&str, &str, &str)] = &[
 ];
 const INTEGER_HEADLINES: &[&str] = &["IDSW", "Dets", "GT_Dets"];
 
-/// Run the CLI on `args` (without the program name), writing to the process's stdout and
-/// stderr. Returns the process exit code.
 pub fn main(args: &[String]) -> i32 {
     let mut stdout = std::io::stdout().lock();
     let mut stderr = std::io::stderr().lock();
     run(args, &mut stdout, &mut stderr)
 }
 
-/// Run the CLI on `args` (without the program name), writing to `stdout` and `stderr`.
-/// Returns the process exit code: 0 on success, 2 on a usage or `ValueError`-class error,
-/// 1 where Python dies with an uncaught exception.
 pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     let exit = match parse(args) {
         Ok(Parsed::Help(text)) => {
@@ -115,15 +90,11 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
     exit
 }
 
-/// `ArgumentParser.error`: the parser's usage, then `{prog}: error: {message}`; exit 2.
 fn usage_error(stderr: &mut dyn Write, usage: &str, prog: &str, message: &str) -> i32 {
     let _ = writeln!(stderr, "{usage}{prog}: error: {message}");
     2
 }
 
-// --------------------------------------------------------------------- argument parsing
-
-/// An argparse action of this CLI.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action {
     Help,
@@ -139,7 +110,6 @@ enum Action {
 }
 
 impl Action {
-    /// `_get_action_name`: how errors name the argument.
     fn name(self) -> &'static str {
         match self {
             Self::Help => "-h/--help",
@@ -155,21 +125,16 @@ impl Action {
         }
     }
 
-    /// How many arguments the action takes: 0 for help, 1 for every stored option.
     fn takes_value(self) -> bool {
         !matches!(self, Self::Help)
     }
 }
 
-/// One of the two parsers: `moteval` and its `run` subparser.
 struct Parser {
     prog: &'static str,
     usage: &'static str,
-    /// `_option_string_actions`, in insertion order.
     options: &'static [(&'static str, Action)],
-    /// `_actions`, in insertion order (the order of the required-arguments message).
     actions: &'static [Action],
-    /// The positional actions: `command` (nargs `PARSER`) for the top-level parser.
     positionals: &'static [Action],
     required: &'static [Action],
 }
@@ -213,7 +178,6 @@ const RUN: Parser = Parser {
     required: &[Action::Pred],
 };
 
-/// The `run` subcommand's namespace. Paths are already `str(Path(value))`.
 #[derive(Clone, Debug)]
 struct RunArgs {
     dataset: Option<String>,
@@ -226,16 +190,13 @@ struct RunArgs {
     out_json: Option<String>,
 }
 
-/// Each action taken, in order, with its argument strings.
 type Taken = Vec<(Action, Vec<String>)>;
 
 enum Parsed {
-    /// `-h`/`--help`: print this text to stdout and exit 0.
     Help(&'static str),
     Run(RunArgs),
 }
 
-/// An argparse error, reported by the parser that raised it.
 #[derive(Debug)]
 struct ParseError {
     prog: &'static str,
@@ -243,7 +204,6 @@ struct ParseError {
     message: String,
 }
 
-/// Why a parse stopped early: help printed, or an error.
 enum Stop {
     Help(&'static str),
     Error(ParseError),
@@ -255,7 +215,6 @@ impl From<ParseError> for Stop {
     }
 }
 
-/// `ArgumentError(action, message)` as text.
 fn argument_error(action: Option<Action>, message: impl fmt::Display) -> String {
     match action {
         Some(action) => format!("argument {}: {message}", action.name()),
@@ -263,7 +222,6 @@ fn argument_error(action: Option<Action>, message: impl fmt::Display) -> String 
     }
 }
 
-/// One interpretation of an option string: `(action, option_string, sep, explicit_arg)`.
 #[derive(Clone, Debug)]
 struct OptionTuple {
     action: Option<Action>,
@@ -274,17 +232,11 @@ struct OptionTuple {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Pattern {
-    /// An argument (`A`).
     Arg,
-    /// An option (`O`).
     Opt,
-    /// `--` (`-`).
     Dash,
 }
 
-/// `_negative_number_matcher`: `^-\d+$|^-\d*\.\d+$`, where `$` also matches before a
-/// final newline. Only ASCII digits count here; Python's `\d` also takes other Unicode
-/// decimal digits.
 fn looks_like_negative_number(arg: &str) -> bool {
     let Some(rest) = arg.strip_prefix('-') else {
         return false;
@@ -297,7 +249,6 @@ fn looks_like_negative_number(arg: &str) -> bool {
     }
 }
 
-/// `str.partition('=')`: `(before, sep, after)`, with `sep` empty when there is no `=`.
 fn partition_eq(s: &str) -> (&str, &str, &str) {
     match s.split_once('=') {
         Some((before, after)) => (before, "=", after),
@@ -321,7 +272,6 @@ impl Parser {
         }
     }
 
-    /// `_get_option_tuples`.
     fn option_tuples(&self, arg: &str) -> Vec<OptionTuple> {
         let mut result = Vec::new();
         let mut chars = arg.chars();
@@ -344,7 +294,6 @@ impl Parser {
                 }
             }
         } else {
-            // A single-dash option: `-x` takes the rest of the string as its argument.
             let (prefix, sep, explicit) = partition_eq(arg);
             let (sep, explicit) = if sep.is_empty() {
                 (None, None)
@@ -374,7 +323,6 @@ impl Parser {
         result
     }
 
-    /// `_parse_optional`: `None` for a positional, else the option's interpretations.
     fn parse_optional(&self, arg: &str) -> Option<Vec<OptionTuple>> {
         if !arg.starts_with('-') {
             return None;
@@ -405,7 +353,7 @@ impl Parser {
         if !tuples.is_empty() {
             return Some(tuples);
         }
-        // No option of this parser looks like a negative number.
+        // CPython argparse makes these positionals when no option looks like a negative number.
         if looks_like_negative_number(arg) || arg.contains(' ') {
             return None;
         }
@@ -417,7 +365,6 @@ impl Parser {
         }])
     }
 
-    /// `parse_known_args`: the namespace values in order of action, and the extras.
     fn parse_known(&self, args: &[String]) -> Result<(Taken, Vec<String>), Stop> {
         let mut patterns = Vec::with_capacity(args.len());
         let mut option_indices: Vec<Option<Vec<OptionTuple>>> = vec![None; args.len()];
@@ -501,9 +448,6 @@ struct ParseState<'a> {
 }
 
 impl ParseState<'_> {
-    /// `consume_positionals`: the `command` positional (nargs `PARSER`, pattern
-    /// `-*A[-AO]*`) takes every remaining string when the next non-`--` one is an
-    /// argument; a leading `--` is dropped.
     fn consume_positionals(&mut self, start: usize) -> Result<usize, Stop> {
         let Some(&action) = self.positionals.first() else {
             return Ok(start);
@@ -523,7 +467,6 @@ impl ParseState<'_> {
         Ok(self.args.len())
     }
 
-    /// `consume_optional`.
     fn consume_optional(&mut self, start: usize, tuples: &[OptionTuple]) -> Result<usize, Stop> {
         let parser = self.parser;
         if tuples.len() > 1 {
@@ -618,7 +561,6 @@ impl ParseState<'_> {
         Ok(stop)
     }
 
-    /// `take_action`: convert and check the value, then act on it.
     fn take_action(&mut self, action: Action, strings: Vec<String>) -> Result<(), Stop> {
         if !self.seen.contains(&action) {
             self.seen.push(action);
@@ -631,7 +573,6 @@ impl ParseState<'_> {
                     RUN_HELP
                 }));
             }
-            // `_check_value`: the choices of the command and of `--format`.
             Action::Command | Action::Format => {
                 let choices: &[&str] = if action == Action::Command {
                     &["run"]
@@ -658,9 +599,8 @@ impl ParseState<'_> {
     }
 }
 
-/// `parser.parse_args(argv)` for the whole CLI: the top-level parser hands every string
-/// after the command to the `run` subparser, and unrecognized strings from both are
-/// reported by the top-level parser.
+/// The top-level parser reports both parsers' unrecognized arguments, as CPython argparse
+/// does.
 fn parse(args: &[String]) -> Result<Parsed, ParseError> {
     let (taken, mut extras) = match TOP.parse_known(args) {
         Ok(parsed) => parsed,
@@ -692,7 +632,6 @@ fn parse(args: &[String]) -> Result<Parsed, ParseError> {
         out_csv: None,
         out_json: None,
     };
-    // Later occurrences overwrite earlier ones; `type=Path` normalizes path values.
     for (action, mut strings) in taken {
         let value = strings.pop().expect("a stored option has one value");
         match action {
@@ -710,22 +649,15 @@ fn parse(args: &[String]) -> Result<Parsed, ParseError> {
     Ok(Parsed::Run(run_args))
 }
 
-// ------------------------------------------------------------------------- the command
-
-/// How `_run` fails: a `ValueError` (reported with the top-level usage, exit 2) or an
-/// exception Python does not catch (exit 1).
 enum Failure {
     Usage(String),
     Uncaught(String),
 }
 
-/// Python's `str.strip()` whitespace: Unicode `White_Space` plus the four information
-/// separators U+001C..U+001F, which `str.isspace()` also counts.
 fn is_py_space(c: char) -> bool {
     c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)
 }
 
-/// `_resolve_metrics`: comma-separated, stripped, lowercased names, in order.
 fn resolve_metrics(raw: &str) -> Result<Vec<Box<dyn Metric>>, String> {
     let names: Vec<String> = raw
         .split(',')
@@ -766,8 +698,6 @@ fn resolve_metrics(raw: &str) -> Result<Vec<Box<dyn Metric>>, String> {
         .collect())
 }
 
-/// `_run` catches `ValueError` (and its subclasses) only; any other exception class is an
-/// uncaught traceback, exit 1.
 fn failure(exception: &str, message: String) -> Failure {
     if is_value_error(exception) {
         Failure::Usage(message)
@@ -784,7 +714,6 @@ fn eval_failure(err: EvalError) -> Failure {
     failure(err.python_exception(), err.to_string())
 }
 
-/// `_load`: a built-in benchmark by name, or `--gt` in the `--format` layout.
 fn load(args: &RunArgs) -> Result<MOTDataset, Failure> {
     let gt = args.gt.as_deref().map(Path::new);
     if let Some(name) = &args.dataset {
@@ -798,7 +727,6 @@ fn load(args: &RunArgs) -> Result<MOTDataset, Failure> {
     };
     let split = args.split.as_deref().unwrap_or("train");
     let loaded = if args.format == "mots" {
-        // `load_mots(root, split)` evaluates its default class, 2 (MOTS pedestrians).
         benchmarks::mots20::load_mots(gt, split, 2)
     } else {
         benchmarks::motchallenge::load_motchallenge(gt, split)
@@ -806,7 +734,6 @@ fn load(args: &RunArgs) -> Result<MOTDataset, Failure> {
     loaded.map_err(benchmark_failure)
 }
 
-/// `_run`.
 fn run_command(args: &RunArgs, stdout: &mut dyn Write) -> Result<(), Failure> {
     let metrics = resolve_metrics(&args.metrics).map_err(Failure::Usage)?;
     if let Some(gt) = &args.gt
@@ -845,7 +772,6 @@ fn run_command(args: &RunArgs, stdout: &mut dyn Write) -> Result<(), Failure> {
     Ok(())
 }
 
-/// Create the parent directories, then write `text` (`_write_csv`, `_write_json`).
 fn write_output(path: &str, text: &str) -> Result<(), Failure> {
     let path = Path::new(path);
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
@@ -854,16 +780,10 @@ fn write_output(path: &str, text: &str) -> Result<(), Failure> {
     std::fs::write(path, text).map_err(|err| Failure::Uncaught(err.to_string()))
 }
 
-// ---------------------------------------------------------------------------- the table
-
-/// Why the headline table cannot be built. Python raises these from `_table`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TableError {
-    /// `int(nan)` on an integer column (`ValueError`).
     NanToInteger,
-    /// `int(inf)` on an integer column (`OverflowError`).
     InfinityToInteger,
-    /// A row lacks a headline that the combined scores hold (`KeyError`).
     MissingScore { metric: String, field: String },
 }
 
@@ -885,8 +805,6 @@ impl fmt::Display for TableError {
 
 impl std::error::Error for TableError {}
 
-/// `_format_headline`: `{:d}` of `int(value)` for counts, `{:1.5g}` of `100 * value` for
-/// ratios.
 fn format_headline(value: f64, label: &str) -> Result<String, TableError> {
     if !INTEGER_HEADLINES.contains(&label) {
         return Ok(pyfmt::format_g(100.0 * value, 5));
@@ -898,7 +816,7 @@ fn format_headline(value: f64, label: &str) -> Result<String, TableError> {
         return Err(TableError::InfinityToInteger);
     }
     let truncated = value.trunc();
-    // `{:.0}` of an integral float prints its exact decimal value, as `int()` does.
+    // CPython `int(-0.0)` is `0`; `{:.0}` would print `-0`.
     Ok(if truncated == 0.0 {
         "0".to_string()
     } else {
@@ -906,14 +824,6 @@ fn format_headline(value: f64, label: &str) -> Result<String, TableError> {
     })
 }
 
-/// `_table`: the headline table the CLI prints, one row per sequence plus `COMBINED`,
-/// without the final newline.
-///
-/// Columns are the `_HEADLINES` whose metric the combined scores (the class-averaged
-/// scores for a multi-class run) hold. A multi-class run adds a leading `class` column,
-/// repeats the rows for each class, and ends with `class_averaged` and `det_averaged`
-/// rows. Label columns are left-aligned, values right-aligned, columns joined by two
-/// spaces; widths count characters, as Python's `len` does.
 pub fn table(result: &EvaluationResult) -> Result<String, TableError> {
     let available = if result.is_multi_class() {
         &result.class_averaged

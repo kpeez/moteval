@@ -1,8 +1,5 @@
-//! Seeded inputs, draw for draw the same as `scripts/testdata/testgen.py`.
-
 pub const EPS: f64 = f64::EPSILON;
 
-/// splitmix64 (Steele, Lea, Flood 2014).
 pub struct SplitMix64 {
     state: u64,
 }
@@ -20,17 +17,14 @@ impl SplitMix64 {
         z ^ (z >> 31)
     }
 
-    /// An integer in `[0, n)`.
     pub fn below(&mut self, n: u64) -> u64 {
         self.next_u64() % n
     }
 
-    /// A float in `[0, 1)` with 53 random bits.
     pub fn uniform(&mut self) -> f64 {
         (self.next_u64() >> 11) as f64 * pow2(-53)
     }
 
-    /// A signed float whose magnitude spans `2**-30` to `2**55`.
     pub fn spread(&mut self) -> f64 {
         let negative = self.next_u64() & 1 == 1;
         let mantissa = self.uniform();
@@ -40,13 +34,11 @@ impl SplitMix64 {
     }
 }
 
-/// `2**k` for a normal power of two, built from its bits (exact).
 pub fn pow2(k: i32) -> f64 {
     assert!((-1022..=1023).contains(&k));
     f64::from_bits(((1023 + k) as u64) << 52)
 }
 
-/// FNV-1a over the little-endian bytes of each float.
 pub fn fnv1a64<'a>(values: impl IntoIterator<Item = &'a f64>) -> u64 {
     let mut h: u64 = 0xCBF2_9CE4_8422_2325;
     for x in values {
@@ -57,7 +49,6 @@ pub fn fnv1a64<'a>(values: impl IntoIterator<Item = &'a f64>) -> u64 {
     h
 }
 
-/// A length-`n` float array of one named pattern (`testgen.pattern`).
 pub fn pattern(name: &str, n: usize, seed: u64) -> Vec<f64> {
     let mut rng = SplitMix64::new(seed);
     match name {
@@ -85,7 +76,6 @@ pub fn pattern(name: &str, n: usize, seed: u64) -> Vec<f64> {
     }
 }
 
-/// An `xywh` box (`testgen.random_box`).
 pub fn random_box(rng: &mut SplitMix64) -> [f64; 4] {
     let mut x = rng.below(40) as f64 * 0.5;
     let mut y = rng.below(40) as f64 * 0.5;

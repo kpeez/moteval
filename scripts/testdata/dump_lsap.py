@@ -1,15 +1,3 @@
-"""Dump scipy's `linear_sum_assignment` on seeded cost matrices for the Rust port.
-
-Writes one ``tests/integration/data/lsap/<category>.json`` per category in
-``testgen.LSAP_CATEGORIES`` (10,600 matrices: square, wide, tall, integer-valued with
-many ties, CLEAR-style, Identity-style, HOTA-style, maximize, and large), plus
-``special.json`` with explicit matrices for the error and infinity paths.
-``tests/integration/lsap.rs`` regenerates each matrix from its seed and requires the same
-row and column indices. Run with the reference interpreter and scipy 1.18.0:
-
-    uv run python scripts/testdata/dump_lsap.py
-"""
-
 import json
 import math
 import sys
@@ -35,7 +23,6 @@ OUT_DIR = Path(__file__).resolve().parents[2] / "tests" / "integration" / "data"
 
 INF = math.inf
 NAN = math.nan
-# (name, nr, nc, values, maximize)
 SPECIAL: tuple[tuple[str, int, int, list[float], bool], ...] = (
     ("empty_rows", 0, 3, [], False),
     ("empty_cols", 3, 0, [], False),

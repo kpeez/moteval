@@ -1,6 +1,3 @@
-//! The Python text semantics the readers copy, against CPython 3.14.8's own verdicts
-//! (`tests/integration/data/pytext/`, from `scripts/testdata/dump_pytext.py`).
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -21,7 +18,6 @@ fn strings(json: &Json) -> Vec<&str> {
     as_array(json).iter().map(as_str).collect()
 }
 
-/// A fresh, empty scratch directory for one test.
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("moteval-{name}-{}", std::process::id()));
     if dir.exists() {

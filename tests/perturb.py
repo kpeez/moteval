@@ -1,20 +1,3 @@
-"""Seeded prediction perturbation for the real-data parity gate (#20).
-
-Generates tracker predictions from GT with drops, false positives, ID switches
-and (for boxes) geometric jitter, deterministically from a fixed seed. Two
-independence guarantees the gate relies on:
-
-- Track ids are numbered independently of GT (dense remap into 1000+, switches
-  and false positives allocate fresh ids from 5000+), so densification bugs
-  that only work when pred ids mirror GT ids cannot hide.
-- Frame numbers are derived from the declared `FrameConvention` by iterating
-  timestep indices (``first_frame + t``), never copied from GT rows.
-
-Mask perturbation preserves the MOTS invariant that predictions within a frame
-are disjoint: translated masks are checked against the union of already-placed
-masks and fall back to their original position (or are dropped) on conflict.
-"""
-
 from collections import defaultdict
 
 import numpy as np
@@ -29,7 +12,6 @@ _FRESH_ID = 5000
 
 
 def masks_overlap(rles: list[RleMask]) -> bool:
-    """Whether any two RLE masks in the list overlap (TrackEval rejects such input)."""
     merged_area = mask_utils.area(mask_utils.merge(rles, intersect=False))
     total_area = sum(mask_utils.area(rle) for rle in rles)
     return bool(total_area > merged_area)
@@ -45,7 +27,6 @@ def perturb_box_tracks(
     fp_rate: float = 0.1,
     switch_rate: float = 0.3,
 ) -> list[Track]:
-    """Perturbed box predictions for one sequence, reproducible from ``seed``."""
     rng = np.random.default_rng(seed)
     by_timestep: dict[int, list[Track]] = defaultdict(list)
     for t in gt_tracks:
@@ -108,7 +89,6 @@ def _translate_rle(rle_dict: RleMask, dy: int, dx: int) -> RleMask:
 
 
 def _overlaps(rle_dict: RleMask, occupied: list[RleMask]) -> bool:
-    # occupied masks are pairwise disjoint, so any overlap involves the candidate
     return bool(occupied) and masks_overlap([rle_dict, *occupied])
 
 
@@ -122,13 +102,6 @@ def perturb_mask_tracks(
     switch_rate: float = 0.3,
     max_shift: int = 4,
 ) -> list[MaskTrack]:
-    """Perturbed MOTS predictions: drops, switches, small translations.
-
-    Frame-local disjointness is preserved: a translated mask that would overlap
-    an already-placed prediction keeps its original position instead, and is
-    dropped if even that conflicts (cannot happen for disjoint GT, but guards
-    the invariant).
-    """
     rng = np.random.default_rng(seed)
     by_timestep: dict[int, list[MaskTrack]] = defaultdict(list)
     for t in gt_tracks:

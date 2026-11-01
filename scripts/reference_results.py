@@ -1,20 +1,4 @@
-"""Score the nine local benchmarks with seeded perturbed predictions and write JSON.
-
-For every (benchmark, split) in `REFERENCE_CASES` the script loads the ground truth
-from the data root (``--root``, else ``MOTEVAL_DATA_ROOT``, else ``data/benchmarks``),
-writes ``tests/perturb.py`` predictions (sequence ``i`` gets seed
-``tests.scenarios.REAL_DATA_SEED + i``), and runs every applicable metric: HOTA, CLEAR,
-Identity, Count and TrackMAP on boxes; HOTA, CLEAR, Identity, Count and J&F on masks.
-
-    uv run python scripts/reference_results.py --out-dir artifacts/rust-port/baseline/after
-    uv run python scripts/reference_results.py --out-dir <dir> --reference-fixture \
-        tests/fixtures/reference_benchmarks.json
-
-``--out-dir`` receives one ``<benchmark>_<split>.json`` per case in the
-`moteval.results.to_json_dict` shape (per-sequence and combined, floats exact, NaN as
-Python's ``json`` writes it). ``--reference-fixture`` also writes one JSON file of the
-combined results only, keyed ``<benchmark>/<split>``.
-"""
+"""Score the nine local benchmarks with seeded perturbed predictions and write JSON."""
 
 import argparse
 import json
@@ -64,7 +48,6 @@ def case_key(benchmark: str, split: str) -> str:
 
 
 def write_predictions(dataset: MOTDataset, pred_dir: Path) -> None:
-    """Write seeded perturbed predictions: sequence ``i`` gets seed ``REAL_DATA_SEED + i``."""
     convention = dataset.protocol.frame_convention
     for i, seq in enumerate(dataset.sequences):
         seed = REAL_DATA_SEED + i
@@ -77,13 +60,11 @@ def write_predictions(dataset: MOTDataset, pred_dir: Path) -> None:
 
 
 def metrics_for(dataset: MOTDataset) -> list[Metric]:
-    """Every applicable metric: TrackMAP on boxes, J&F on masks."""
     is_masks = isinstance(dataset.sequences[0], MaskGtSequence)
     return [HOTA(), CLEAR(), Identity(), Count(), JAndF() if is_masks else TrackMAP()]
 
 
 def evaluate_case(benchmark: str, split: str, root: Path) -> JsonResult:
-    """Load one benchmark split, score seeded perturbed predictions, return the JSON dict."""
     dataset = load_dataset(benchmark, root=root / benchmark, split=split)
     with tempfile.TemporaryDirectory() as tmp:
         write_predictions(dataset, Path(tmp))

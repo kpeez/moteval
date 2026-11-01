@@ -1,12 +1,3 @@
-//! Build frame-major `SequenceData` from raw GT and prediction rows, ported from
-//! `moteval/data/convert.py`.
-//!
-//! Raw per-frame arrays are binned under the declared `FrameConvention` (out-of-range
-//! frames are errors), the preprocessing engine filters them for one class, and only the
-//! survivors are densified through a map over the sorted unique raw ids (never
-//! `max(ids) + 1` arrays). The mask path rejects overlapping masks and unions each
-//! frame's ignore masks before the IoA test, as TrackEval's MOTS loader does.
-
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -20,24 +11,19 @@ use crate::protocol::{PreprocessedFrame, RawFrame, preprocess_frame};
 use crate::rle::{RleError, RleMask};
 use crate::similarity;
 
-/// Errors from building `SequenceData`. Messages match the Python text.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConvertError {
     Model(ModelError),
     Lsap(LsapError),
     Rle(RleError),
-    /// `sequence {name!r}: overlapping GT masks at timestep {t}`.
     OverlappingGtMasks {
         sequence: String,
         timestep: usize,
     },
-    /// `sequence {name!r}: overlapping predicted masks at timestep {t}`.
     OverlappingPredMasks {
         sequence: String,
         timestep: usize,
     },
-    /// A mask row whose `img_h` or `img_w` is negative. Python hands the size to
-    /// pycocotools, which fails with its own error; this message is Rust's.
     NegativeMaskSize {
         sequence: String,
         frame: i64,
@@ -80,8 +66,6 @@ impl fmt::Display for ConvertError {
 impl std::error::Error for ConvertError {}
 
 impl ConvertError {
-    /// The Python exception class this error stands for; `"Unsupported"` where Python
-    /// fails with pycocotools' own error instead.
     pub fn python_exception(&self) -> &'static str {
         match self {
             Self::Model(ModelError::WrongGeometry { .. }) => "TypeError",
@@ -109,9 +93,6 @@ impl From<RleError> for ConvertError {
     }
 }
 
-/// `_bin_frames`: the rows of each timestep, in file order, under the convention.
-///
-/// Rows are binned in order, so the first out-of-range row raises.
 fn bin_rows<'a, T>(
     rows: &'a [T],
     frame_of: impl Fn(&T) -> i64,
@@ -125,15 +106,10 @@ fn bin_rows<'a, T>(
     Ok(bins)
 }
 
-/// `[t.x, t.y, t.w, t.h]` for each row.
 fn boxes(rows: &[&Track]) -> Vec<BoxXywh> {
     rows.iter().map(|t| [t.x, t.y, t.w, t.h]).collect()
 }
 
-/// `build_sequence_data(gt, pred_tracks, protocol, cls_id)` for boxes.
-///
-/// GT rows are binned first, then predictions, then ignore regions; the first
-/// out-of-range frame in that order raises.
 pub fn build_sequence_data(
     gt: &GtSequence,
     pred_tracks: &[Track],
@@ -178,22 +154,13 @@ pub fn build_sequence_data(
     )
 }
 
-/// The mask geometry `build_mask_sequence_data` reads, as `moteval/data/similarity.py`
-/// computes it.
-///
-/// `build_mask_sequence_data` uses the pycocotools port in `crate::similarity`. The trait
-/// exists so the conversion can be tested apart from the RLE code.
 #[doc(hidden)]
 pub trait MaskGeometry {
-    /// `masks_overlap(rles)`.
     fn masks_overlap(&self, masks: &[RleMask]) -> Result<bool, RleError>;
-    /// `mask_ioa(preds, [merge_masks(ignore)])`: an `(n, 1)` matrix; `ignore` is not empty.
     fn ignore_ioa(&self, preds: &[RleMask], ignore: &[RleMask]) -> Result<Matrix, RleError>;
-    /// `mask_iou(gt, preds)`.
     fn mask_iou(&self, gt: &[RleMask], preds: &[RleMask]) -> Result<Matrix, RleError>;
 }
 
-/// The pycocotools port: what Python moteval calls.
 struct Pycocotools;
 
 impl MaskGeometry for Pycocotools {
@@ -202,6 +169,7 @@ impl MaskGeometry for Pycocotools {
     }
 
     fn ignore_ioa(&self, preds: &[RleMask], ignore: &[RleMask]) -> Result<Matrix, RleError> {
+        // TrackEval's MOTS loader merges a frame's ignore masks into one before the IoA test.
         let merged = similarity::merge_masks(ignore)?;
         similarity::mask_ioa(preds, &[merged])
     }
@@ -211,7 +179,6 @@ impl MaskGeometry for Pycocotools {
     }
 }
 
-/// `_rle(track)`: `{"size": [img_h, img_w], "counts": rle.encode()}`.
 fn rle_of(sequence: &str, row: &MaskTrack) -> Result<RleMask, ConvertError> {
     let negative = || ConvertError::NegativeMaskSize {
         sequence: sequence.to_owned(),
@@ -224,7 +191,6 @@ fn rle_of(sequence: &str, row: &MaskTrack) -> Result<RleMask, ConvertError> {
     Ok(RleMask::from_compressed(height, width, row.rle.as_bytes())?)
 }
 
-/// `build_mask_sequence_data(gt, pred_tracks, protocol, cls_id)` for masks.
 pub fn build_mask_sequence_data(
     gt: &MaskGtSequence,
     pred_tracks: &[MaskTrack],
@@ -234,7 +200,6 @@ pub fn build_mask_sequence_data(
     build_mask_sequence_data_with(&Pycocotools, gt, pred_tracks, protocol, cls_id)
 }
 
-/// `build_mask_sequence_data` with the mask geometry supplied by the caller.
 #[doc(hidden)]
 pub fn build_mask_sequence_data_with(
     geometry: &dyn MaskGeometry,
@@ -255,12 +220,9 @@ pub fn build_mask_sequence_data_with(
         let to_rles = |rows: &[&MaskTrack]| -> Result<Vec<RleMask>, ConvertError> {
             rows.iter().map(|row| rle_of(name, row)).collect()
         };
-        // Python builds every RLE dict while binning and pycocotools first reads them in
-        // the overlap checks below, GT and ignore masks before predictions.
         let gt_rles = to_rles(&gt_bins[t])?;
         let ignore_rles = to_rles(&ignore_bins[t])?;
-        // TrackEval rejects overlapping masks within a frame: GT dets share the frame
-        // with the ignore region; predictions are checked on their own.
+        // TrackEval rejects overlap among GT masks and the ignore region; predictions alone.
         let gt_and_ignore: Vec<RleMask> = gt_rles.iter().chain(&ignore_rles).cloned().collect();
         if geometry.masks_overlap(&gt_and_ignore)? {
             return Err(ConvertError::OverlappingGtMasks {
@@ -275,8 +237,6 @@ pub fn build_mask_sequence_data_with(
                 timestep: t,
             });
         }
-        // Ignore masks merge into one union RLE, exactly as upstream MOTS does; with no
-        // ignore rows the IoA matrix is (n, 0) and the engine skips it.
         let ignore_ioa = if ignore_rles.is_empty() {
             Matrix::zeros(pred_rles.len(), 0)
         } else {
@@ -309,7 +269,6 @@ pub fn build_mask_sequence_data_with(
     )
 }
 
-/// Move each frame's surviving detections out, for the geometry.
 fn split_dets<D>(frames: &mut [PreprocessedFrame<D>]) -> (Vec<Vec<D>>, Vec<Vec<D>>) {
     frames
         .iter_mut()
@@ -322,7 +281,6 @@ fn split_dets<D>(frames: &mut [PreprocessedFrame<D>]) -> (Vec<Vec<D>>, Vec<Vec<D
         .unzip()
 }
 
-/// `_densify`: raw id to its index among the sorted unique raw ids.
 fn densify<'a>(ids: impl Iterator<Item = &'a i64>) -> BTreeMap<i64, usize> {
     let mut map: BTreeMap<i64, usize> = ids.map(|&id| (id, 0)).collect();
     for (dense, slot) in map.values_mut().enumerate() {
@@ -331,7 +289,6 @@ fn densify<'a>(ids: impl Iterator<Item = &'a i64>) -> BTreeMap<i64, usize> {
     map
 }
 
-/// `_freeze`: densify the surviving ids and assemble the `SequenceData`.
 fn freeze<D>(
     name: &str,
     num_timesteps: usize,

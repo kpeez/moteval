@@ -1,10 +1,3 @@
-"""Calls into the Rust extension `moteval._moteval`.
-
-The extension raises every Rust error as ``RustError(exception, message)``: the name of
-the Python exception class the pure-Python moteval raised, and its message. `call`
-re-raises it as that class, so callers see the same exception type and text.
-"""
-
 import ast
 import configparser
 import json
@@ -20,7 +13,6 @@ _JSON_MESSAGE = re.compile(r"(?s)(.*): line (\d+) column (\d+) \(char (\d+)\)")
 
 
 def _key(message: str) -> object:
-    """The key of a `KeyError` from its text, ``repr(key)``."""
     try:
         return ast.literal_eval(message)
     except (ValueError, SyntaxError):
@@ -30,11 +22,6 @@ def _key(message: str) -> object:
 
 
 def _json_error(message: str) -> json.JSONDecodeError:
-    """A `json.JSONDecodeError` whose text is ``message``.
-
-    The document is not kept, so ``doc`` is ``None``; the position fields come from the
-    text.
-    """
     err = json.JSONDecodeError.__new__(json.JSONDecodeError)
     ValueError.__init__(err, message)
     match = _JSON_MESSAGE.fullmatch(message)
@@ -48,12 +35,6 @@ def _json_error(message: str) -> json.JSONDecodeError:
 
 
 def python_error(exception: str, message: str) -> Exception:
-    """The Python exception for a Rust error of class ``exception``.
-
-    `UnicodeDecodeError` cannot be rebuilt from its text, so it is raised as its base
-    class, `ValueError`, with the same text. A value Rust cannot hold (``"Unsupported"``)
-    is a `ValueError` too.
-    """
     if exception == "OSError":
         return OSError(message)
     if exception == "KeyError":
@@ -70,7 +51,6 @@ def python_error(exception: str, message: str) -> Exception:
 
 
 def call(fn: Callable[..., T], *args: object) -> T:
-    """``fn(*args)``, with a Rust error re-raised as its Python class."""
     try:
         return fn(*args)
     except _moteval.RustError as err:

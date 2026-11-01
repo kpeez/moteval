@@ -1,20 +1,3 @@
-"""Dump seeded random `SequenceData` cases scored by Python CLEAR, Identity, and Count.
-
-The parity fixtures cover the common paths. These cases add what they do not: a gt or
-pred id repeated within one frame (numpy fancy-index ``+=`` counts it once; ``bincount``
-counts every occurrence), similarities on both sides of CLEAR's ``0.5 - eps`` guard and
-Identity's unguarded ``0.5``, ties, empty frames, the two early returns, and class
-combiners over one to four classes. The last cases combine 8 to 12 classes of dense
-sequences with 8 or more matches per frame, where numpy's pairwise ``np.mean`` (class
-averaging) and the plain sum of ``MOTP_sum`` differ from the other order.
-
-Each case is one file in the scenario case format (``tests/integration/data/README.md``) with an
-empty ``oracle``: the expected numbers are Python moteval's own (``moteval`` section),
-per sequence (raw), per view combined, class-averaged, and det-averaged.
-
-    artifacts/rust-port/ref-venv/bin/python scripts/testdata/dump_clear_identity_count.py
-"""
-
 import json
 import sys
 from pathlib import Path
@@ -22,7 +5,6 @@ from pathlib import Path
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-# After site-packages: `moteval` is the pure-Python reference (scripts/testdata/reference.py).
 if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
@@ -47,8 +29,6 @@ NUM_CASES = 48
 NUM_MANY_CLASS_CASES = 6
 SEED = 20261031
 EPS = np.finfo(float).eps
-# Values that sit on a threshold: CLEAR keeps `sim >= 0.5 - eps`, Identity keeps
-# `sim >= 0.5`, and the tracked-ratio cuts are 0.8 and 0.2.
 SPECIAL = np.array(
     [
         0.0,
@@ -86,7 +66,6 @@ def draw_ids(rng: np.random.Generator, num_ids: int, repeat_rate: float) -> np.n
 
 
 def densify(frames: list[np.ndarray]) -> tuple[list[np.ndarray], int]:
-    """Map the ids that occur to ``0..n-1`` in sorted order, as `convert` does."""
     used = sorted({int(i) for frame in frames for i in frame})
     mapping = {raw: dense for dense, raw in enumerate(used)}
     return [np.array([mapping[int(i)] for i in f], dtype=np.int64) for f in frames], len(used)
@@ -96,7 +75,7 @@ def random_sequence(rng: np.random.Generator, name: str, large: bool) -> Sequenc
     num_timesteps = int(rng.integers(1, 41 if large else 13))
     raw_gt = int(rng.integers(0, 16 if large else 6))
     raw_pred = int(rng.integers(0, 16 if large else 6))
-    mode = int(rng.integers(0, 10))  # 0: no predictions, 1: no ground truth
+    mode = int(rng.integers(0, 10))
     repeat_rate = 0.0 if rng.random() < 0.5 else 0.15
     base = draw_similarity(rng, (max(raw_gt, 1), max(raw_pred, 1)))
     gt_frames, pred_frames, sims = [], [], []
@@ -130,11 +109,6 @@ def random_sequence(rng: np.random.Generator, name: str, large: bool) -> Sequenc
 
 
 def dense_sequence(rng: np.random.Generator, name: str) -> SequenceData:
-    """Every id in every frame, each GT paired at or above 0.5 with one prediction.
-
-    Each frame has 8 or more matches, where numpy's pairwise sum and a plain sum of the
-    matched similarities (CLEAR's ``MOTP_sum``) can differ.
-    """
     num_timesteps = int(rng.integers(2, 4))
     n = int(rng.integers(8, 11))
     gt_frames, pred_frames, sims = [], [], []
@@ -167,9 +141,6 @@ def dense_sequence(rng: np.random.Generator, name: str) -> SequenceData:
 def build_case(index: int, rng: np.random.Generator) -> ds.Json:
     capture = ds.Capture(METRICS, ds._inline_writer)
     large = index % 8 == 7
-    # The cases after NUM_CASES combine 8 to 12 classes of dense sequences: below 8
-    # values numpy's pairwise mean equals a plain one, so fewer classes cannot tell them
-    # apart. They come last, so the earlier cases' draws do not change.
     many_classes = index >= NUM_CASES
     num_classes = int(rng.integers(8, 13)) if many_classes else int(rng.integers(1, 5))
     for cls in range(1, num_classes + 1):

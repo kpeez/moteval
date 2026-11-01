@@ -1,17 +1,3 @@
-//! CLEAR, Identity, and Count against the TrackEval oracle and Python moteval, bit for
-//! bit.
-//!
-//! Every case runs as `evaluate` runs it: each sequence scored, each class view combined,
-//! and the class combiners over the views. Each result is compared with the oracle
-//! fields the fixture freezes (`check_case_against_oracle`) and with Python moteval's own
-//! dumped scores: per sequence, per view combined, class-averaged, and det-averaged,
-//! every field and its dict order.
-//!
-//! MOTAL takes `np.log10(IDSW)` through `numeric::log10`, which makes numpy's choice
-//! between SVML and libm. Some cases here have an `IDSW` (11, 53, 119, 174) where the two
-//! differ, but their `TP - FP` is large enough that MOTAL is the same either way.
-//! `metrics::clear::tests::motal_takes_numpy_log10` covers counts where it is not.
-
 use std::path::Path;
 
 use crate::harness::{
@@ -22,8 +8,6 @@ use moteval::metrics::{Clear, Count, Identity, Metric, Scores};
 
 const METRICS: [&dyn Metric; 3] = [&Clear, &Identity, &Count];
 
-/// Every difference between `expected` and `got`: a field missing, a shape or bit
-/// difference, and (unless `got` is reduced to the expected fields) the field order.
 fn differences(expected: &Scores, got: &Scores, label: &str) -> Vec<String> {
     let mut out = Vec::new();
     let want_order: Vec<&str> = expected.iter().map(|(f, _)| f).collect();
@@ -63,9 +47,6 @@ fn find<'a>(by_metric: &'a [(String, Scores)], metric: &str) -> &'a Scores {
         .1
 }
 
-/// Run `metric` over `case` as `evaluate` does and list every difference from Python
-/// moteval's dumped scores. Returns the differences and the number of score maps
-/// compared.
 fn compare_with_python(case: &Case, metric: &dyn Metric) -> (Vec<String>, usize) {
     let name = metric.name();
     let label = format!("{}/{}.{name}", case.fixture, case.case);
@@ -80,7 +61,6 @@ fn compare_with_python(case: &Case, metric: &dyn Metric) -> (Vec<String>, usize)
                 .eval_sequence(&seq.data)
                 .unwrap_or_else(|err| panic!("{label}: {key}: {err}"));
             let want = find(python, name);
-            // Real-data dumps hold the declared fields only.
             let got_cmp = if want.len() == got.len() {
                 got.clone()
             } else {
@@ -129,8 +109,6 @@ fn compare_with_python(case: &Case, metric: &dyn Metric) -> (Vec<String>, usize)
     (diffs, compared)
 }
 
-/// Check every CLEAR, Identity, and Count entry of `case` against the oracle and Python.
-/// Returns (oracle fields checked, score maps compared with Python).
 fn check_gate_case(case: &Case) -> (usize, usize) {
     let mut oracle_fields = 0;
     let mut compared = 0;
@@ -171,8 +149,6 @@ fn synthetic_box_and_mots_match_oracle_and_python() {
             cases += 1;
         }
     }
-    // synthetic_box: every case but the HOTA-only class-combiner case; synthetic_mots:
-    // all seven.
     assert_eq!(cases, 17 + 7, "CLEAR/Identity/Count synthetic case count");
     eprintln!(
         "synthetic: {cases} cases, {oracle_fields} oracle fields, {compared} score maps \
@@ -211,10 +187,6 @@ fn fuzz_case_paths() -> Vec<std::path::PathBuf> {
     paths
 }
 
-/// Seeded random sequences (`scripts/testdata/dump_clear_identity_count.py`): repeated ids
-/// within a frame, similarities on each side of both thresholds, empty frames, and one
-/// to four classes. Six more cases combine 8 to 12 classes of frames with 8 or more
-/// matches, where numpy's pairwise mean and sum differ from a plain sum.
 #[test]
 fn seeded_cases_match_python() {
     let paths = fuzz_case_paths();
@@ -236,8 +208,6 @@ fn seeded_cases_match_python() {
     );
 }
 
-/// Every CLEAR, Identity, and Count entry of the 20 `reference_benchmarks.json` cases:
-/// the nine local benchmarks scored with seeded perturbed predictions (`py-reference`).
 #[test]
 fn reference_benchmarks_match_python() {
     let Some(root) = real_testdata_dir("CLEAR/Identity/Count reference_benchmarks.json") else {

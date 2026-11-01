@@ -1,18 +1,3 @@
-"""Dump evaluation results with the exact table, JSON, and CSV bytes Python writes.
-
-Writes ``tests/integration/data/exports.json``, which ``tests/integration/exports.rs`` checks byte
-for byte, and the messages of `evaluate`'s errors before scoring. Run with the reference
-interpreter from the repository root:
-
-    artifacts/rust-port/ref-venv/bin/python scripts/testdata/dump_results.py
-
-Each case holds an `EvaluationResult` (scores as ``{"shape", "bits"}``, in dict order),
-plus what ``moteval.cli`` prints and writes for it: ``cli._table`` (or the exception it
-raises), ``json.dumps(to_json_dict(...))``, and the bytes ``cli._write_csv`` writes. Cases
-come from real `evaluate` runs on the test suite's toy and two-class datasets and from
-hand-built results with adversarial values and names.
-"""
-
 import json
 import math
 import sys
@@ -23,7 +8,6 @@ from pathlib import Path
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-# After site-packages: `moteval` is the pure-Python reference (scripts/testdata/reference.py).
 if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
@@ -100,7 +84,7 @@ def enc_result(result: EvaluationResult) -> dict:
 
 def case(name: str, result: EvaluationResult, dataset: str, split: str) -> dict:
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)  # np.mean of an empty array
+        warnings.simplefilter("ignore", RuntimeWarning)
         try:
             table = {"text": _table(result)}
         except (ValueError, OverflowError, KeyError) as err:
@@ -149,9 +133,6 @@ HOTA_ARRAYS = ("HOTA", "DetA", "AssA", "LocA")
 
 
 def adversarial_scores(rng: SplitMix64, extremes: list[float]) -> dict:
-    """Headline metrics with arrays whose mean depends on summation order and scalars
-    drawn from `extremes`."""
-
     def pick() -> float:
         return extremes[rng.below(len(extremes))]
 
@@ -167,7 +148,7 @@ def adversarial_scores(rng: SplitMix64, extremes: list[float]) -> dict:
             "matrix": array(15).reshape(3, 5),
             "empty": np.array([], dtype=np.float64),
             "one": array(1),
-            "long": array(137),  # numpy's pairwise sum recurses above 128
+            "long": array(137),
         },
     }
 
@@ -181,7 +162,6 @@ SEQ_NAMES = ["plain", "a,b", 'q"uote', "new\nline", "cr\rx", "é日本😀", "ta
 
 
 def finite(scores: dict) -> dict:
-    """Integer headlines must convert with `int()`: keep them finite."""
     for metric, field in (("CLEAR", "IDSW"), ("Count", "Dets"), ("Count", "GT_Dets")):
         value = scores[metric][field]
         if not math.isfinite(value):
@@ -214,7 +194,6 @@ def adversarial_cases() -> list[dict]:
     )
     out.append(case("adversarial_multi", multi, "multi", "val"))
 
-    # Counts that int() truncates toward zero, huge and negative ones included.
     counts = EvaluationResult(
         per_sequence={
             f"s{i}": {"Count": {"Dets": dets, "GT_Dets": gt}}
@@ -251,9 +230,6 @@ def adversarial_cases() -> list[dict]:
     return out
 
 
-# ------------------------------------------------------------- errors before scoring
-
-
 def build_dataset(spec: dict) -> MOTDataset:
     sequences = tuple(
         MaskGtSequence(name=s["name"], num_timesteps=1, tracks=())
@@ -278,7 +254,6 @@ def masks(*names: str) -> list[dict]:
 
 
 ERROR_CASES = [
-    # (name, dataset spec, metrics, prediction files present)
     ("duplicate_metrics", {"name": "d", "protocol": "p", "eval_classes": [1],
      "sequences": boxes("s1")}, ["HOTA", "CLEAR", "HOTA", "Count", "CLEAR", "CLEAR"], []),
     ("duplicate_before_geometry", {"name": "d", "protocol": "p", "eval_classes": [],
@@ -312,7 +287,6 @@ def error_cases() -> list[dict]:
             pred_dir.mkdir()
             for stem in files:
                 (pred_dir / f"{stem}.txt").write_text("")
-            # The path as given; the message prints it normalized.
             given = f"{pred_dir}//./"
             try:
                 evaluate(build_dataset(spec), given, [METRICS[m]() for m in metrics])
@@ -334,7 +308,6 @@ def main() -> None:
         "cases": evaluated_cases() + adversarial_cases(),
         "errors": error_cases(),
     }
-    # One case per line keeps the file under the repository's 500 KB hook limit.
     lines = ",\n".join(json.dumps(item, separators=(",", ":")) for item in data["cases"])
     errors = ",\n".join(json.dumps(item) for item in data["errors"])
     head = json.dumps({k: data[k] for k in ("format", "python")})[:-1]

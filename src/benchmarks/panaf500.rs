@@ -1,14 +1,3 @@
-//! PanAf500 loader, ported from `moteval/benchmarks/panaf500.py`.
-//!
-//! One JSON file per video, `<root>/annotations/<split>/<video_id>.json`, shaped
-//! `{"annotations": [{"frame_id": int, "detections": [{"bbox": [x1, y1, x2, y2],
-//! "ape_id": int}]}]}`. Boxes are converted from `xyxy` to `xywh` (`x2 - x1` is exact on
-//! integers, as in Python). Frames are 1-indexed; the sequence length is the largest
-//! `frame_id`. Splits are the directories on disk.
-//!
-//! The loader runs Python's steps in Python's order, so every error Python raises fires
-//! first; only then are the values converted to `Track` fields.
-
 use std::path::Path;
 
 use crate::benchmarks::pyjson::{Json, PyNum};
@@ -17,12 +6,10 @@ use crate::formats::Track;
 use crate::formats::pytext::{py_join, py_name, py_stem, py_str};
 use crate::model::{FrameConvention, GtSequence, MOTDataset, Protocol, Sequence};
 
-/// The split `load_panaf500` reads when the caller names none.
 pub const DEFAULT_SPLIT: &str = "validation";
 
 const CLASS_ID: i64 = 1;
 
-/// One detection as Python holds it before numpy converts it.
 struct RawTrack {
     frame: Json,
     track_id: Json,
@@ -40,7 +27,6 @@ fn load_sequence(ann_path: &Path) -> Result<GtSequence, BenchmarkError> {
     for frame_ann in annotations.iter()? {
         let frame = frame_ann.get("frame_id")?.clone();
         for det in frame_ann.get("detections")?.iter()? {
-            // _xyxy_to_xywh(det["bbox"]): x1, y1, x2 - x1, y2 - y1
             let [x1, y1, x2, y2] = det.get("bbox")?.unpack4()?;
             let w = x2.sub(&x1)?;
             let h = y2.sub(&y1)?;
@@ -58,7 +44,6 @@ fn load_sequence(ann_path: &Path) -> Result<GtSequence, BenchmarkError> {
     if !data.get("annotations")?.truthy() {
         return Err(BenchmarkError::EmptyGt(name));
     }
-    // max(a["frame_id"] for a in data["annotations"])
     let mut num_timesteps: Option<i64> = None;
     for frame_ann in annotations.iter()? {
         let frame = json_i64(frame_ann.get("frame_id")?, "frame_id", ann_path)?;
@@ -94,7 +79,6 @@ fn load_sequence(ann_path: &Path) -> Result<GtSequence, BenchmarkError> {
     })
 }
 
-/// `load_panaf500(root, split)`.
 pub fn load_panaf500(root: &Path, split: &str) -> Result<MOTDataset, BenchmarkError> {
     let ann_dir = py_join(&py_join(root, "annotations"), split);
     if !ann_dir.is_dir() {

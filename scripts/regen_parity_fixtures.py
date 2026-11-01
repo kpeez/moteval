@@ -1,54 +1,4 @@
-"""Regenerate the frozen TrackEval-parity JSON fixtures under tests/fixtures/.
-
-The oracle is official TrackEval pinned at commit
-12c8791b303e0a0b50f753af204249e622d0281a, cloned on demand into a cache dir and
-patched in place for numpy>=2 (``np.float``->``float``, ``np.int``->``int``,
-``np.bool``->``bool``, word-boundary matching only, so ``np.float64``/``np.int32``/
-``np.bool_`` etc. are never touched — the exact patch set documented in the old
-tests/oracle/VENDORED.md).
-
-Run from the repo root with the reference venv, whose ``moteval`` is the pure-Python
-``py-reference`` tag (``scripts/testdata/reference.py``; the project venv's moteval is the
-Rust port, which the fixtures check):
-
-    uv pip install --python artifacts/rust-port/ref-venv/bin/python \
-        opencv-python-headless scikit-image
-    artifacts/rust-port/ref-venv/bin/python scripts/regen_parity_fixtures.py
-
-(cv2/scikit-image are needed only by the oracle's JAndF metric on the MOTS path;
-moteval itself needs neither.)
-
-Modes:
-  default            regenerate the synthetic fixtures: synthetic_box.json,
-                     synthetic_mots.json, synthetic_trackmap.json
-  --real-data        additionally regenerate real_data.json from the data root
-                     ($MOTEVAL_DATA_ROOT, else data/benchmarks/)
-                     (DanceTrack val, SportsMOT val, one MOTS20 sequence) using
-                     tests/perturb.py seeded predictions
-  --trackeval-dir    use an existing TrackEval checkout (package dir ``trackeval``)
-                     or the old vendored dir (``tests/oracle``, package
-                     ``_trackeval``) instead of cloning
-
-Fixture JSON format: ``{scenario_name: {metric: {field: scalar-or-list}}}``. Floats
-go through plain ``json`` (Python round-trips doubles exactly); arrays become lists.
-
-Class-combination entries (same format, keyed by entry name instead of scenario):
-
-- synthetic_box.json ``combine_classes_class_averaged``: moteval's per-sequence HOTA
-  results for the combine_classes scenario fed to the oracle HOTA
-  ``combine_classes_class_averaged`` combiner (the original, HOTA-only check).
-- synthetic_box.json ``multi_class_class_averaged`` / ``multi_class_det_averaged``
-  and synthetic_mots.json entries of the same names: oracle-only. An existing
-  scenario's rows are split into two classes (`tests.scenarios.class_views`); each
-  class view is scored through the oracle (its MOTChallenge/MOTS runner, plus the
-  oracle TrackMAP metric for boxes), and the oracle class combiners combine those
-  per-class results, as upstream's evaluator does for a multi-class dataset. Boxes
-  split combine_classes by sequence; masks split jf_perturbed_predictions by track id.
-  TrackMAP's det-averaged result is NOT frozen: upstream's
-  ``combine_classes_det_averaged`` is a copy-paste of its class-averaged combiner (an
-  upstream bug), and moteval's detection-weighted version is the sole intentional
-  numeric divergence (ADR-0001). Every other metric's det-averaged result is frozen.
-"""
+"""Regenerate the frozen TrackEval-parity JSON fixtures under tests/fixtures/."""
 
 import argparse
 import importlib
@@ -63,7 +13,6 @@ from types import SimpleNamespace
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-# After site-packages: `moteval` is the pure-Python reference (scripts/testdata/reference.py).
 if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
@@ -115,11 +64,6 @@ def ensure_trackeval_clone(cache_dir: Path) -> Path:
 
 
 def apply_numpy2_patches(package_dir: Path) -> None:
-    """Replace removed numpy aliases with the exact builtins they aliased.
-
-    Word-boundary matching only: ``np.float64``, ``np.int32``, ``np.bool_``,
-    ``np.floating`` etc. never match. Idempotent, so safe on every run.
-    """
     for path in sorted(package_dir.rglob("*.py")):
         source = path.read_text()
         patched = _NUMPY2_ALIAS_RE.sub(lambda m: m.group(1), source)
@@ -128,7 +72,6 @@ def apply_numpy2_patches(package_dir: Path) -> None:
 
 
 def import_trackeval(root: Path) -> SimpleNamespace:
-    """Import the oracle package from ``root`` (auto-detects the package name)."""
     if (root / "trackeval").is_dir():
         package = "trackeval"
     elif (root / "_trackeval").is_dir():
@@ -163,14 +106,9 @@ def run_mot_challenge(
     tracker: str = "oracle",
     benchmark: str = "MOT17",
     split: str = "train",
-    do_preproc: bool = True,  # TrackEval's own default; the real-data gate keeps it
+    do_preproc: bool = True,
     metrics: tuple[str, ...] = BOX_METRICS,
 ) -> dict[str, dict]:
-    """Evaluate a MOTChallenge-format gt/trackers pair through the oracle.
-
-    Ported from the old tests/oracle/runner.py, parameterized on the imported
-    package. Returns the ``COMBINED_SEQ`` pedestrian results per metric.
-    """
     dataset_config = {
         "GT_FOLDER": str(gt_folder),
         "TRACKERS_FOLDER": str(trackers_folder),
@@ -203,7 +141,6 @@ def run_mots_challenge(
     tracker: str = "oracle",
     metrics: tuple[str, ...] = ("HOTA", "CLEAR", "Identity", "Count", "JAndF"),
 ) -> dict[str, dict]:
-    """Evaluate a MOTS-format gt/trackers pair through the oracle (JAndF needs cv2)."""
     dataset_config = {
         "GT_FOLDER": str(gt_folder),
         "TRACKERS_FOLDER": str(trackers_folder),
@@ -226,14 +163,7 @@ def run_mots_challenge(
 
 
 def _oracle_trackmap_data(gt_tracks: GtTracks, pred_tracks: PredTracks) -> dict:
-    """Build the upstream-shaped TrackMAP ``data`` dict from a scenario spec.
-
-    Ids are offset by +1: upstream's greedy matcher tracks "already matched" via
-    ``gt_m[thr, gt] > 0`` against the literal matched id, which misbehaves for a
-    legitimate id of 0 (real TrackEval datasets never emit id 0; moteval fixes it).
-    Sorted order is preserved, and id values otherwise never affect the numbers,
-    so this compares the semantics upstream clearly intends.
-    """
+    # TrackEval's TrackMAP matcher reads a stored id of 0 as unmatched (`gt_m[...] > 0`).
     gt_tracks = {tid + 1: frames for tid, frames in gt_tracks.items()}
     pred_tracks = {tid + 1: frames for tid, frames in pred_tracks.items()}
     gt_ids_sorted = sorted(gt_tracks)
@@ -265,8 +195,7 @@ def _oracle_trackmap_data(gt_tracks: GtTracks, pred_tracks: PredTracks) -> dict:
         "boxformat": "xywh",
     }
     if data["dt_tracks"]:
-        # Upstream dataset loaders presort dt tracks by descending score (mergesort,
-        # so ties keep original order) before eval_sequence ever runs.
+        # TrackEval's loaders stable-sort dt tracks by descending score before eval_sequence.
         idx = np.argsort([-s for s in dt_scores], kind="mergesort")
         data["dt_track_scores"] = data["dt_track_scores"][idx]
         data["dt_tracks"] = [data["dt_tracks"][i] for i in idx]
@@ -310,12 +239,6 @@ def gen_synthetic_box(oracle: SimpleNamespace) -> dict:
 
 
 def freeze_hota_class_avg(oracle: SimpleNamespace) -> dict:
-    """Oracle HOTA class-averaged combiner over moteval's own per-sequence results.
-
-    The MOTChallenge runner only ever evaluates one class, so the combiner can't be
-    exercised through it: moteval's deterministic per-sequence HOTA dicts for the
-    combine_classes scenario (CLASSA01/CLASSB01) stand in as two classes.
-    """
     scenario = next(s for s in BOX_SCENARIOS if s.name == COMBINE_CLASSES_SCENARIO)
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
@@ -329,7 +252,6 @@ def freeze_hota_class_avg(oracle: SimpleNamespace) -> dict:
 
 
 def _oracle_trackmap_combined(oracle: SimpleNamespace, scenario: Scenario) -> dict:
-    """Oracle TrackMAP over a box scenario's sequences, combined across sequences."""
     per_seq = {
         name: oracle.metrics.TrackMAP().eval_sequence(
             _oracle_trackmap_data(*box_rows_to_trackmap_spec(gt_rows, pred_rows))
@@ -342,10 +264,6 @@ def _oracle_trackmap_combined(oracle: SimpleNamespace, scenario: Scenario) -> di
 def _oracle_class_combinations(
     oracle: SimpleNamespace, per_class: list[dict[str, dict]], det_averaged_metrics: tuple
 ) -> dict:
-    """Combine per-class oracle results with the oracle class combiners.
-
-    Classes enter in ``per_class`` order, the order moteval's protocol lists them.
-    """
     class_averaged = {}
     det_averaged = {}
     for name in per_class[0]:
@@ -358,7 +276,6 @@ def _oracle_class_combinations(
 
 
 def freeze_box_class_combinations(oracle: SimpleNamespace) -> dict:
-    """Oracle class_averaged/det_averaged for every box metric on combine_classes."""
     scenario = next(s for s in BOX_SCENARIOS if s.name == COMBINE_CLASSES_SCENARIO)
     per_class = []
     classes = MULTI_CLASS_BOX_PROTOCOL.eval_classes
@@ -371,12 +288,11 @@ def freeze_box_class_combinations(oracle: SimpleNamespace) -> dict:
             )
         result["TrackMAP"] = _oracle_trackmap_combined(oracle, view)
         per_class.append(result)
-    # TrackMAP det_averaged is the permitted divergence: never frozen.
+    # TrackEval's TrackMAP combine_classes_det_averaged copies its class-averaged combiner.
     return _oracle_class_combinations(oracle, per_class, det_averaged_metrics=BOX_METRICS)
 
 
 def freeze_mots_class_combinations(oracle: SimpleNamespace) -> dict:
-    """Oracle class_averaged/det_averaged for every mask metric on the MOTS scenario."""
     scenario = next(s for s in build_mots_scenarios() if s.name == MOTS_MULTI_CLASS_SCENARIO)
     per_class = []
     classes = MULTI_CLASS_MOTS_PROTOCOL.eval_classes
@@ -401,7 +317,7 @@ def gen_synthetic_mots(oracle: SimpleNamespace) -> dict:
 
 
 def gen_synthetic_trackmap(oracle: SimpleNamespace) -> dict:
-    trackmap_fields = TrackMAP().fields  # drop oracle-internal precision/recall work arrays
+    trackmap_fields = TrackMAP().fields
     fixture = {}
     for name, sequences in TRACKMAP_SCENARIOS.items():
         per_seq = {

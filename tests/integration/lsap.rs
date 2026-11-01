@@ -1,6 +1,3 @@
-//! `moteval::lsap::linear_sum_assignment` against scipy 1.18.0 on 10,600 seeded matrices
-//! and the special cases dumped by `scripts/testdata/dump_lsap.py`. Index equality is exact.
-
 use crate::harness::testgen::{EPS, SplitMix64, fnv1a64};
 use crate::harness::{
     as_array, as_str, as_u64, as_usize, f64s_from_bits, read_json, testdata_dir, usizes,
@@ -8,7 +5,6 @@ use crate::harness::{
 use moteval::lsap::{LsapError, linear_sum_assignment};
 use serde_json::Value as Json;
 
-/// `(category, number of cases)`, as in `testgen.LSAP_CATEGORIES`.
 const CATEGORIES: &[(&str, usize)] = &[
     ("square", 1500),
     ("wide", 1500),
@@ -29,7 +25,6 @@ fn lsap_seed(category: &str, index: usize) -> u64 {
     (base as u64 + 1) * 1_000_000 + index as u64
 }
 
-/// `testgen.lsap_case`: `(nr, nc, C-order cost, maximize)`.
 fn lsap_case(category: &str, seed: u64) -> (usize, usize, Vec<f64>, bool) {
     let mut rng = SplitMix64::new(seed);
     let mut maximize = false;
@@ -124,7 +119,6 @@ fn lsap_case(category: &str, seed: u64) -> (usize, usize, Vec<f64>, bool) {
     (nr, nc, cost, maximize)
 }
 
-/// `testgen._identity_cost`: Identity's `fn_mat + fp_mat` block matrix.
 fn identity_cost(rng: &mut SplitMix64) -> (Vec<f64>, usize) {
     let num_gt = rng.below(7) as usize;
     let num_pred = rng.below(7) as usize;

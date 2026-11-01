@@ -1,36 +1,23 @@
-//! The typed data model, ported from `moteval/data/model.py` and the `Protocol` value
-//! object of `moteval/data/protocol.py`.
-//!
-//! Raw ground truth (`GtSequence`, `MaskGtSequence`) lives in a `MOTDataset` with its
-//! `Protocol`. The conversion step turns one sequence plus its predictions into a frozen,
-//! frame-major `SequenceData`, and metrics read `SequenceData` alone.
-
 use std::fmt;
 
 use crate::formats::{MaskTrack, Track};
 use crate::pyfmt::repr_str;
 use crate::rle::RleMask;
 
-/// One `xywh` box: top-left corner `(x, y)`, then width and height, in pixels.
 pub type BoxXywh = [f64; 4];
 
-/// Errors raised by the data model. Messages match the Python text.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ModelError {
-    /// `FrameConvention.to_index`: a frame outside the sequence (Python `ValueError`).
     FrameOutOfRange {
         frame: i64,
         convention: String,
         first_frame: i64,
         num_timesteps: usize,
     },
-    /// A box accessor on mask data, or the reverse (Python `TypeError`).
     WrongGeometry {
         sequence: String,
         holds: GeometryKind,
     },
-    /// A `Matrix` or `SequenceData` whose parts disagree in length or shape. Python builds
-    /// these internally and never checks; the Rust constructors do.
     Inconsistent(String),
 }
 
@@ -43,7 +30,6 @@ impl fmt::Display for ModelError {
                 first_frame,
                 num_timesteps,
             } => {
-                // Python: valid = range(first, first + n); prints [valid.start, valid.stop - 1].
                 let stop = *first_frame as i128 + *num_timesteps as i128;
                 write!(
                     f,
@@ -71,11 +57,6 @@ impl fmt::Display for ModelError {
 
 impl std::error::Error for ModelError {}
 
-/// Declared frame-indexing convention for a benchmark.
-///
-/// `first_frame` is the frame number of the first timestep (1 for MOTChallenge, 0 for
-/// natively 0-indexed benchmarks). Frame numbers must fall in
-/// `[first_frame, first_frame + num_timesteps)`; anything else is an error, never a drop.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FrameConvention {
     pub name: String,
@@ -90,7 +71,6 @@ impl FrameConvention {
         }
     }
 
-    /// The 0-based timestep of `frame`, or `FrameOutOfRange`.
     pub fn to_index(&self, frame: i64, num_timesteps: usize) -> Result<usize, ModelError> {
         let index = frame as i128 - self.first_frame as i128;
         if index < 0 || index >= num_timesteps as i128 {
@@ -105,13 +85,6 @@ impl FrameConvention {
     }
 }
 
-/// Declarative preprocessing rules for one benchmark (`moteval/data/protocol.py`).
-///
-/// `eval_classes` are the class ids scored (one `SequenceData` view per class).
-/// `distractor_classes` are matched against but never evaluated. `matching_fill` is the
-/// score below-threshold pairs get during the Hungarian matching step: `0.0` on upstream's
-/// box path, `-10000.0` on its MOTS path. Build one with `Protocol::new` (Python's
-/// defaults) and override fields with struct-update syntax.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Protocol {
     pub name: String,
@@ -125,8 +98,6 @@ pub struct Protocol {
 }
 
 impl Protocol {
-    /// A protocol with the Python dataclass defaults: no distractors, both thresholds
-    /// `0.5`, conf-zero GT dropped, and a matching fill of `0.0`.
     pub fn new(
         name: impl Into<String>,
         frame_convention: FrameConvention,
@@ -145,10 +116,6 @@ impl Protocol {
     }
 }
 
-/// Ground truth for one box sequence, before predictions are merged in.
-///
-/// `ignore_regions` are per-frame crowd-ignore boxes (as `Track` rows whose id, conf and
-/// class do not matter).
 #[derive(Clone, Debug, PartialEq)]
 pub struct GtSequence {
     pub name: String,
@@ -157,9 +124,6 @@ pub struct GtSequence {
     pub ignore_regions: Vec<Track>,
 }
 
-/// Ground truth for one mask (MOTS) sequence, before predictions are merged in.
-///
-/// `ignore_regions` are per-frame ignore masks (class-10 rows in MOTS GT files).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MaskGtSequence {
     pub name: String,
@@ -168,8 +132,6 @@ pub struct MaskGtSequence {
     pub ignore_regions: Vec<MaskTrack>,
 }
 
-/// One ground-truth sequence of either kind. Python's `MOTDataset` holds the union
-/// `GtSequence | MaskGtSequence`, and `evaluate` dispatches on each sequence's kind.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Sequence {
     Boxes(GtSequence),
@@ -199,7 +161,6 @@ impl Sequence {
     }
 }
 
-/// A named, split-scoped collection of ground-truth sequences, in loader order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MOTDataset {
     pub name: String,
@@ -208,7 +169,6 @@ pub struct MOTDataset {
     pub protocol: Protocol,
 }
 
-/// The geometry a sequence carries, and the geometry a metric reads (`Metric::geometry`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum GeometryKind {
     Boxes,
@@ -216,7 +176,6 @@ pub enum GeometryKind {
 }
 
 impl GeometryKind {
-    /// The word Python uses: `"boxes"` or `"masks"`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Boxes => "boxes",
@@ -225,7 +184,6 @@ impl GeometryKind {
     }
 }
 
-/// A dense row-major (C-order) `f64` matrix, like a 2-D numpy array.
 #[derive(Clone, Debug, Default)]
 pub struct Matrix {
     rows: usize,
@@ -234,7 +192,6 @@ pub struct Matrix {
 }
 
 impl Matrix {
-    /// A `rows x cols` matrix over `data` in C order.
     pub fn new(rows: usize, cols: usize, data: Vec<f64>) -> Result<Self, ModelError> {
         if rows.checked_mul(cols) != Some(data.len()) {
             return Err(ModelError::Inconsistent(format!(
@@ -245,12 +202,10 @@ impl Matrix {
         Ok(Self { rows, cols, data })
     }
 
-    /// `np.zeros((rows, cols))`.
     pub fn zeros(rows: usize, cols: usize) -> Self {
         Self::filled(rows, cols, 0.0)
     }
 
-    /// `np.full((rows, cols), value)`.
     pub fn filled(rows: usize, cols: usize, value: f64) -> Self {
         Self {
             rows,
@@ -271,7 +226,6 @@ impl Matrix {
         (self.rows, self.cols)
     }
 
-    /// The values in C order.
     pub fn data(&self) -> &[f64] {
         &self.data
     }
@@ -305,15 +259,12 @@ impl Matrix {
     }
 }
 
-/// Per-frame geometry of the detections that survived preprocessing.
 #[derive(Clone, Debug)]
 pub enum Geometry {
-    /// Each frame holds its surviving `xywh` boxes.
     Boxes {
         gt: Vec<Vec<BoxXywh>>,
         pred: Vec<Vec<BoxXywh>>,
     },
-    /// Each frame holds its surviving pycocotools-RLE masks.
     Masks {
         gt: Vec<Vec<RleMask>>,
         pred: Vec<Vec<RleMask>>,
@@ -329,11 +280,6 @@ impl Geometry {
     }
 }
 
-/// The parts of a `SequenceData`, checked by `SequenceData::new`.
-///
-/// Every per-frame field has one entry per timestep. Ids are dense
-/// (`0..num_gt_ids`, `0..num_pred_ids`). `similarity[t]` is
-/// `gt_ids[t].len() x pred_ids[t].len()` (box IoU or mask IoU).
 #[derive(Clone, Debug)]
 pub struct SequenceDataParts {
     pub name: String,
@@ -349,19 +295,12 @@ pub struct SequenceDataParts {
     pub similarity: Vec<Matrix>,
 }
 
-/// Frozen frame-major evaluation input for one sequence (one class view).
-///
-/// Every per-frame field has length `num_timesteps`. Ids are densified to
-/// `0..num_*_ids` over the sorted unique raw ids. Similarity is precomputed, so metrics
-/// stay geometry-agnostic unless they declare a geometry (`Metric::geometry`) and read it
-/// through `gt_boxes`/`pred_boxes` or `gt_masks`/`pred_masks`.
 #[derive(Clone, Debug)]
 pub struct SequenceData {
     parts: SequenceDataParts,
 }
 
 impl SequenceData {
-    /// Check that the parts agree with each other, then freeze them.
     pub fn new(parts: SequenceDataParts) -> Result<Self, ModelError> {
         let n = parts.num_timesteps;
         let bad = |what: &str| {

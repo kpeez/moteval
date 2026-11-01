@@ -1,24 +1,9 @@
-//! J&F metric: DAVIS-style region similarity J and boundary accuracy F on masks.
-//!
-//! A port of `moteval/metrics/jf.py`, which ports TrackEval's `JAndF` with its quirks: an
-//! all-zero padding mask (encoded from a Fortran-order array) where a track has no
-//! detection, padded tracker tracks when there are fewer tracker ids than GT ids, IoU 1
-//! when both masks are empty, decay bin edges cast to `uint8` (they wrap past 255 frames),
-//! and GT-to-prediction assignment on the mean-over-time J only.
-//!
-//! Boundary F counts a boundary pixel as matched when a pixel of the other boundary lies
-//! within the disk of radius `r = int(bound_pix)`. Coordinates and `r` are integers, so the
-//! test is `dx² + dy² <= r²` in integer arithmetic. That is Python's
-//! `KDTree.query(...)[0] <= r`, and upstream's `cv2.dilate` with a `skimage` disk. Each
-//! row of the disk is one range query on per-row prefix counts of the other boundary.
-
 use crate::lsap::linear_sum_assignment;
 use crate::metrics::{Metric, MetricError, Scores, Value, combine_sum, combine_weighted_av};
 use crate::model::{GeometryKind, SequenceData};
 use crate::numeric::{self, EPS};
 use crate::rle::{self, RleMask};
 
-/// The public fields, in the Python `fields` order.
 pub const FIELDS: &[&str] = &[
     "J-Mean",
     "J-Recall",
@@ -30,18 +15,14 @@ pub const FIELDS: &[&str] = &[
     "num_gt_tracks",
 ];
 
-/// `_FLOAT_FIELDS`: the averaged fields, in the order the combiners insert them.
 const FLOAT_FIELDS: [&str; 7] = [
     "J-Mean", "J-Recall", "J-Decay", "F-Mean", "F-Recall", "F-Decay", "J&F",
 ];
 
-/// `_BOUND_TH`: the boundary tolerance as a fraction of the frame diagonal.
 const BOUND_TH: f64 = 0.008;
 
-/// `_N_BINS`: the number of decay bins.
 const N_BINS: usize = 4;
 
-/// `moteval.metrics.jf.JAndF`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct JAndF;
 
@@ -82,7 +63,6 @@ impl Metric for JAndF {
         let mut res = Scores::new();
         res.insert("num_gt_tracks", combine_sum(all_res, "num_gt_tracks")?);
         for field in FLOAT_FIELDS {
-            // float(np.mean(np.asarray([scores[field] for scores in all_res.values()])))
             let values = all_res
                 .iter()
                 .map(|scores| scores.require(field).map(Value::float))
@@ -93,7 +73,7 @@ impl Metric for JAndF {
     }
 
     fn combine_classes_det_averaged(&self, all_res: &[&Scores]) -> Result<Scores, MetricError> {
-        // Upstream's two class-combine modes coincide for J&F.
+        // TrackEval's J&F det-averaged combiner is the class mean too.
         self.combine_classes_class_averaged(all_res)
     }
 }
@@ -118,8 +98,6 @@ fn eval_sequence(data: &SequenceData) -> Result<Scores, MetricError> {
         None
     };
 
-    // Pad timesteps where a track has no detection with an all-zero mask, encoded from a
-    // Fortran-order array as upstream does.
     let padding = frame_shape.map(|(h, w)| rle::encode(&vec![0u8; h * w], h, w));
     let mut gt_dets: Vec<Vec<&RleMask>> = gt_masks.iter().map(|f| f.iter().collect()).collect();
     let mut pred_dets: Vec<Vec<&RleMask>> = pred_masks.iter().map(|f| f.iter().collect()).collect();
@@ -147,8 +125,6 @@ fn eval_sequence(data: &SequenceData) -> Result<Scores, MetricError> {
     let gt_areas: Vec<Vec<u32>> = gt_dets.iter().map(|f| areas(f)).collect();
     let pred_areas: Vec<Vec<u32>> = pred_dets.iter().map(|f| areas(f)).collect();
 
-    // Assignment on mean-over-time J (upstream's default optim_type='J'); F is computed
-    // only for assigned pairs. linear_sum_assignment(-np.mean(j, axis=2)).
     let optim = if num_timesteps == 0 {
         vec![f64::NAN; num_pred_ids * num_gt_ids]
     } else {
@@ -171,20 +147,18 @@ fn eval_sequence(data: &SequenceData) -> Result<Scores, MetricError> {
             &pred_areas,
         )?);
     }
-    // Zero rows for unmatched GT tracks (false negatives).
     while j_m.len() < data.num_gt_ids() {
         j_m.push(vec![0.0; num_timesteps]);
         f_m.push(vec![0.0; num_timesteps]);
     }
 
-    // ids = np.round(np.linspace(1, T, N_BINS + 1) + 1e-10) - 1, cast to uint8 (wraps).
+    // TrackEval casts the decay-bin edges to `uint8`, so they wrap past 255 frames.
     let ids: Vec<u8> = numeric::linspace(1.0, num_timesteps as f64, N_BINS + 1, true)
         .into_iter()
         .map(|x| numpy_f64_to_u8(numeric::round_half_even(x + 1e-10) - 1.0))
         .collect();
     let bin = |row: &[f64], i: usize| {
-        // j_m[k][ids[i] : ids[i + 1] + 1], where `ids[i + 1] + 1` is uint8 and wraps.
-        // Python slicing clamps both ends to the length and is empty when stop <= start.
+        // numpy `uint8` `ids[i + 1] + 1` wraps, and the slice clamps as numpy slicing does.
         let start = usize::from(ids[i]).min(row.len());
         let stop = usize::from(ids[i + 1].wrapping_add(1)).min(row.len());
         numeric::nanmean(&row[start..stop.max(start)])
@@ -197,7 +171,7 @@ fn eval_sequence(data: &SequenceData) -> Result<Scores, MetricError> {
     let means =
         |rows: &[Vec<f64>]| -> Vec<f64> { rows.iter().map(|r| numeric::nanmean(r)).collect() };
     let recalls = |rows: &[Vec<f64>]| -> Vec<f64> {
-        // np.nanmean on a bool array is np.mean: the count over the length.
+        // numpy `nanmean` on TrackEval's bool array is `mean`.
         rows.iter()
             .map(|row| {
                 let hits: Vec<f64> = row
@@ -227,8 +201,6 @@ fn eval_sequence(data: &SequenceData) -> Result<Scores, MetricError> {
     Ok(scores)
 }
 
-/// `[mapping.get(index, padding_mask) for index in range(num_ids)]`, where
-/// `mapping = dict(zip(ids, dets))`: a repeated id keeps its last mask.
 fn by_id<'a>(
     ids: &[usize],
     dets: &'a [RleMask],
@@ -242,14 +214,11 @@ fn by_id<'a>(
     out
 }
 
-/// `mask_utils.area(dets)` as the C `uint` values.
 fn areas(dets: &[&RleMask]) -> Vec<u32> {
     dets.iter().map(|m| rle::area_u32(m)).collect()
 }
 
-/// numpy's `float64 -> uint8` cast (`astype(np.uint8)`): C's conversion through a 32-bit
-/// integer on x86-64, so values wrap modulo 256 (300 -> 44) and values outside the `int32`
-/// range become 0. Rust's `as u8` saturates instead, so it is not used directly.
+/// numpy `astype(np.uint8)` on x86-64: via `int32`, so it wraps mod 256; out of range gives 0.
 fn numpy_f64_to_u8(x: f64) -> u8 {
     if (-2_147_483_648.0..2_147_483_648.0).contains(&x) {
         (x as i32) as u8
@@ -258,12 +227,7 @@ fn numpy_f64_to_u8(x: f64) -> u8 {
     }
 }
 
-/// `_compute_j`: the `(P, G, T)` C-order array of per-frame IoUs between every padded
-/// prediction track and GT track, with IoU 1 where both masks are empty.
-///
-/// A frame with no GT or no prediction masks reproduces numpy's shape errors: pycocotools
-/// returns `[]`, `np.atleast_2d` makes it `(1, 0)`, and the boolean mask and the
-/// assignment into `j[..., t]` then fail exactly where numpy fails.
+/// Empty frames reproduce TrackEval's `_compute_j` numpy errors on a `(1, 0)` IoU array.
 fn compute_j(
     gt_dets: &[Vec<&RleMask>],
     pred_dets: &[Vec<&RleMask>],
@@ -276,14 +240,12 @@ fn compute_j(
         let (time_gt, time_pred) = (&gt_dets[t], &pred_dets[t]);
         let (num_gt, num_pred) = (time_gt.len(), time_pred.len());
         if num_gt == 0 || num_pred == 0 {
-            // ious[mask] = 1 with ious (1, 0) and mask (num_pred, num_gt).
             if num_pred > 1 {
                 return Err(bool_index_error(0, 1, num_pred));
             }
             if num_gt > 0 {
                 return Err(bool_index_error(1, 0, num_gt));
             }
-            // j[..., t] = ious broadcasts (1, 0) into (P, G).
             if num_gt_ids != 0 {
                 return Err(MetricError::Python {
                     exception: "ValueError",
@@ -299,8 +261,6 @@ fn compute_j(
         let area_pred = areas(time_pred);
         let ious = rle::iou(time_pred, time_gt, &vec![false; num_gt])?;
         if (num_pred, num_gt) != (num_pred_ids, num_gt_ids) {
-            // Padding makes every frame (P, G); a raw frame with both sides present only
-            // occurs when padding ran, so this is unreachable.
             return Err(MetricError::Python {
                 exception: "ValueError",
                 message: format!(
@@ -324,7 +284,6 @@ fn compute_j(
     Ok(j)
 }
 
-/// numpy's `IndexError` for a boolean index whose shape does not match the array.
 fn bool_index_error(axis: usize, size: usize, bool_size: usize) -> MetricError {
     MetricError::Python {
         exception: "IndexError",
@@ -335,7 +294,6 @@ fn bool_index_error(axis: usize, size: usize, bool_size: usize) -> MetricError {
     }
 }
 
-/// `_compute_f`: per-frame boundary F between one prediction track and one GT track.
 fn compute_f(
     gt_dets: &[Vec<&RleMask>],
     pred_dets: &[Vec<&RleMask>],
@@ -346,8 +304,6 @@ fn compute_f(
 ) -> Result<Vec<f64>, MetricError> {
     let mut f = vec![0.0; gt_dets.len()];
     for (t, (gt_masks, pred_masks)) in gt_dets.iter().zip(pred_dets).enumerate() {
-        // A `_seg2bmap` boundary is empty iff the mask has no pixels or every pixel, so
-        // both cases are decided from the RLE area without decoding.
         let pred = pred_masks[pred_id];
         let (height, width) = (pred.height(), pred.width());
         let full_area = height as u128 * width as u128;
@@ -367,10 +323,6 @@ fn compute_f(
         let gt = Boundary::of(gt_masks[gt_id])?;
         let fg_match = count_within(&fg.points, &gt, r);
         let gt_match = count_within(&gt.points, &fg, r);
-        // The match counts are numpy integers, so an empty boundary divides as numpy
-        // does: 0 / 0.0 is NaN, not ZeroDivisionError, and F is NaN for the frame (which
-        // `nanmean` then skips). The area test above leaves one such case: a GT mask of
-        // another size than the prediction that fills its own frame.
         let precision = fg_match as f64 / fg.points.len() as f64;
         let recall = gt_match as f64 / gt.points.len() as f64;
         f[t] = if precision + recall == 0.0 {
@@ -382,32 +334,22 @@ fn compute_f(
     Ok(f)
 }
 
-/// `int(np.ceil(_BOUND_TH * np.linalg.norm((height, width))))`.
-///
-/// `height² + width²` is an exact integer in `f64` for any frame below 2^26 pixels a
-/// side, so its correctly rounded `sqrt` equals numpy's.
+/// numpy `linalg.norm((h, w))` is `sqrt(h*h + w*w)`, exact for sides below 2^26.
 pub fn boundary_radius(height: usize, width: usize) -> i64 {
     let (h, w) = (height as f64, width as f64);
     (BOUND_TH * (h * h + w * w).sqrt()).ceil() as i64
 }
 
-/// The `_seg2bmap` boundary of one mask, computed on its bounding-box crop as
-/// `_boundary_points` does, with per-row prefix counts for disk queries.
 pub struct Boundary {
-    /// Boundary pixels as `(row, col)` in frame coordinates, in `np.argwhere` order.
     pub points: Vec<(i64, i64)>,
     r0: i64,
     c0: i64,
     rows: usize,
     cols: usize,
-    /// `prefix[row * (cols + 1) + c]`: boundary pixels in crop row `row` before column `c`.
     prefix: Vec<u32>,
 }
 
 impl Boundary {
-    /// `_boundary_points(rle)`: `_seg2bmap(decode(rle)[r0:r1, c0:c1])` with
-    /// `r0, c0 = max(0, y - 1), max(0, x - 1)` and
-    /// `r1, c1 = min(height, y + bh + 1), min(width, x + bw + 1)` from `toBbox`.
     pub fn of(mask: &RleMask) -> Result<Self, MetricError> {
         let (height, width) = (mask.height() as i64, mask.width() as i64);
         let [x, y, bw, bh] = rle::to_bbox(mask).map(|v| v as i64);
@@ -438,8 +380,6 @@ impl Boundary {
         })
     }
 
-    /// Whether any boundary pixel lies in frame row `row` between columns `lo` and `hi`
-    /// inclusive.
     fn any_in_row(&self, row: i64, lo: i64, hi: i64) -> bool {
         let i = row - self.r0;
         if i < 0 || i >= self.rows as i64 {
@@ -455,8 +395,6 @@ impl Boundary {
     }
 }
 
-/// The crop `decode(rle)[r0:r0+rows, c0:c0+cols]` as a row-major bitmap, filled from the
-/// Fortran-order runs without decoding the whole frame.
 fn decode_crop(mask: &RleMask, r0: i64, c0: i64, rows: usize, cols: usize) -> Vec<bool> {
     let mut seg = vec![false; rows * cols];
     let h = mask.height() as u64;
@@ -490,9 +428,7 @@ fn decode_crop(mask: &RleMask, r0: i64, c0: i64, rows: usize, cols: usize) -> Ve
     seg
 }
 
-/// One pixel of `_seg2bmap(seg)`: `seg ^ e | seg ^ s | seg ^ se` with `e`, `s`, `se` the
-/// right, lower, and lower-right neighbours (0 outside), then the last row is
-/// `seg ^ e`, the last column `seg ^ s`, and the corner 0, in that order.
+/// One pixel of TrackEval's `_seg2bmap`, with its last-row, last-column, and corner overrides.
 fn seg2bmap_at(seg: &[bool], rows: usize, cols: usize, i: usize, j: usize) -> bool {
     let at = |r: usize, c: usize| seg[r * cols + c];
     let v = at(i, j);
@@ -512,11 +448,9 @@ fn seg2bmap_at(seg: &[bool], rows: usize, cols: usize, i: usize, j: usize) -> bo
     }
 }
 
-/// The number of `points` with a pixel of `other` within distance `r`:
-/// `np.count_nonzero(KDTree(other).query(points, k=1)[0] <= r)`.
+/// TrackEval's `cv2.dilate` with `skimage.morphology.disk(r)`: matched when `dx² + dy² <= r²`.
 pub fn count_within(points: &[(i64, i64)], other: &Boundary, r: i64) -> usize {
     let r2 = r * r;
-    // The half-width of the disk on each row offset: floor(sqrt(r² - dy²)).
     let half: Vec<i64> = (-r..=r)
         .map(|dy| ((r2 - dy * dy) as u64).isqrt() as i64)
         .collect();
@@ -554,7 +488,6 @@ mod tests {
 
     #[test]
     fn radius_follows_the_frame_diagonal() {
-        // MOTS20: 1080 x 1920 -> ceil(0.008 * 2202.9...) = 18.
         assert_eq!(boundary_radius(1080, 1920), 18);
         assert_eq!(boundary_radius(1, 1), 1);
     }

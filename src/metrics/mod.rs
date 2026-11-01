@@ -1,10 +1,3 @@
-//! The `Metric` trait and the score container every metric shares, ported from
-//! `moteval/metrics/base.py`.
-//!
-//! A metric declares its `fields` and the `geometry` it reads, scores one `SequenceData`
-//! at a time, and combines per-sequence results and per-class results (class-averaged and
-//! detection-averaged).
-
 pub mod clear;
 pub mod count;
 pub mod hota;
@@ -26,23 +19,14 @@ pub use identity::Identity;
 pub use jf::JAndF;
 pub use track_map::TrackMap;
 
-/// One score value: Python's `float | np.ndarray`.
-///
-/// Integer counts (HOTA's `HOTA_TP`, CLEAR's `IDSW`) are floats in Python too. Private
-/// state that Python holds as `bool` or `int` arrays (TrackMAP's `_dt_ignore_*`,
-/// `_gt_ignore_*`) is stored here as exact `0.0`/`1.0`/integer floats.
 #[derive(Clone, Debug)]
 pub enum Value {
-    /// A Python `float` or `np.float64`.
     Float(f64),
-    /// A 1-D array (HOTA's 19 alphas, TrackMAP's 10 IoU thresholds).
     Array(Vec<f64>),
-    /// A 2-D C-order array (TrackMAP's per-threshold match state).
     Matrix(Matrix),
 }
 
 impl Value {
-    /// The values in C order: one for `Float`, every element otherwise.
     pub fn as_slice(&self) -> &[f64] {
         match self {
             Self::Float(x) => std::slice::from_ref(x),
@@ -51,7 +35,6 @@ impl Value {
         }
     }
 
-    /// The scalar. Panics if this is an array.
     pub fn float(&self) -> f64 {
         match self {
             Self::Float(x) => *x,
@@ -59,7 +42,6 @@ impl Value {
         }
     }
 
-    /// The 1-D array. Panics if this is not one.
     pub fn array(&self) -> &[f64] {
         match self {
             Self::Array(values) => values,
@@ -67,7 +49,6 @@ impl Value {
         }
     }
 
-    /// The 2-D array. Panics if this is not one.
     pub fn matrix(&self) -> &Matrix {
         match self {
             Self::Matrix(matrix) => matrix,
@@ -75,7 +56,6 @@ impl Value {
         }
     }
 
-    /// The numpy shape: `[]`, `[n]`, or `[rows, cols]`.
     pub fn shape(&self) -> Vec<usize> {
         match self {
             Self::Float(_) => Vec::new(),
@@ -84,8 +64,6 @@ impl Value {
         }
     }
 
-    /// Bit-for-bit equality: same shape, and every element has the same bits, except that
-    /// any NaN equals any NaN (`np.array_equal(..., equal_nan=True)` on exact values).
     pub fn bits_eq(&self, other: &Self) -> bool {
         self.shape() == other.shape()
             && self
@@ -96,14 +74,6 @@ impl Value {
     }
 }
 
-/// One metric's scores: an insertion-ordered map from field name to value, like the
-/// Python `dict` it ports.
-///
-/// Order is output order: the JSON, CSV, and table writers emit fields in the order the
-/// metric inserted them, so a port must insert in the order its Python dict was built.
-/// Re-inserting an existing field keeps its position, as Python dict assignment does.
-/// Fields that start with `_` are private state for the combiners (TrackMAP's match
-/// arrays and `_num_dt_*` weights); `evaluate` reports only `Metric::fields`.
 #[derive(Clone, Debug, Default)]
 pub struct Scores {
     entries: Vec<(String, Value)>,
@@ -114,7 +84,6 @@ impl Scores {
         Self::default()
     }
 
-    /// Set `field`, keeping its position if it is already present.
     pub fn insert(&mut self, field: impl Into<String>, value: Value) {
         let field = field.into();
         match self.entries.iter_mut().find(|(name, _)| *name == field) {
@@ -130,8 +99,6 @@ impl Scores {
             .map(|(_, value)| value)
     }
 
-    /// `res[field]` on a combiner input. A caller can pass any dict, so a missing field
-    /// is Python's `KeyError`, not a panic.
     pub fn require(&self, field: &str) -> Result<&Value, MetricError> {
         self.get(field).ok_or_else(|| MetricError::Python {
             exception: "KeyError",
@@ -139,8 +106,6 @@ impl Scores {
         })
     }
 
-    /// The scalar `field`. Panics if it is missing or not a `Float`: a metric reading its
-    /// own state has a bug if this fails.
     pub fn float(&self, field: &str) -> f64 {
         match self.get(field) {
             Some(Value::Float(x)) => *x,
@@ -148,7 +113,6 @@ impl Scores {
         }
     }
 
-    /// The 1-D array `field`. Panics if it is missing or not an `Array`.
     pub fn array(&self, field: &str) -> &[f64] {
         match self.get(field) {
             Some(Value::Array(values)) => values,
@@ -156,7 +120,6 @@ impl Scores {
         }
     }
 
-    /// The 2-D array `field`. Panics if it is missing or not a `Matrix`.
     pub fn matrix(&self, field: &str) -> &Matrix {
         match self.get(field) {
             Some(Value::Matrix(matrix)) => matrix,
@@ -178,8 +141,6 @@ impl Scores {
         self.entries.is_empty()
     }
 
-    /// `eval._declared`: only the entries named in `fields`, in this map's order (not the
-    /// order of `fields`).
     pub fn declared(&self, fields: &[&str]) -> Scores {
         Scores {
             entries: self
@@ -192,24 +153,15 @@ impl Scores {
     }
 }
 
-/// Errors a metric can raise. Python raises these from inside scipy, pycocotools, or the
-/// data model; the Python layer maps each to `ValueError` with the same text.
 #[derive(Clone, Debug, PartialEq)]
 pub enum MetricError {
     Lsap(LsapError),
     Model(ModelError),
     Rle(RleError),
     Numeric(NumericError),
-    /// A combiner called with no results. Python fails here too, but each metric fails
-    /// differently (HOTA: `IndexError`; TrackMAP: numpy's "need at least one array to
-    /// concatenate") or returns integer zeros (Count, CLEAR, Identity), so `evaluate`
-    /// decides what an empty dataset means.
     NoResults {
         metric: &'static str,
     },
-    /// An error Python or numpy raises inside a metric, with its class (`"IndexError"`,
-    /// `"ValueError"`) and message text. J&F raises these on sequences TrackEval cannot
-    /// score either, such as no GT ids and two or more predicted ids.
     Python {
         exception: &'static str,
         message: String,
@@ -217,7 +169,6 @@ pub enum MetricError {
 }
 
 impl MetricError {
-    /// The Python exception class this error stands for.
     pub fn python_exception(&self) -> &'static str {
         match self {
             Self::Python { exception, .. } => exception,
@@ -265,21 +216,11 @@ impl From<NumericError> for MetricError {
     }
 }
 
-/// One metric family, mirroring the `Metric` ABC.
-///
-/// The combiners take results in Python's dict order: sequences in dataset order for
-/// `combine_sequences`, classes in `Protocol::eval_classes` order for the class
-/// combiners. Their inputs are the raw state `eval_sequence` and `combine_sequences`
-/// return, private fields included.
 pub trait Metric: Send + Sync {
-    /// The Python class name (`type(metric).__name__`): the metric's key in results.
     fn name(&self) -> &'static str;
 
-    /// The public result fields, in the Python `fields` tuple order.
     fn fields(&self) -> &'static [&'static str];
 
-    /// The geometry `eval_sequence` reads besides the precomputed similarity: boxes
-    /// (TrackMAP), masks (J&F), or none.
     fn geometry(&self) -> Option<GeometryKind> {
         None
     }
@@ -293,16 +234,12 @@ pub trait Metric: Send + Sync {
     fn combine_classes_det_averaged(&self, all_res: &[&Scores]) -> Result<Scores, MetricError>;
 }
 
-/// Fail as Python's `[res[field] for res in all_res.values()]` does, before any value is
-/// read: the first input that lacks `field` is a `KeyError`.
 pub fn require_all(all_res: &[&Scores], field: &str) -> Result<(), MetricError> {
     all_res
         .iter()
         .try_for_each(|res| res.require(field).map(|_| ()))
 }
 
-/// Elementwise `a op b` with numpy broadcasting between a scalar and an array (or two
-/// same-shape values).
 fn broadcast(a: &Value, b: &Value, op: impl Fn(f64, f64) -> f64) -> Value {
     match (a, b) {
         (Value::Float(x), Value::Float(y)) => Value::Float(op(*x, *y)),
@@ -341,8 +278,7 @@ fn map_value(value: &Value, op: impl Fn(f64) -> f64) -> Value {
     }
 }
 
-/// `_plain_sum` over values: in order, starting from the integer `0` (an exact `+0.0`),
-/// elementwise for arrays.
+/// TrackEval `_combine_sum`: CPython builtin `sum`, in order from the integer `0`.
 fn plain_sum_values<'a>(values: impl Iterator<Item = Value> + 'a) -> Value {
     let mut acc = Value::Float(0.0);
     for value in values {
@@ -351,11 +287,6 @@ fn plain_sum_values<'a>(values: impl Iterator<Item = Value> + 'a) -> Value {
     acc
 }
 
-/// `Metric._combine_sum(all_res, field)`: `functools.reduce(operator.add, values, 0)`,
-/// so the sum runs in order from `+0.0`, elementwise for arrays.
-///
-/// With no results Python returns the integer `0`; this returns `Float(0.0)`, and each
-/// metric must decide (see `MetricError::NoResults`).
 pub fn combine_sum(all_res: &[&Scores], field: &str) -> Result<Value, MetricError> {
     let values = all_res
         .iter()
@@ -364,10 +295,6 @@ pub fn combine_sum(all_res: &[&Scores], field: &str) -> Result<Value, MetricErro
     Ok(plain_sum_values(values.into_iter()))
 }
 
-/// `Metric._combine_weighted_av(all_res, field, comb_res, weight_field)`:
-/// `_plain_sum(res[field] * res[weight_field]) / np.maximum(1.0, comb_res[weight_field])`.
-///
-/// The products and the sum are elementwise for arrays; `np.maximum` propagates NaN.
 pub fn combine_weighted_av(
     all_res: &[&Scores],
     field: &str,

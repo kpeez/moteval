@@ -1,10 +1,3 @@
-//! AnimalTrack loader, ported from `moteval/benchmarks/animaltrack.py`.
-//!
-//! MOTChallenge-style GT rows in `<root>/gt_all/<seq>_gt.txt`, no `seqinfo.ini` (the
-//! sequence length is the last annotated frame), 1-indexed. "train" and "test" list
-//! their sequences in `<root>/train_test_splits/videos_<split>.txt` (one `<seq>.mp4` per
-//! line); "all" is every `gt_all/*_gt.txt`.
-
 use std::path::{Path, PathBuf};
 
 use crate::benchmarks::motchallenge::{MOTChallengeConfig, load_layout, max_frame_seq_length};
@@ -13,7 +6,6 @@ use crate::formats::Track;
 use crate::formats::pytext::{py_join, py_str, splitlines, strip};
 use crate::model::{FrameConvention, MOTDataset, Protocol};
 
-/// The split `load_animaltrack` reads when the caller names none.
 pub const DEFAULT_SPLIT: &str = "all";
 
 fn seq_names(base: &Path, split: &str) -> Result<Vec<String>, BenchmarkError> {
@@ -64,7 +56,6 @@ fn seq_length(
     max_frame_seq_length(seq_name, tracks, 0)
 }
 
-/// `load_animaltrack(root, split)`.
 pub fn load_animaltrack(root: &Path, split: &str) -> Result<MOTDataset, BenchmarkError> {
     let protocol = Protocol::new("animaltrack", FrameConvention::new("1-indexed", 1), vec![1]);
     let config = MOTChallengeConfig {

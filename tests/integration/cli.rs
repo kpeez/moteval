@@ -1,18 +1,9 @@
-//! The `moteval` binary against the Python CLI (`scripts/testdata/dump_cli.py`): for every
-//! dumped argument list, the same stdout, stderr, and exit code, byte for byte.
-//!
-//! Every case stops before a dataset is loaded: argparse parsing and errors, `--metrics`
-//! resolution, the `--gt` and `--pred` checks, and the `tests/test_cli.py` cases that need
-//! no dataset and no metric. Cases that load and score data need the loader and metric
-//! packages; they move to the integration gate.
-
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
 use crate::harness::{as_array, as_i64, as_str, read_json, testdata_dir};
 
-/// A fresh copy of the dump's fixture tree, as the working directory of each case.
 fn fixture(spec: &serde_json::Value) -> PathBuf {
     let root = std::env::temp_dir().join(format!("moteval-cli-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);

@@ -1,17 +1,3 @@
-"""Seeded inputs shared by the dump scripts and the Rust tests.
-
-The dump scripts import it as ``scripts.testdata.testgen`` with the repository root on
-``sys.path``.
-
-`tests/integration/harness/testgen.rs` implements the same generators, draw for draw,
-so the committed test data stores only seeds and expected outputs. Each case also stores
-`fnv1a64` of its generated inputs, so a generator mismatch fails loudly as such instead of
-as a wrong answer.
-
-Every draw is exact integer arithmetic, an exact conversion, or a multiplication by a
-power of two, so Python and Rust produce the same bits.
-"""
-
 import math
 import struct
 from collections.abc import Iterable
@@ -23,8 +9,6 @@ EPS = 2.0**-52
 
 
 class SplitMix64:
-    """splitmix64 (Steele, Lea, Flood 2014)."""
-
     def __init__(self, seed: int) -> None:
         self.state = seed & MASK64
 
@@ -36,15 +20,12 @@ class SplitMix64:
         return z ^ (z >> 31)
 
     def below(self, n: int) -> int:
-        """An integer in ``[0, n)``."""
         return self.next() % n
 
     def uniform(self) -> float:
-        """A float in ``[0, 1)`` with 53 random bits."""
         return (self.next() >> 11) * 2.0**-53
 
     def spread(self) -> float:
-        """A signed float whose magnitude spans ``2**-30`` to ``2**55``."""
         negative = self.next() & 1
         mantissa = self.uniform()
         exponent = self.below(86) - 30
@@ -57,7 +38,6 @@ def f64_bits(x: float) -> int:
 
 
 def fnv1a64(values: Iterable[float]) -> int:
-    """FNV-1a over the little-endian bytes of each float."""
     h = FNV_OFFSET
     for x in values:
         for byte in struct.pack("<d", x):
@@ -66,7 +46,6 @@ def fnv1a64(values: Iterable[float]) -> int:
 
 
 def pattern(name: str, n: int, seed: int) -> list[float]:
-    """A length-``n`` float array of one named pattern."""
     rng = SplitMix64(seed)
     if name == "alternating":
         cycle = (1e16, 1.0, -1e16, 1.0)
@@ -92,8 +71,6 @@ def pattern(name: str, n: int, seed: int) -> list[float]:
 
 
 def random_box(rng: SplitMix64) -> list[float]:
-    """An ``xywh`` box on a half-pixel grid, sometimes fractional, empty, negative,
-    far from the origin, or with a ``-0.0`` corner."""
     x = rng.below(40) * 0.5
     y = rng.below(40) * 0.5
     w = rng.below(24) * 0.5
@@ -113,8 +90,6 @@ def random_box(rng: SplitMix64) -> list[float]:
     return [x, y, w, h]
 
 
-# Linear sum assignment cases: (category, number of cases). Case ``i`` of a category draws
-# its matrix from ``SplitMix64(lsap_seed(category, i))``.
 LSAP_CATEGORIES = (
     ("square", 1500),
     ("wide", 1500),
@@ -134,7 +109,6 @@ def lsap_seed(category: str, index: int) -> int:
 
 
 def lsap_case(category: str, seed: int) -> tuple[int, int, list[float], bool]:
-    """A cost matrix ``(nr, nc, C-order values, maximize)`` for one category."""
     rng = SplitMix64(seed)
     maximize = False
     if category == "square":
@@ -153,7 +127,6 @@ def lsap_case(category: str, seed: int) -> tuple[int, int, list[float], bool]:
         nc = 1 + rng.below(10)
         cost = [float(rng.below(4)) for _ in range(nr * nc)]
     elif category == "clear_style":
-        # -np.where(sim < 0.5 - eps, 0.0, 1000 * continues + sim), as CLEAR solves it
         nr = 1 + rng.below(10)
         nc = 1 + rng.below(10)
         cost = []
@@ -168,7 +141,6 @@ def lsap_case(category: str, seed: int) -> tuple[int, int, list[float], bool]:
         cost, nr = _identity_cost(rng)
         nc = nr
     elif category == "hota_style":
-        # -(global_alignment_score * similarity), as HOTA solves it
         nr = 1 + rng.below(10)
         nc = 1 + rng.below(10)
         cost = []
@@ -192,8 +164,6 @@ def lsap_case(category: str, seed: int) -> tuple[int, int, list[float], bool]:
 
 
 def _identity_cost(rng: SplitMix64) -> tuple[list[float], int]:
-    """Identity's ``fn_mat + fp_mat``: the ``(G+T) x (G+T)`` block matrix with ``1e10``
-    off-diagonal blocks, built in the order ``moteval.metrics.identity`` builds it."""
     num_gt = rng.below(7)
     num_pred = rng.below(7)
     gt_count = [float(1 + rng.below(10)) for _ in range(num_gt)]

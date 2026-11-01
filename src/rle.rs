@@ -1,41 +1,17 @@
-//! pycocotools-compatible run-length encoded masks.
-//!
-//! A port of pycocotools 2.0.11 `common/maskApi.c` and the parts of `_mask.pyx` moteval
-//! calls: `encode` (Fortran order, one `h x w` mask), `decode`, `area`, `to_bbox`,
-//! `merge` (union and intersect), `iou` (with `iscrowd`), and the compressed counts string
-//! (`rleFrString` / `rleToString`).
-//!
-//! Python holds a mask as `{"size": [h, w], "counts": bytes}` and every pycocotools call
-//! parses the string again with `rleFrString`. `RleMask` keeps the bytes as given and the
-//! counts `rleFrString` parses from them, so each operation sees what the C code sees.
-//! Masks built here (`encode`, `merge`) hold the string `rleToString` writes, parsed back,
-//! as Python's dict does.
-//!
-//! C `uint` arithmetic is `u32` with wrapping, as in the C code. Two behaviours differ from
-//! pycocotools on purpose, both on malformed input only: a counts string whose runs do
-//! not cover exactly `h * w` pixels is an error at construction (pycocotools raises on an
-//! overrun in `decode` and reads uninitialised memory on a shortfall), and a string that
-//! ends inside a continuation group ends there (the C parser reads past the terminator).
+//! pycocotools 2.0.11 RLE (`maskApi.c`, `_mask.pyx`); C `uint` arithmetic wraps as `u32`.
 
 use std::borrow::Borrow;
 use std::fmt;
 
-/// One mask in pycocotools RLE form: `{"size": [height, width], "counts": bytes}`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RleMask {
     height: usize,
     width: usize,
-    /// The compressed counts string, exactly as given (Python's `counts` bytes).
     counts: Vec<u8>,
-    /// `rleFrString(counts)`: the run lengths, background first.
     cnts: Vec<u32>,
 }
 
 impl RleMask {
-    /// A mask from its compressed counts string (the `counts` bytes pycocotools stores).
-    ///
-    /// The string is parsed as `rleFrString` parses it, up to the first NUL byte. Runs that
-    /// do not add up to `height * width` pixels are `RleError::InvalidCounts`.
     pub fn from_compressed(height: usize, width: usize, counts: &[u8]) -> Result<Self, RleError> {
         let cnts = fr_string(counts);
         let total: u128 = cnts.iter().map(|&c| u128::from(c)).sum();
@@ -50,8 +26,7 @@ impl RleMask {
         })
     }
 
-    /// The mask pycocotools returns for run lengths `cnts`: `rleToString` writes the string
-    /// and the counts are parsed back from it, as Python's next call would.
+    // pycocotools re-parses `counts` on every call: store `rleFrString(rleToString(cnts))`.
     fn from_cnts(height: usize, width: usize, cnts: &[u32]) -> Self {
         let counts = to_string(cnts);
         let cnts = fr_string(&counts);
@@ -71,25 +46,18 @@ impl RleMask {
         self.width
     }
 
-    /// The compressed counts string, as pycocotools writes it.
     pub fn to_compressed(&self) -> Vec<u8> {
         self.counts.clone()
     }
 
-    /// The run lengths, background first (`rleFrString` of the counts string).
     pub fn runs(&self) -> &[u32] {
         &self.cnts
     }
 }
 
-/// Errors from RLE decoding and mask operations. Messages match the Python text.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RleError {
-    /// A counts string whose runs do not cover `height * width` pixels. pycocotools'
-    /// `decode` raises `ValueError` with this text when the runs overrun the mask.
     InvalidCounts,
-    /// `iou` with an `iscrowd` list whose length is not the number of `gt` masks
-    /// (pycocotools: `AssertionError`).
     CrowdLength,
 }
 
@@ -104,8 +72,7 @@ impl fmt::Display for RleError {
 
 impl std::error::Error for RleError {}
 
-/// `rleToString`: LEB128-like, 6 bits per character, ASCII 48 to 111. From the fourth run
-/// on, each run is stored as the difference to the run two before it.
+// pycocotools `rleToString`: runs from the fourth on (`i > 2`) are deltas to the run two before.
 fn to_string(cnts: &[u32]) -> Vec<u8> {
     let mut s = Vec::with_capacity(cnts.len() * 2);
     for (i, &cnt) in cnts.iter().enumerate() {
@@ -127,12 +94,7 @@ fn to_string(cnts: &[u32]) -> Vec<u8> {
     s
 }
 
-/// `rleFrString`, up to the first NUL byte.
-///
-/// The C code shifts in `int`: each group is `(c & 0x1f) << 5*k` and the sign extension is
-/// `-1 << 5*k`, both 32-bit and sign-extended into the `long` accumulator. x86's shift
-/// count is taken mod 32; `wrapping_shl` does the same. Well-formed strings never reach a
-/// shift above 30.
+// pycocotools shifts in 32-bit `int`; `wrapping_shl` takes the count mod 32, as x86 does.
 fn fr_string(s: &[u8]) -> Vec<u32> {
     let end = s.iter().position(|&b| b == 0).unwrap_or(s.len());
     let s = &s[..end];
@@ -144,7 +106,6 @@ fn fr_string(s: &[u8]) -> Vec<u32> {
         let mut more = true;
         while more {
             let Some(&byte) = s.get(p) else {
-                // The C loop would read past the terminator; stop at the end instead.
                 break;
             };
             let c = i32::from((byte as i8).wrapping_sub(48));
@@ -165,14 +126,6 @@ fn fr_string(s: &[u8]) -> Vec<u32> {
     cnts
 }
 
-/// `pycocotools.mask.encode` of one Fortran-order `height x width` mask (`rleEncode`).
-///
-/// A run ends wherever the byte value changes, as in the C code; moteval passes `0`/`1`
-/// masks only.
-///
-/// # Panics
-///
-/// If `mask_fortran` does not hold `height * width` bytes.
 pub fn encode(mask_fortran: &[u8], height: usize, width: usize) -> RleMask {
     assert_eq!(
         mask_fortran.len(),
@@ -194,7 +147,6 @@ pub fn encode(mask_fortran: &[u8], height: usize, width: usize) -> RleMask {
     RleMask::from_cnts(height, width, &cnts)
 }
 
-/// `pycocotools.mask.decode`: the binary mask in Fortran order (`rleDecode`).
 pub fn decode(rle: &RleMask) -> Vec<u8> {
     let mut out = Vec::with_capacity(rle.height * rle.width);
     let mut v = 0u8;
@@ -205,12 +157,10 @@ pub fn decode(rle: &RleMask) -> Vec<u8> {
     out
 }
 
-/// `pycocotools.mask.area`: the number of foreground pixels (`rleArea`, a C `uint` sum).
 pub fn area(rle: &RleMask) -> u64 {
     u64::from(area_u32(rle))
 }
 
-/// `rleArea` as C computes it: the odd runs, summed in `uint`.
 pub(crate) fn area_u32(rle: &RleMask) -> u32 {
     rle.cnts
         .iter()
@@ -219,12 +169,6 @@ pub(crate) fn area_u32(rle: &RleMask) -> u32 {
         .fold(0u32, |a, &c| a.wrapping_add(c))
 }
 
-/// `pycocotools.mask.toBbox`: `[x, y, w, h]` (`rleToBbox`).
-///
-/// A foreground run that spans columns widens the box to the full height. An odd number
-/// of runs drops the last (background) run. Where the C code would divide by a zero
-/// height (a nonzero foreground run in a 0-pixel mask, which construction rejects), this
-/// returns zeros.
 pub fn to_bbox(rle: &RleMask) -> [f64; 4] {
     let h = rle.height as u32;
     let w = rle.width as u32;
@@ -265,10 +209,6 @@ pub fn to_bbox(rle: &RleMask) -> [f64; 4] {
     ]
 }
 
-/// `pycocotools.mask.merge(rles, intersect)` (`rleMerge`).
-///
-/// No masks give a `0 x 0` mask with no runs; one mask is returned re-encoded. Masks of
-/// different sizes give the `0 x 0` empty mask too, as pycocotools does; it never raises.
 pub fn merge(rles: &[RleMask], intersect: bool) -> Result<RleMask, RleError> {
     let Some(first) = rles.first() else {
         return Ok(RleMask::from_cnts(0, 0, &[]));
@@ -279,6 +219,7 @@ pub fn merge(rles: &[RleMask], intersect: bool) -> Result<RleMask, RleError> {
     }
     let mut cnts: Vec<u32> = first.cnts.clone();
     for b in &rles[1..] {
+        // pycocotools `rleMerge` gives the empty `0 x 0` mask for mismatched sizes, not an error.
         if b.height != h || b.width != w {
             h = 0;
             w = 0;
@@ -321,7 +262,6 @@ pub fn merge(rles: &[RleMask], intersect: bool) -> Result<RleMask, RleError> {
     Ok(RleMask::from_cnts(h, w, &cnts))
 }
 
-/// `bbIou` for one pair: `0.0` unless the boxes overlap with positive width and height.
 fn bb_iou(d: &[f64; 4], g: &[f64; 4], crowd: bool) -> f64 {
     let ga = g[2] * g[3];
     let da = d[2] * d[3];
@@ -338,13 +278,6 @@ fn bb_iou(d: &[f64; 4], g: &[f64; 4], crowd: bool) -> f64 {
     i / u
 }
 
-/// `pycocotools.mask.iou(dt, gt, iscrowd)` (`rleIou`): a `dt.len() x gt.len()` matrix in C
-/// order.
-///
-/// Only pairs whose bounding boxes overlap are compared run by run; the rest are `0.0`.
-/// A compared pair of different sizes is `-1.0`. With `iscrowd[g]` the denominator is the
-/// `dt` mask's area. Empty `dt` or `gt` gives an empty result. Takes `&[RleMask]` or
-/// `&[&RleMask]`.
 pub fn iou<M: Borrow<RleMask>>(dt: &[M], gt: &[M], iscrowd: &[bool]) -> Result<Vec<f64>, RleError> {
     if iscrowd.len() != gt.len() {
         return Err(RleError::CrowdLength);
@@ -359,8 +292,8 @@ pub fn iou<M: Borrow<RleMask>>(dt: &[M], gt: &[M], iscrowd: &[bool]) -> Result<V
     for (g, gt_mask) in gt.iter().map(Borrow::borrow).enumerate() {
         let crowd = iscrowd[g];
         for (d, dt_mask) in dt.iter().map(Borrow::borrow).enumerate() {
-            // C: `if (o[g*m+d] > 0)`, so a NaN box IoU is skipped too.
             if bb_iou(&db[d], &gb[g], crowd) > 0.0 {
+                // pycocotools `rleIou` marks a size mismatch as -1.
                 out[d * n + g] =
                     if dt_mask.height != gt_mask.height || dt_mask.width != gt_mask.width {
                         -1.0
@@ -373,7 +306,6 @@ pub fn iou<M: Borrow<RleMask>>(dt: &[M], gt: &[M], iscrowd: &[bool]) -> Result<V
     Ok(out)
 }
 
-/// The run-by-run body of `rleIou` for one same-size pair whose boxes overlap.
 fn rle_pair_iou(dt: &RleMask, gt: &RleMask, crowd: bool) -> f64 {
     let run = |runs: &[u32], i: usize| runs.get(i).copied().unwrap_or(0);
     let (ka, kb) = (dt.cnts.len(), gt.cnts.len());
@@ -428,9 +360,7 @@ mod tests {
 
     #[test]
     fn non_canonical_strings_parse_like_c() {
-        // 'Q' is 1 with the continuation bit; '0' then ends the group: x = 1.
         assert_eq!(fr_string(b"Q0"), [1]);
-        // A NUL byte ends the string, as in C.
         assert_eq!(fr_string(b"1\x002"), [1]);
     }
 
@@ -446,13 +376,11 @@ mod tests {
 
     #[test]
     fn encode_decode_area_bbox() {
-        // 3 x 2, Fortran order: column 0 = [0, 1, 1], column 1 = [0, 0, 1].
         let mask = [0, 1, 1, 0, 0, 1];
         let rle = encode(&mask, 3, 2);
         assert_eq!(rle.runs(), [1, 2, 2, 1]);
         assert_eq!(decode(&rle), mask);
         assert_eq!(area(&rle), 3);
-        // The run from (1, 0) to (2, 0) stays in column 0; (2, 1) is in column 1.
         assert_eq!(to_bbox(&rle), [0.0, 1.0, 2.0, 2.0]);
     }
 

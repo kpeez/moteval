@@ -1,24 +1,3 @@
-"""Dump each parity scenario's `SequenceData` inputs and expected scores for the Rust tests.
-
-Synthetic scenarios (`tests/scenarios.py`, oracle numbers in `tests/fixtures/synthetic_*.json`)
-go to ``tests/integration/data/scenarios/<fixture>/<case>.json``, one self-contained JSON file per
-case, committed. With ``--real-data`` the script also dumps the real-data cases
-(`tests/fixtures/real_data.json` and the nine-benchmark `reference_benchmarks.json`) to
-``--real-out`` (default ``artifacts/rust-port/testdata``): one ``case.json`` per case plus a
-small JSON header and a flat little-endian ``.bin`` file per sequence. They are too large to
-commit. ``tests/integration/data/README.md`` documents both layouts.
-
-Each sequence is captured exactly as `moteval.evaluate` builds it, through a recording
-metric, so the Rust metrics see the same frame-major input as the Python metrics. Every
-case also stores Python moteval's own scores, and the script checks that they equal the
-fixture bit for bit before it writes anything, so a dumped case cannot disagree with its
-oracle.
-
-    artifacts/rust-port/ref-venv/bin/python scripts/testdata/dump_scenarios.py
-    MOTEVAL_DATA_ROOT=/data/tracking/external artifacts/rust-port/ref-venv/bin/python scripts/testdata/dump_scenarios.py \
-        --real-data --jobs 8
-"""
-
 import argparse
 import itertools
 import json
@@ -33,7 +12,6 @@ from typing import Any
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-# After site-packages: `moteval` is the pure-Python reference (scripts/testdata/reference.py).
 if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
@@ -78,19 +56,12 @@ MOTS_METRICS = (*BOX_METRICS, "JAndF")
 Json = Any
 
 
-# ---------------------------------------------------------------------------
-# Encoding
-# ---------------------------------------------------------------------------
-
-
 def encode_value(value: float | np.ndarray) -> Json:
-    """A score value as its numpy shape plus each element's float64 bits."""
     array = np.asarray(value, dtype=np.float64, order="C")
     return {"shape": list(array.shape), "bits": array.view(np.uint64).ravel().tolist()}
 
 
 def encode_scores(scores: Scores) -> Json:
-    """Scores as ``[[field, value], ...]`` in insertion order (the export order)."""
     return [[field, encode_value(value)] for field, value in scores.items()]
 
 
@@ -104,12 +75,6 @@ def _concat(parts: list[np.ndarray], dtype: str) -> np.ndarray:
 
 
 def flat_arrays(data: SequenceData) -> dict[str, tuple[str, np.ndarray | bytes]]:
-    """The frame-major fields as flat arrays: ``name -> (dtype, values)``.
-
-    Per-frame ragged fields are concatenated over frames; ``gt_counts`` and
-    ``pred_counts`` give each frame's length, and each frame's similarity is its
-    ``gt x pred`` matrix in C order.
-    """
     arrays: dict[str, tuple[str, np.ndarray | bytes]] = {
         "gt_counts": ("i64", np.array([len(ids) for ids in data.gt_ids], dtype="<i8")),
         "pred_counts": ("i64", np.array([len(ids) for ids in data.pred_ids], dtype="<i8")),
@@ -149,7 +114,6 @@ def sequence_meta(key: str, data: SequenceData) -> Json:
 
 
 def inline_sequence(key: str, data: SequenceData) -> Json:
-    """A sequence record with its arrays inline: floats as bits, mask counts as ASCII."""
     record = sequence_meta(key, data)
     arrays = {}
     for name, (dtype, values) in flat_arrays(data).items():
@@ -167,13 +131,12 @@ def inline_sequence(key: str, data: SequenceData) -> Json:
 
 
 def binary_sequence(directory: Path, stem: str, key: str, data: SequenceData) -> Json:
-    """Write ``<stem>.bin`` and ``<stem>.json`` (its header); return the case's reference."""
     record = sequence_meta(key, data)
     arrays = {}
     blob = bytearray()
     for name, (dtype, values) in flat_arrays(data).items():
         payload = values if isinstance(values, bytes) else values.tobytes()
-        blob.extend(b"\0" * (-len(blob) % 8))  # every array starts 8-byte aligned
+        blob.extend(b"\0" * (-len(blob) % 8))
         length = len(payload) if dtype == "u8" else len(payload) // 8
         arrays[name] = {"dtype": dtype, "offset": len(blob), "len": length}
         blob.extend(payload)
@@ -184,14 +147,7 @@ def binary_sequence(directory: Path, stem: str, key: str, data: SequenceData) ->
     return {"header": f"{stem}.json"}
 
 
-# ---------------------------------------------------------------------------
-# Capture and scoring
-# ---------------------------------------------------------------------------
-
-
 class _Recorder(Metric):
-    """A metric that hands every `SequenceData` that `evaluate` builds to a callback."""
-
     fields = ()
 
     def __init__(self, sink: Callable[[SequenceData], None]) -> None:
@@ -212,8 +168,6 @@ class _Recorder(Metric):
 
 
 class View:
-    """One class view: its sequence records and Python moteval's per-sequence scores."""
-
     def __init__(self, cls: int | None) -> None:
         self.cls = cls
         self.records: list[Json] = []
@@ -224,8 +178,6 @@ SequenceWriter = Callable[[int, int, str, SequenceData], Json]
 
 
 class Capture:
-    """Records sequences view by view and scores each with the case's metrics."""
-
     def __init__(self, metric_names: tuple[str, ...], writer: SequenceWriter) -> None:
         self.metrics = {name: METRIC_TYPES[name]() for name in metric_names}
         self.writer = writer
@@ -238,7 +190,6 @@ class Capture:
         view.per_sequence.append((key, scores))
 
     def from_dataset(self, dataset: MOTDataset, pred_dir: Path) -> None:
-        """Capture every class view exactly as `evaluate` builds it."""
         keys = [seq.name for seq in dataset.sequences]
         classes = dataset.protocol.eval_classes
         counter = itertools.count()
@@ -259,13 +210,6 @@ def declared(metric: Metric, scores: Scores) -> Scores:
 
 
 def score(capture: Capture, procedure: str) -> dict[str, Any]:
-    """Python moteval's results for a captured case, by its procedure.
-
-    ``per_class``: combine each view's sequences; with several views, also combine the
-    views' raw combined state class-averaged and det-averaged, in class order.
-    ``sequences_as_classes``: one view whose declared per-sequence scores are combined
-    class-averaged, as ``tests/test_parity.py`` checks the HOTA class combiner.
-    """
     out: dict[str, Any] = {"combined": [], "class_averaged": {}, "det_averaged": {}}
     metrics = capture.metrics
     for view in capture.views:
@@ -288,7 +232,6 @@ def score(capture: Capture, procedure: str) -> dict[str, Any]:
 
 
 def check_against_oracle(label: str, oracle: dict[str, Json], ours: dict[str, Scores]) -> int:
-    """Assert every oracle field equals Python moteval's value bit for bit."""
     checked = 0
     for metric, fields in oracle.items():
         for field, expected in fields.items():
@@ -312,7 +255,6 @@ def build_case(
     raw_per_sequence: bool,
     protocol: Json,
 ) -> Json:
-    """Check Python moteval against the oracle, then assemble the case JSON."""
     results = score(capture, procedure)
     checked = 0
     for section, expected in oracle.items():
@@ -379,11 +321,6 @@ def protocol_json(dataset: MOTDataset | None) -> Json:
         "dataset": dataset.name,
         "split": dataset.split,
     }
-
-
-# ---------------------------------------------------------------------------
-# Synthetic cases
-# ---------------------------------------------------------------------------
 
 
 def _inline_writer(_view: int, _index: int, key: str, data: SequenceData) -> Json:
@@ -542,15 +479,10 @@ def write_synthetic(out: Path) -> None:
     print(f"wrote {len(cases)} synthetic cases to {out} ({total} bytes)", flush=True)
 
 
-# ---------------------------------------------------------------------------
-# Real-data cases
-# ---------------------------------------------------------------------------
-
 REAL_DATA_CASES = ("dancetrack_val", "sportsmot_val", "mots20")
 
 
 def _real_data_case(case: str, root: Path, out: Path) -> str:
-    """One `real_data.json` entry: the same inputs as `tests/test_parity_real.py`."""
     prepare = {
         "dancetrack_val": scenarios.prepare_dancetrack_val,
         "sportsmot_val": scenarios.prepare_sportsmot_val,
@@ -572,7 +504,6 @@ def _real_data_case(case: str, root: Path, out: Path) -> str:
 
 
 def _reference_case(benchmark: str, split: str, root: Path, out: Path) -> str:
-    """One `reference_benchmarks.json` entry, as `scripts/reference_results.py` scores it."""
     dataset = load_dataset(benchmark, root=root / benchmark, split=split)
     metric_names = tuple(type(m).__name__ for m in reference_results.metrics_for(dataset))
     key = reference_results.case_key(benchmark, split)

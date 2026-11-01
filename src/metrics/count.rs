@@ -1,13 +1,8 @@
-//! Count metric: detection and identity totals (no matching), ported from
-//! `moteval/metrics/count.py`.
-
 use crate::metrics::{Metric, MetricError, Scores, Value, combine_sum};
 use crate::model::SequenceData;
 
-/// The public fields, in the Python `fields` order.
 pub const FIELDS: &[&str] = &["Dets", "GT_Dets", "IDs", "GT_IDs"];
 
-/// `moteval.metrics.count.Count`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Count;
 
@@ -42,7 +37,6 @@ impl Metric for Count {
     }
 }
 
-/// Every combiner: `{f: self._combine_sum(all_res, f) for f in self.fields}`.
 fn sum_every_field(all_res: &[&Scores]) -> Result<Scores, MetricError> {
     if all_res.is_empty() {
         return Err(MetricError::NoResults { metric: "Count" });

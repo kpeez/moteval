@@ -1,27 +1,3 @@
-"""Dump what Python moteval loads from each local benchmark, for the Rust loader gate.
-
-For every (benchmark, split) of `scripts/reference_results.REFERENCE_CASES` this writes
-``<out>/<benchmark>_<split>/``:
-
-- ``pred/<seq>.txt``: the seeded perturbed predictions `reference_results.write_predictions`
-  writes, the same files `dump_scenarios.py --real-data` scored for
-  ``reference_benchmarks/<benchmark>_<split>``;
-- ``data.bin`` and ``header.json``: the loaded `MOTDataset` (name, split, protocol, and
-  every sequence's GT tracks and ignore regions) and Python's parse of each prediction
-  file, as flat little-endian arrays (floats as raw `f64` bits);
-- for mask benchmarks, ``geometry_<i>.json``: every mask geometry call
-  `build_mask_sequence_data` makes for sequence ``i``, in order, with an FNV-1a 64 digest
-  of each input mask list and the output. Rust replays them, because the RLE port lands
-  separately.
-
-`tests/integration/loaders_real.rs` loads each split with the Rust loader, reads the
-prediction files with the Rust readers, builds every class view, and compares all of it
-with these files and with ``reference_benchmarks``.
-
-    MOTEVAL_DATA_ROOT=/data/tracking/external artifacts/rust-port/ref-venv/bin/python scripts/testdata/dump_loaders.py \
-        --out artifacts/rust-port/testdata/loaders_real --jobs 8
-"""
-
 import argparse
 import json
 import shutil
@@ -34,7 +10,6 @@ from typing import Any
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-# After site-packages: `moteval` is the pure-Python reference (scripts/testdata/reference.py).
 if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
@@ -63,7 +38,6 @@ def fnv1a64(data: bytes) -> int:
 
 
 def mask_digest(masks: list[Any]) -> int:
-    """FNV-1a 64 over ``"{h} {w} {counts}\\n"`` for each mask, in order."""
     parts = []
     for m in masks:
         counts = m["counts"] if isinstance(m["counts"], bytes) else m["counts"].encode()
@@ -76,8 +50,6 @@ def bits(x: float) -> int:
 
 
 class Blob:
-    """Flat arrays packed 8-byte aligned into one ``data.bin``."""
-
     def __init__(self) -> None:
         self.data = bytearray()
 
@@ -95,14 +67,12 @@ class Blob:
 
 
 def box_rows(blob: Blob, rows: Any) -> Json:
-    """`Track` rows: ``[frame, track_id, class_id]`` ints and ``[x, y, w, h, conf]`` floats."""
     ints = [v for t in rows for v in (t.frame, t.track_id, t.class_id)]
     floats = [float(v) for t in rows for v in (t.x, t.y, t.w, t.h, t.conf)]
     return {"len": len(rows), "ints": blob.add("i64", ints), "floats": blob.add("f64", floats)}
 
 
 def mask_rows(blob: Blob, rows: Any) -> Json:
-    """`MaskTrack` rows: five ints each, and the RLE strings with their byte lengths."""
     ints = [v for t in rows for v in (t.frame, t.track_id, t.class_id, t.img_h, t.img_w)]
     rles = [t.rle.encode() for t in rows]
     return {
@@ -135,7 +105,6 @@ def matrix(m: Any) -> Json:
 
 
 def record_mask_geometry(dataset: Any, pred_dir: Path) -> list[list[Json]]:
-    """Run `evaluate` and log every mask geometry call, per conversion, in order."""
     logs: list[list[Json]] = []
     originals = {
         name: getattr(convert, name)

@@ -1,6 +1,3 @@
-//! `moteval::similarity::{box_iou, box_ioa}` against Python moteval on seeded boxes
-//! (`tests/integration/data/box_similarity.json`, from `scripts/testdata/dump_numeric.py`).
-
 use crate::harness::testgen::{SplitMix64, fnv1a64, random_box};
 use crate::harness::{
     as_array, as_u64, as_usize, assert_f64s_bit_equal, f64s_from_bits, read_json, testdata_dir,

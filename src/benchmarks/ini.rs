@@ -1,57 +1,39 @@
-//! `configparser.ConfigParser()` as CPython 3.14.8 reads one file: `read`, `has_option`,
-//! and `getint`, with the default options (`=` and `:` delimiters, full-line `#` and
-//! `;` comments, strict duplicates, empty lines kept in multi-line values, lowercase
-//! option names, `BasicInterpolation`).
-//!
-//! `read_seq_length` depends on every rule here: a continuation line, a duplicate key,
-//! or a `%` changes the value or the error, so the parse follows `RawConfigParser._read`
-//! line by line.
-
 use crate::formats::pytext::{is_space, strip};
 use crate::pyfmt::repr_str;
 
 const DEFAULT_SECTION: &str = "DEFAULT";
 const MAX_INTERPOLATION_DEPTH: usize = 10;
 
-/// A parsed file: sections in order, each with its options (values joined).
 #[derive(Debug, Default)]
 pub struct ConfigParser {
     defaults: Vec<(String, String)>,
     sections: Vec<(String, Vec<(String, String)>)>,
 }
 
-/// Where the current option lives while reading.
 #[derive(Clone, Copy, PartialEq)]
 enum Cursor {
     Defaults,
     Section(usize),
 }
 
-/// One option's value while reading: its lines (`None` never occurs without
-/// `allow_no_value`).
 type RawOptions = Vec<(String, Vec<String>)>;
 
 fn find<'a, T>(items: &'a [(String, T)], key: &str) -> Option<&'a T> {
     items.iter().find(|(k, _)| k == key).map(|(_, v)| v)
 }
 
-/// `optionxform`: `str.lower()`.
 fn optionxform(name: &str) -> String {
     name.to_lowercase()
 }
 
-/// `" [line {lineno:2d}]"`.
 fn line_tag(lineno: usize) -> String {
     format!(" [line {lineno:2}]")
 }
 
-/// `str(Path)`-based source name as `%r` prints a `PosixPath`.
 pub fn posix_path_repr(path: &str) -> String {
     format!("PosixPath({})", repr_str(path))
 }
 
-/// The file's lines as `TextIOWrapper` iterates them: universal newlines, each line
-/// keeping its `\n`.
 fn file_lines(text: &str) -> Vec<String> {
     let translated = text.replace("\r\n", "\n").replace('\r', "\n");
     translated
@@ -60,7 +42,6 @@ fn file_lines(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// `_CommentSpec.strip` for the full-line prefixes `#` and `;`.
 fn clean(trimmed: &str) -> &str {
     if trimmed.starts_with('#') || trimmed.starts_with(';') {
         ""
@@ -70,13 +51,9 @@ fn clean(trimmed: &str) -> &str {
 }
 
 impl ConfigParser {
-    /// `parser.read(path)` on a file whose text is `text`; `source` is `repr(path)`.
-    ///
-    /// The error is the `configparser.Error` text.
     pub fn read(text: &str, source: &str) -> Result<Self, String> {
         let mut defaults: RawOptions = Vec::new();
         let mut sections: Vec<(String, RawOptions)> = Vec::new();
-        // st.elements_added: sections and (section, option) pairs seen in this file.
         let mut added_sections: Vec<String> = Vec::new();
         let mut added_options: Vec<(String, String)> = Vec::new();
         let mut cursect: Option<Cursor> = None;
@@ -91,8 +68,8 @@ impl ConfigParser {
             let clean_line = clean(trimmed);
             let has_comments = trimmed != clean_line;
             if clean_line.is_empty() {
-                // empty_lines_in_values: an empty line joins the current value, unless
-                // it held a comment.
+                // CPython configparser `empty_lines_in_values`: a blank line joins the
+                // current value; a comment-only line does not.
                 if !has_comments
                     && let (Some(cursor), Some(name)) = (cursect, optname.as_deref())
                     && !name.is_empty()
@@ -103,7 +80,6 @@ impl ConfigParser {
             }
             let cur_indent_level = line.chars().position(|c| !is_space(c)).unwrap_or(0);
 
-            // A continuation line?
             if let (Some(cursor), Some(name)) = (cursect, optname.as_deref())
                 && !name.is_empty()
                 && cur_indent_level > indent_level
@@ -143,7 +119,6 @@ impl ConfigParser {
                 continue;
             }
 
-            // An option line.
             let Some((option, value)) = split_option(clean_line) else {
                 errors.push((lineno, line.clone()));
                 continue;
@@ -206,7 +181,6 @@ impl ConfigParser {
         })
     }
 
-    /// `has_option(section, option)` for a non-empty section other than `DEFAULT`.
     pub fn has_option(&self, section: &str, option: &str) -> bool {
         let option = optionxform(option);
         match find(&self.sections, section) {
@@ -217,8 +191,6 @@ impl ConfigParser {
         }
     }
 
-    /// `get(section, option)` with `BasicInterpolation`, for an option `has_option`
-    /// found. The error is the `InterpolationError` text.
     pub fn get(&self, section: &str, option: &str) -> Result<String, String> {
         let option = optionxform(option);
         let options = find(&self.sections, section).expect("has_option checked the section");
@@ -230,16 +202,13 @@ impl ConfigParser {
     }
 }
 
-/// `SECTCRE.match(clean)`: `\[(?P<header>.+)\]` from the start, the header running to
-/// the last `]` after at least one character.
+/// CPython configparser's greedy `SECTCRE`: the header runs to the last `]`.
 fn section_header(clean: &str) -> Option<&str> {
     let rest = clean.strip_prefix('[')?;
     let close = rest.rfind(']')?;
     (close > 0).then(|| &rest[..close])
 }
 
-/// `OPTCRE.match(clean)`: the option is the text before the first `=` or `:`, without
-/// its trailing whitespace; the value is the text after it, without leading whitespace.
 fn split_option(clean: &str) -> Option<(&str, &str)> {
     let at = clean.find(['=', ':'])?;
     let option = clean[..at].trim_end_matches(is_space);
@@ -247,7 +216,6 @@ fn split_option(clean: &str) -> Option<(&str, &str)> {
     Some((option, value))
 }
 
-/// The value lines of option `name` under `cursor`.
 fn value_mut<'a>(
     cursor: Cursor,
     name: &str,
@@ -265,7 +233,6 @@ fn value_mut<'a>(
         .1
 }
 
-/// `BasicInterpolation._interpolate_some`.
 fn interpolate<'a>(
     option: &str,
     section: &str,
@@ -297,7 +264,6 @@ fn interpolate<'a>(
             out.push('%');
             rest = &rest[2..];
         } else if next == Some('(') {
-            // `%\(([^)]+)\)s`
             let close = rest[2..].find(')').map(|i| i + 2);
             let name = match close {
                 Some(c) if c > 2 && rest[c + 1..].starts_with('s') => &rest[2..c],
@@ -335,8 +301,8 @@ fn interpolate<'a>(
     Ok(())
 }
 
-/// `TextIOWrapper` iteration decodes in 8192-byte chunks: the `UnicodeDecodeError` text
-/// for the first invalid UTF-8, with Python's chunk-relative position, or the text.
+/// CPython's `TextIOWrapper` decodes in 8192-byte chunks, so error positions are
+/// chunk-relative.
 pub fn decode_chunked(bytes: &[u8]) -> Result<String, String> {
     const CHUNK: usize = 8192;
     let mut text = String::new();

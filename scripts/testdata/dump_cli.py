@@ -1,19 +1,3 @@
-"""Dump what the Python CLI prints and returns for argument lists that stop before loading.
-
-Writes ``tests/integration/data/cli.json``, which ``tests/integration/cli.rs`` replays against the
-Rust ``moteval`` binary byte for byte (stdout, stderr, exit code). Run with the reference
-interpreter from the repository root:
-
-    artifacts/rust-port/ref-venv/bin/python scripts/testdata/dump_cli.py
-
-Each case runs ``moteval.cli.main(argv)`` in-process, with ``COLUMNS=80`` (argparse wraps
-usage and help to the terminal width) and the working directory set to a fixture tree:
-``pred/`` and ``gt/`` (empty directories) and ``file.txt``. Every case must stop before
-a dataset is loaded; the script fails if one calls a loader. The cases cover argparse's
-parsing and errors, ``--metrics`` resolution, the path checks, and the ``tests/test_cli.py``
-cases that need no dataset or metric.
-"""
-
 import contextlib
 import io
 import json
@@ -23,7 +7,6 @@ import tempfile
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-# After site-packages: `moteval` is the pure-Python reference (scripts/testdata/reference.py).
 if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
@@ -38,16 +21,13 @@ FIXTURE = {"dirs": ["pred", "gt"], "files": ["file.txt"]}
 
 RUN = ["run", "--pred", "pred"]
 CASES = [
-    # help and top-level parsing
     [], ["-h"], ["--help"], ["--he"], ["--h"], ["-hx"], ["-hh"], ["-h=x"], ["--help=x"],
     ["--help="], ["-h", "run"], ["--version"], ["frob"], ["rn"], ["RUN"], ["-"], [""],
     ["--"], ["--", "run"], ["-x"], ["-x", "run"], ["-x", "frob"], ["--=x"], ["---"],
     ["-1"], ["-1", "run"], ["- x"], ["-x y"],
-    # run: help
     ["run", "-h"], ["run", "--help"], ["run", "--hel"], ["run", "-hx"], ["run", "-h=x"],
     ["run", "--help=x"], ["run", "--pred", "pred", "-h"], ["run", "--format", "png", "-h"],
     ["run", "-h", "--format", "png"], ["run", "--bogus", "-h"], ["run", "--pred", "-h"],
-    # run: argparse errors
     ["run"], ["run", "--pred"], ["run", "--pred", "-x"], ["run", "--pred", "--split"],
     ["run", "--pred", "--", "pred"], ["run", "--dataset", "toy"],
     [*RUN, "--format", "png"], [*RUN, "--format", "MOT"], [*RUN, "--format", ""],
@@ -57,7 +37,6 @@ CASES = [
     [*RUN, "-"], [*RUN, "-p", "x"], [*RUN, "-pred"], [*RUN, "--gt"], [*RUN, "--out-json"],
     [*RUN, "--=x"], [*RUN, "--split", "-x"], [*RUN, "--split", "-1"], ["-x", *RUN, "--y"],
     ["run", "--=x", "--pred", "pred"], ["run", "--pred=pred", "--metrics=", "--bogus"],
-    # run: metrics, then the --gt and --pred checks, then --gt required
     [*RUN, "--metrics", ","], [*RUN, "--metrics", ""], [*RUN, "--metrics", " , ,"],
     [*RUN, "--metrics", " HOTA , Foo,bar,foo,,"], [*RUN, "--metrics", "TRACK_MAP,Jf,zz,ZZ,É,é"],
     [*RUN, "--metrics", "hota\x1f," + chr(0xA0) + "clear" + chr(0x3000) + ",x" + chr(0x200B)],
@@ -72,7 +51,6 @@ CASES = [
     ["--", "run", "--pred", "pred"], [*RUN, "--metrics", "hota,hota"],
     ["run", "--dataset", "x", "--gt", "missing", "--pred", "pred"],
     ["run", "--dataset", "dancetrack", "--pred", "missing", "--gt", "missing"],
-    # tests/test_cli.py cases that need no dataset and no metric
     ["run", "--dataset", "toy", "--pred", "pred", "--metrics", "hota,not-a-metric"],
     ["run", "--dataset", "toy", "--pred", "missing-predictions"],
     ["run", "--dataset", "dancetrack", "--pred", ".", "--gt", "missing-ground-truth"],
@@ -105,7 +83,6 @@ def main() -> None:
     os.environ["COLUMNS"] = "80"
     for name in ("NO_COLOR", "FORCE_COLOR", "PYTHON_COLORS"):
         os.environ.pop(name, None)
-    # `_load` itself runs: it raises "--gt is required" before it calls a loader.
     for loader in ("load_dataset", "load_motchallenge", "load_mots"):
         setattr(cli, loader, _refuse_load)
     cwd = os.getcwd()

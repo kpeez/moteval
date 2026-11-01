@@ -1,7 +1,3 @@
-//! `pyfmt` against strings CPython 3.14.8 wrote (`scripts/testdata/dump_pyfmt.py`):
-//! `repr(float)` and `format(x, "1.5g")` on 100,000 seeded doubles plus edge cases, and
-//! the JSON string, CSV row, and path forms.
-
 use crate::harness::testgen::{SplitMix64, fnv1a64, pow2};
 use crate::harness::{as_array, as_str, as_u64, as_usize, read_json, testdata_dir};
 use moteval::pyfmt::{csv_row, format_g, json_float, json_str, path_str, repr_float};
@@ -24,7 +20,6 @@ fn fnv_text(texts: &[String]) -> u64 {
     h
 }
 
-// The generators of dump_pyfmt.py, draw for draw.
 fn gen_bits(rng: &mut SplitMix64) -> f64 {
     f64::from_bits(rng.next_u64())
 }
@@ -82,7 +77,6 @@ fn generator(name: &str) -> fn(&mut SplitMix64) -> f64 {
     }
 }
 
-/// Compare one output kind chunk by chunk; on a mismatch, print the chunk in full.
 fn check_chunks(set: &str, kind: &str, values: &[f64], out: &[String], want: &Json, chunk: usize) {
     let want = as_array(want);
     assert_eq!(

@@ -1,8 +1,3 @@
-//! `moteval::rle` and the mask functions of `moteval::similarity` against pycocotools
-//! 2.0.11 and Python moteval on 1,000 seeded masks (`tests/integration/data/rle.json` and
-//! `rle_iou.json`, from `scripts/testdata/dump_masks.py`). Every output must be equal: strings
-//! byte for byte, floats bit for bit.
-
 use crate::harness::testgen::SplitMix64;
 use crate::harness::{as_array, as_str, as_u64, as_usize, assert_f64s_bit_equal, f64s_from_bits};
 use crate::harness::{read_json, testdata_dir};
@@ -11,7 +6,6 @@ use moteval::rle::{self, RleError, RleMask};
 use moteval::similarity::{mask_ioa, mask_iou, masks_overlap, merge_masks};
 use serde_json::Value as Json;
 
-/// A mask from a dumped `{"h", "w", "counts"}` record.
 fn rle_of(json: &Json) -> RleMask {
     RleMask::from_compressed(
         as_usize(&json["h"]),
@@ -189,7 +183,6 @@ fn pycocotools_fuzz_matches_on_1000_masks() {
         );
     }
 
-    // Non-canonical strings parse to the same runs; Python keeps the string as given.
     let non_canonical = as_array(&json["non_canonical"]);
     assert_eq!(non_canonical.len(), 100);
     for (k, case) in non_canonical.iter().enumerate() {
@@ -215,8 +208,6 @@ fn pycocotools_fuzz_matches_on_1000_masks() {
         );
     }
 
-    // pycocotools' decode rejects runs that overrun the mask; construction rejects them
-    // with the same message.
     let overrun = &json["overrun"];
     let err = RleMask::from_compressed(
         as_usize(&overrun["h"]),

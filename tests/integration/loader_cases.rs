@@ -1,11 +1,3 @@
-//! Every call `tests/test_loaders.py` and `tests/test_data.py` make into the ported code,
-//! replayed in Rust: the same data, or the same error class and message
-//! (`tests/integration/data/loader_cases/`, recorded by `scripts/testdata/record_loader_cases.py`).
-//!
-//! Each case restores the files the test had written before the call into a scratch
-//! directory that stands for `<TMP>`, runs the Rust function, and compares its output in
-//! the recorder's encoding: floats as bits, so the comparison is exact.
-
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::ffi::OsString;
@@ -36,8 +28,6 @@ use moteval::protocol::{PreprocessedFrame, RawFrame, preprocess_frame};
 use moteval::rle::{RleError, RleMask};
 use moteval::similarity::{box_ioa, box_iou};
 use serde_json::{Value as Json, json};
-
-// ----------------------------------------------------------------------- decoding
 
 fn int(j: &Json) -> i64 {
     j.as_i64()
@@ -143,8 +133,6 @@ fn ints(j: &Json) -> Vec<i64> {
 fn floats(j: &Json) -> Vec<f64> {
     as_array(j).iter().map(float).collect()
 }
-
-// ----------------------------------------------------------------------- encoding
 
 fn enc_track(t: &Track) -> Json {
     json!([
@@ -268,9 +256,6 @@ fn enc_preprocessed(f: &PreprocessedFrame<[f64; 4]>) -> Json {
     })
 }
 
-// ----------------------------------------------------------------------- the replay
-
-/// A failed Rust call: its Python exception class and its message.
 struct Failure {
     class: &'static str,
     message: String,
@@ -312,8 +297,6 @@ impl From<moteval::lsap::LsapError> for Failure {
     }
 }
 
-/// The Python class a recorded exception counts as: every `OSError` subclass is
-/// `OSError`, every configparser interpolation error is `InterpolationError`.
 fn python_class(name: &str) -> &str {
     match name {
         "FileNotFoundError" | "IsADirectoryError" | "NotADirectoryError" | "PermissionError" => {
@@ -324,8 +307,6 @@ fn python_class(name: &str) -> &str {
     }
 }
 
-/// The recorded geometry calls of one mask conversion, replayed in order. Each call
-/// checks that Rust passes the same masks Python passed.
 struct ReplayGeometry {
     calls: RefCell<VecDeque<Json>>,
     label: String,
@@ -371,7 +352,6 @@ impl MaskGeometry for ReplayGeometry {
     }
 }
 
-/// Restore a snapshot into a fresh `dir`.
 fn materialize(snapshot: &Json, dir: &Path) {
     if dir.exists() {
         fs::remove_dir_all(dir).expect("remove the old case dir");
@@ -409,7 +389,6 @@ impl Replay<'_> {
             .map(|v| OsString::from(v.replace("<TMP>", self.tmp)))
     }
 
-    /// Run one case; the output in the recorder's encoding, or the failure.
     fn run(&self, kind: &str, inputs: &Json, case: &Json) -> Result<Json, Failure> {
         let split = |j: &Json| as_str(j).to_owned();
         Ok(match kind {
@@ -561,7 +540,6 @@ impl Replay<'_> {
     }
 }
 
-/// `evaluate`'s missing-prediction check: the names, and `EvalError`'s text.
 fn check_missing(replay: &Replay<'_>, case: &Json) {
     let inputs = &case["inputs"];
     let pred_dir = replay.path(&inputs["pred_dir"]);

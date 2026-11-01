@@ -1,10 +1,3 @@
-//! UAVDT loader, ported from `moteval/benchmarks/uavdt.py`.
-//!
-//! MOTChallenge-style GT rows in `<root>/UAV-benchmark-MOTD_v1.0/GT/<seq>_gt.txt`, with a
-//! sibling `<seq>_gt_ignore.txt` of crowd-ignore regions (absent means none). No
-//! `seqinfo.ini`: the sequence length is the last annotated frame. The only split is
-//! "all"; `*_gt_ignore.txt` and `*_gt_whole.txt` do not end in exactly `_gt.txt`.
-
 use std::path::{Path, PathBuf};
 
 use crate::benchmarks::motchallenge::{MOTChallengeConfig, load_layout, max_frame_seq_length};
@@ -13,7 +6,6 @@ use crate::formats::Track;
 use crate::formats::pytext::{py_join, py_str};
 use crate::model::{FrameConvention, MOTDataset, Protocol};
 
-/// The split `load_uavdt` reads when the caller names none.
 pub const DEFAULT_SPLIT: &str = "all";
 
 fn gt_dir(base: &Path) -> PathBuf {
@@ -57,7 +49,6 @@ fn seq_length(
     max_frame_seq_length(seq_name, tracks, 0)
 }
 
-/// `load_uavdt(root, split)`.
 pub fn load_uavdt(root: &Path, split: &str) -> Result<MOTDataset, BenchmarkError> {
     let protocol = Protocol::new("uavdt", FrameConvention::new("1-indexed", 1), vec![1]);
     let config = MOTChallengeConfig {

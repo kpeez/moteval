@@ -1,21 +1,7 @@
-//! TrackMAP metric: track-level average precision and recall over IoU thresholds, on all
-//! tracks and on area and length subsets. Ported from `moteval/metrics/track_map.py`,
-//! with all three combiners.
-//!
-//! Track IoU sums each pair's per-frame intersection and union. Python sums in ascending
-//! frame order when the pair's frame-union set iterates in ascending order, and in the
-//! set's iteration order otherwise; [`union_frame_order`] replays CPython's set hash
-//! table to get that order.
-//!
-//! `combine_classes_det_averaged` weights each class by its `_num_dt_<label>` detection
-//! count. This is the one intended divergence from TrackEval (whose det-averaged combiner
-//! is a copy of the class-averaged one); it matches Python moteval.
-
 use crate::metrics::{Metric, MetricError, Scores, Value, require_all};
 use crate::model::{BoxXywh, GeometryKind, Matrix, SequenceData};
 use crate::numeric::{self, EPS, maximum, minimum, py_max, py_min};
 
-/// The public fields, in the Python `fields` order.
 pub const FIELDS: &[&str] = &[
     "AP_all",
     "AP_area_s",
@@ -33,22 +19,16 @@ pub const FIELDS: &[&str] = &[
     "AR_time_l",
 ];
 
-/// `LABELS`: all tracks, then the area ranges, then the length ranges.
 pub const LABELS: [&str; 7] = [
     "all", "area_s", "area_m", "area_l", "time_s", "time_m", "time_l",
 ];
 
-/// `AREA_RANGES = ((0**2, 32**2), (32**2, 96**2), (96**2, 1e5**2))`.
 const AREA_RANGES: [(f64, f64); 3] = [(0.0, 1024.0), (1024.0, 9216.0), (9216.0, 1e10)];
-/// `TIME_RANGES = ((0, 3), (3, 10), (10, 1e5))`.
 const TIME_RANGES: [(f64, f64); 3] = [(0.0, 3.0), (3.0, 10.0), (10.0, 1e5)];
 
-/// `len(IOU_THRESHOLDS)`.
 pub const NUM_IOU_THRESHOLDS: usize = 10;
-/// `len(RECALL_THRESHOLDS)`.
 pub const NUM_RECALL_THRESHOLDS: usize = 101;
 
-/// `IOU_THRESHOLDS = np.arange(0.5, 0.96, 0.05)`.
 pub fn iou_thresholds() -> [f64; NUM_IOU_THRESHOLDS] {
     numeric::arange(0.5, 0.96, 0.05)
         .expect("a finite, nonzero-step range")
@@ -56,7 +36,6 @@ pub fn iou_thresholds() -> [f64; NUM_IOU_THRESHOLDS] {
         .expect("np.arange(0.5, 0.96, 0.05) has 10 elements")
 }
 
-/// `RECALL_THRESHOLDS = np.linspace(0.0, 1.00, int(np.round((1.00 - 0.0) / 0.01) + 1))`.
 pub fn recall_thresholds() -> [f64; NUM_RECALL_THRESHOLDS] {
     let num = numeric::round_half_even((1.00 - 0.0) / 0.01) + 1.0;
     assert_eq!(num, NUM_RECALL_THRESHOLDS as f64);
@@ -71,27 +50,16 @@ const DT_IGNORE: &str = "_dt_ignore_";
 const GT_IGNORE: &str = "_gt_ignore_";
 const DT_SCORES: &str = "_dt_scores";
 
-/// `moteval.metrics.track_map.TrackMAP`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TrackMap;
 
-// ---------------------------------------------------------------------------
-// CPython set iteration order
-// ---------------------------------------------------------------------------
-
-/// `sys.hash_info.modulus`: CPython hashes a non-negative int `n` to `n % (2**61 - 1)`.
 const PY_HASH_MODULUS: u64 = (1 << 61) - 1;
-/// `PySet_MINSIZE`.
 const SET_MINSIZE: usize = 8;
-/// `LINEAR_PROBES` in `Objects/setobject.c`.
 const LINEAR_PROBES: usize = 9;
-/// `PERTURB_SHIFT` in `Objects/setobject.c`.
 const PERTURB_SHIFT: u32 = 5;
 
-/// A CPython 3.14 `set` of non-negative ints with no deletions: the hash table of
-/// `Objects/setobject.c`, slot for slot, so iteration visits keys in CPython's order.
+/// CPython 3.14's `set` of non-negative ints (`Objects/setobject.c`), slot for slot.
 struct PySet {
-    /// `(key, hash)` per slot; `None` is an unused slot. Sets here never hold dummies.
     table: Vec<Option<(u64, u64)>>,
     fill: usize,
     used: usize,
@@ -110,8 +78,6 @@ impl PySet {
         self.table.len() - 1
     }
 
-    /// `set_add_entry`: linear probing over 10 slots when they fit below `mask`, then
-    /// perturbed probing; a resize after the insert when the table is 3/5 full.
     fn add(&mut self, key: u64) {
         let hash = key % PY_HASH_MODULUS;
         let mask = self.mask();
@@ -127,7 +93,6 @@ impl PySet {
             loop {
                 match self.table[j] {
                     None => {
-                        // found_unused
                         self.fill += 1;
                         self.used += 1;
                         self.table[j] = Some((key, hash));
@@ -142,7 +107,6 @@ impl PySet {
                         self.resize(minused);
                         return;
                     }
-                    // found_active: the same int
                     Some((k, h)) if h == hash && k == key => return,
                     Some(_) => {}
                 }
@@ -161,7 +125,6 @@ impl PySet {
         }
     }
 
-    /// `set_insert_clean`: place a key known to be absent, with the same probe sequence.
     fn insert_clean(table: &mut [Option<(u64, u64)>], key: u64, hash: u64) {
         let mask = table.len() - 1;
         let mut perturb = hash;
@@ -188,15 +151,13 @@ impl PySet {
         }
     }
 
-    /// `set_table_resize`: the smallest power of two above `minused` (at least 8), with the
-    /// old slots reinserted in slot order.
     fn resize(&mut self, minused: usize) {
         let mut newsize = SET_MINSIZE;
         while newsize <= minused {
             newsize <<= 1;
         }
         if newsize == SET_MINSIZE && self.table.len() == SET_MINSIZE {
-            // The small table stays; with no dummies (fill == used) nothing changes.
+            // CPython leaves a small table with no dummies as it is.
             debug_assert_eq!(self.fill, self.used);
             return;
         }
@@ -206,7 +167,6 @@ impl PySet {
         }
     }
 
-    /// `set_merge_lock_held(self, other)`, the body of `self |= other` and of `set.copy`.
     fn merge(&mut self, other: &Self) {
         if other.used == 0 {
             return;
@@ -233,8 +193,6 @@ impl PySet {
         }
     }
 
-    /// `set(iterable)` over an iterable that is neither a set nor a dict (a dict's keys
-    /// view): one `set_add_key` per key, in order.
     fn from_keys(keys: impl IntoIterator<Item = u64>) -> Self {
         let mut set = Self::new();
         for key in keys {
@@ -243,7 +201,6 @@ impl PySet {
         set
     }
 
-    /// `self | other` (`set_or`): a copy of `self`, then `other` merged in.
     fn union(&self, other: &Self) -> Self {
         let mut result = Self::new();
         result.merge(self);
@@ -256,21 +213,13 @@ impl PySet {
     }
 }
 
-/// The iteration order of `_union_frames(dt_frames, gt_frames)`, which is
-/// `set(gt_frames.keys()) | set(dt_frames.keys())`, given each dict's keys in insertion
-/// order. Keys are frame numbers (non-negative ints).
+/// TrackEval's `_compute_bb_track_iou` sums over `set(gt_track.keys()) | set(dt_track.keys())`.
 pub fn union_frame_order(dt_keys: &[u64], gt_keys: &[u64]) -> Vec<u64> {
     let gt = PySet::from_keys(gt_keys.iter().copied());
     let dt = PySet::from_keys(dt_keys.iter().copied());
     gt.union(&dt).iter().collect()
 }
 
-// ---------------------------------------------------------------------------
-// Tracks and track IoU
-// ---------------------------------------------------------------------------
-
-/// One track of `_group_tracks`: its frames in insertion (ascending) order, with the box
-/// and confidence the frame-keyed dicts hold.
 #[derive(Clone, Debug, Default)]
 struct TrackView {
     frames: Vec<usize>,
@@ -287,8 +236,6 @@ impl TrackView {
     }
 }
 
-/// `_group_tracks`: per-track views indexed `0..num_ids`, filled frame-major. A repeated id
-/// within a frame overwrites the dict entry in place, as Python's dict assignment does.
 fn group_tracks(
     ids_per_frame: &[Vec<usize>],
     boxes_per_frame: &[Vec<BoxXywh>],
@@ -314,7 +261,6 @@ fn group_tracks(
     tracks
 }
 
-/// `float(np.mean([box[2] * box[3] for box in f.values()])) if f else 0.0`.
 fn track_area(track: &TrackView) -> f64 {
     if track.frames.is_empty() {
         return 0.0;
@@ -323,7 +269,6 @@ fn track_area(track: &TrackView) -> f64 {
     numeric::mean(&areas)
 }
 
-/// `float(np.mean(list(c.values()))) if c else 0.0`.
 fn track_score(track: &TrackView) -> f64 {
     if track.frames.is_empty() {
         return 0.0;
@@ -331,8 +276,7 @@ fn track_score(track: &TrackView) -> f64 {
     numeric::mean(&track.confidences)
 }
 
-/// `_track_iou(dt_frames, gt_frames)`: sums in the frame-union set's iteration order,
-/// with builtin `min`/`max`.
+/// TrackEval's `_compute_bb_track_iou`: set iteration order, CPython builtin `min`/`max`.
 fn track_iou_in_set_order(dt: &TrackView, gt: &TrackView) -> f64 {
     let dt_keys: Vec<u64> = dt.frames.iter().map(|&t| t as u64).collect();
     let gt_keys: Vec<u64> = gt.frames.iter().map(|&t| t as u64).collect();
@@ -356,7 +300,6 @@ fn track_iou_in_set_order(dt: &TrackView, gt: &TrackView) -> f64 {
     if union > 0.0 { intersect / union } else { 0.0 }
 }
 
-/// `_union_set_order_is_ascending`.
 fn union_set_order_is_ascending(dt: &TrackView, gt: &TrackView) -> bool {
     let dt_keys: Vec<u64> = dt.frames.iter().map(|&t| t as u64).collect();
     let gt_keys: Vec<u64> = gt.frames.iter().map(|&t| t as u64).collect();
@@ -365,13 +308,6 @@ fn union_set_order_is_ascending(dt: &TrackView, gt: &TrackView) -> bool {
         .all(|w| w[1] > w[0])
 }
 
-/// One entry of `_track_iou_matrix`.
-///
-/// Python sums each pair's per-frame terms in ascending frame order with `np.minimum` and
-/// `np.maximum`, where frames neither track holds add an exact `0.0` (which changes at most
-/// the sign of a zero total, and no result reads that sign). A pair with a positive
-/// intersection whose frame-union set does not iterate in ascending order is recomputed
-/// by `_track_iou`, in set order.
 fn track_iou(dt: &TrackView, gt: &TrackView) -> f64 {
     let (mut a, mut b) = (0, 0);
     let mut intersect = 0.0;
@@ -388,7 +324,6 @@ fn track_iou(dt: &TrackView, gt: &TrackView) -> f64 {
                 let w = maximum(minimum(dx + dw, gx + gw) - maximum(dx, gx), 0.0);
                 let h = maximum(minimum(dy + dh, gy + gh) - maximum(dy, gy), 0.0);
                 let inter = w * h;
-                // d_area + gt_area - inter
                 union += (dw * dh + gw * gh) - inter;
                 intersect += inter;
                 a += 1;
@@ -413,8 +348,6 @@ fn track_iou(dt: &TrackView, gt: &TrackView) -> f64 {
         }
     }
     if !overlap {
-        // No shared frame: every intersection term is 0.0, so the IoU is 0.0 whatever
-        // the union is.
         return 0.0;
     }
     if intersect > 0.0 && !union_set_order_is_ascending(dt, gt) {
@@ -423,8 +356,6 @@ fn track_iou(dt: &TrackView, gt: &TrackView) -> f64 {
     if union > 0.0 { intersect / union } else { 0.0 }
 }
 
-/// `_ignore_masks`: one 0/1 mask per label (`all` ignores nothing), each
-/// `0 if lo - EPS <= value <= hi + EPS else 1`.
 fn ignore_masks(lengths: &[usize], areas: &[f64]) -> [Vec<u8>; 7] {
     let in_range = |value: f64, (lo, hi): (f64, f64)| lo - EPS <= value && value <= hi + EPS;
     let area_mask = |range| {
@@ -450,7 +381,7 @@ fn ignore_masks(lengths: &[usize], areas: &[f64]) -> [Vec<u8>; 7] {
     ]
 }
 
-/// numpy's sort order for floats: NaN after every number, NaNs equal to each other.
+/// numpy's float sort order: NaN after every number.
 fn numpy_float_cmp(a: f64, b: f64) -> std::cmp::Ordering {
     let lt = |x: f64, y: f64| x < y || (y.is_nan() && !x.is_nan());
     if lt(a, b) {
@@ -462,19 +393,16 @@ fn numpy_float_cmp(a: f64, b: f64) -> std::cmp::Ordering {
     }
 }
 
-/// `np.argsort(-scores, kind="mergesort")`: a stable sort by descending score.
 fn argsort_descending(scores: &[f64]) -> Vec<usize> {
     let mut order: Vec<usize> = (0..scores.len()).collect();
     order.sort_by(|&i, &j| numpy_float_cmp(-scores[i], -scores[j]));
     order
 }
 
-/// A score value's elements, read as numpy reads a bool or int array stored as floats.
 fn matrix_columns(matrix: &Matrix) -> impl Iterator<Item = Vec<f64>> + '_ {
     (0..matrix.cols()).map(move |c| (0..matrix.rows()).map(|r| matrix.get(r, c)).collect())
 }
 
-/// `float(np.mean(values[values > -1])) if any else -1.0`.
 fn mean_of_valid(values: impl Iterator<Item = f64>) -> f64 {
     let valid: Vec<f64> = values.filter(|&v| v > -1.0).collect();
     if valid.is_empty() {
@@ -509,8 +437,7 @@ impl Metric for TrackMap {
         );
         let dt_scores: Vec<f64> = dt_tracks.iter().map(track_score).collect();
 
-        // Upstream's loaders presort dt tracks by descending score (mergesort, so ties
-        // keep their order) before the order-dependent greedy match.
+        // TrackEval's TAO loader sorts dt tracks by score (descending, mergesort).
         let dt_order = argsort_descending(&dt_scores);
         let dt_tracks: Vec<TrackView> = dt_order.iter().map(|&i| dt_tracks[i].clone()).collect();
         let dt_scores: Vec<f64> = dt_order.iter().map(|&i| dt_scores[i]).collect();
@@ -522,7 +449,6 @@ impl Metric for TrackMap {
         let gt_ig_masks = ignore_masks(&gt_lengths, &gt_areas);
         let dt_ig_masks = ignore_masks(&dt_lengths, &dt_areas);
 
-        // ious[dt, gt]
         let ious: Vec<f64> = dt_tracks
             .iter()
             .flat_map(|dt| gt_tracks.iter().map(move |gt| track_iou(dt, gt)))
@@ -533,7 +459,6 @@ impl Metric for TrackMap {
         scores.insert(DT_SCORES, Value::Array(dt_scores));
         for (mask_idx, label) in LABELS.iter().enumerate() {
             let gt_ig_mask = &gt_ig_masks[mask_idx];
-            // np.argsort(gt_ig_mask, kind="mergesort"): unignored first, each group in order
             let mut gt_order: Vec<usize> = (0..num_gt).collect();
             gt_order.sort_by_key(|&g| gt_ig_mask[g]);
             let gt_ig: Vec<u8> = gt_order.iter().map(|&g| gt_ig_mask[g]).collect();
@@ -573,7 +498,6 @@ impl Metric for TrackMap {
                 }
             }
 
-            // np.logical_or(dt_ig, np.logical_and(dt_m == -1, dt_ig_mask)), as 0.0/1.0
             let dt_ig_mask = &dt_ig_masks[mask_idx];
             let dt_ignore: Vec<f64> = (0..NUM_IOU_THRESHOLDS * num_dt)
                 .map(|k| {
@@ -605,13 +529,11 @@ impl Metric for TrackMap {
         }
         let recall_thresholds = recall_thresholds();
         let num_labels = LABELS.len();
-        // precision[thr, recall, label] = -1, recall[thr, label] = -1, det_weight = 0
         let mut precision = vec![-1.0; NUM_IOU_THRESHOLDS * NUM_RECALL_THRESHOLDS * num_labels];
         let mut recall = vec![-1.0; NUM_IOU_THRESHOLDS * num_labels];
         let mut det_weight = vec![0.0; NUM_IOU_THRESHOLDS * num_labels];
 
         for (lbl_idx, label) in LABELS.iter().enumerate() {
-            // Python reads these four fields of every input in this order.
             require_all(all_res, DT_SCORES)?;
             require_all(all_res, &format!("{DT_MATCHES}{label}"))?;
             require_all(all_res, &format!("{DT_IGNORE}{label}"))?;
@@ -621,7 +543,6 @@ impl Metric for TrackMap {
                 .flat_map(|res| res.array(DT_SCORES).iter().copied())
                 .collect();
             let dt_order = argsort_descending(&dt_scores);
-            // Columns are detections: concatenate per sequence, then reorder by score.
             let concat_columns = |field: &str| -> Vec<Vec<f64>> {
                 let columns: Vec<Vec<f64>> = all_res
                     .iter()
@@ -642,7 +563,6 @@ impl Metric for TrackMap {
             let num_tp = dt_m.len();
 
             for thr_idx in 0..NUM_IOU_THRESHOLDS {
-                // np.cumsum of the tp and fp indicators, as floats
                 let mut tp = Vec::with_capacity(num_tp);
                 let mut fp = Vec::with_capacity(num_tp);
                 let (mut tp_sum, mut fp_sum) = (0u64, 0u64);
@@ -654,11 +574,10 @@ impl Metric for TrackMap {
                     tp.push(tp_sum as f64);
                     fp.push(fp_sum as f64);
                 }
-                // rc = tp / num_gt
                 let rc: Vec<f64> = tp.iter().map(|&x| x / num_gt as f64).collect();
                 recall[thr_idx * num_labels + lbl_idx] = rc.last().copied().unwrap_or(0.0);
 
-                // pr = tp / (fp + tp + np.spacing(1)), then right-to-left builtin max
+                // TrackEval makes precision monotonic from right to left.
                 let mut pr: Vec<f64> = tp
                     .iter()
                     .zip(&fp)
@@ -668,8 +587,7 @@ impl Metric for TrackMap {
                     pr[i - 1] = py_max(pr[i - 1], pr[i]);
                 }
 
-                // np.searchsorted(rc, RECALL_THRESHOLDS, side="left"); the first index past
-                // the end raises IndexError and leaves the rest at 0.0.
+                // TrackEval: an index past the end raises `IndexError`, so the rest stay 0.0.
                 let mut pr_at_recall = [0.0; NUM_RECALL_THRESHOLDS];
                 for (r_idx, &threshold) in recall_thresholds.iter().enumerate() {
                     let pr_idx = rc.partition_point(|&x| x < threshold);
@@ -724,6 +642,7 @@ impl Metric for TrackMap {
     }
 
     fn combine_classes_det_averaged(&self, all_res: &[&Scores]) -> Result<Scores, MetricError> {
+        // Intended divergence: TrackEval reuses its class mean; this weights by `_num_dt_*`.
         if all_res.is_empty() {
             return Err(MetricError::NoResults { metric: "TrackMAP" });
         }
@@ -765,8 +684,7 @@ mod tests {
 
     #[test]
     fn small_sets_iterate_by_slot() {
-        // Expected orders printed by CPython 3.14.8. 17 and 1 share slot 1 of an 8-slot
-        // table, which is too small for linear probing, so the second key perturbs to 6.
+        // Expected orders printed by CPython 3.14.8.
         assert_eq!(union_frame_order(&[], &[17, 1]), [17, 1]);
         assert_eq!(union_frame_order(&[1], &[17]), [17, 1]);
         assert_eq!(union_frame_order(&[3, 2], &[]), [2, 3]);
@@ -794,7 +712,6 @@ mod tests {
         SplitMix64, digest, expected_digest, fnv1a64_words, load, scores_inputs_fnv, u64_of,
     };
 
-    /// `trackmap_class_scores` in `dump_metric_internals.py`.
     fn class_scores(rng: &mut SplitMix64) -> Scores {
         let mut scores = Scores::new();
         for label in LABELS {

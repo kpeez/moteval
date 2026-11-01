@@ -1,17 +1,3 @@
-"""Dump CPython's verdicts on adversarial text for the Rust readers and loaders.
-
-The Rust readers copy CPython 3.14.8 text handling: `int()`, `float()`, `str.strip`,
-`str.split`, `str.splitlines`, UTF-8 decode errors, pathlib names, `json.loads`,
-`configparser` (through `read_seq_length`), `format(x, ".2f")`, and `repr(float)`. This
-script asks the reference interpreter what each input gives and writes
-``tests/integration/data/pytext/<topic>.json``; `tests/integration/pytext.rs` checks Rust against it.
-
-Inputs are hand-picked edge cases plus seeded random strings. Floats are stored as `u64`
-bits; strings that JSON cannot carry exactly (lone surrogates) never appear.
-
-    artifacts/rust-port/ref-venv/bin/python scripts/testdata/dump_pytext.py
-"""
-
 import json
 import math
 import random
@@ -22,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-# After site-packages: `moteval` is the pure-Python reference (scripts/testdata/reference.py).
 if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
@@ -41,14 +26,11 @@ def bits(x: float) -> int:
 
 
 def outcome(fn) -> Json:
-    """``{"ok": value}`` or ``{"error": type name, "message": str(error)}``."""
     try:
         return {"ok": fn()}
     except Exception as err:  # noqa: BLE001  (every exception is a verdict)
         return {"error": type(err).__name__, "message": str(err)}
 
-
-# ---------------------------------------------------------------------------- numbers
 
 SPACES = " \t\n\x0b\x0c\r\x1c\x1d\x1e\x1f\x85\xa0    　"
 NUMBER_EDGES = [
@@ -206,9 +188,6 @@ def dump_numbers(rng: random.Random) -> Json:
     return cases
 
 
-# ------------------------------------------------------------------------------- text
-
-
 def dump_text(rng: random.Random) -> Json:
     alphabet = list("a,b ") + list(SPACES) + ["\r\n", "é", "\x00"]
     edges = [
@@ -231,9 +210,6 @@ def dump_text(rng: random.Random) -> Json:
             {"input": s, "strip": s.strip(), "split": s.split(), "splitlines": s.splitlines()}
         )
     return cases
-
-
-# ------------------------------------------------------------------------------- utf-8
 
 
 def dump_utf8(rng: random.Random) -> Json:
@@ -276,10 +252,6 @@ def dump_utf8(rng: random.Random) -> Json:
 
 
 def dump_utf8_chunked() -> Json:
-    """`TextIOWrapper` iteration (what `configparser` reads) across 8192-byte chunks.
-
-    Each file is ``size`` bytes of ``x`` with ``bad`` written at ``at``.
-    """
     cases: list[Json] = []
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "f.txt"
@@ -312,9 +284,6 @@ def dump_utf8_chunked() -> Json:
                         {"size": size, "bad": bad.hex(), "at": at, "iterate": outcome(read)}
                     )
     return cases
-
-
-# ------------------------------------------------------------------------------- paths
 
 
 def dump_paths() -> Json:
@@ -351,11 +320,7 @@ def dump_paths() -> Json:
     ]
 
 
-# -------------------------------------------------------------------------------- json
-
-
 def tag(value: Any) -> Json:
-    """A decoded value as a typed tree Rust can compare exactly."""
     if value is None:
         return {"t": "null"}
     if isinstance(value, bool):
@@ -372,7 +337,6 @@ def tag(value: Any) -> Json:
 
 
 def rust_cannot_hold(value: Any) -> bool:
-    """A lone surrogate or an integer beyond `i128`: Python decodes it, Rust reports it."""
     if isinstance(value, bool):
         return False
     if isinstance(value, int):
@@ -509,8 +473,6 @@ def dump_json(rng: random.Random) -> Json:
     return cases
 
 
-# --------------------------------------------------------------------------------- ini
-
 INI_EDGES = [
     "[Sequence]\nseqLength=5\n",
     "[Sequence]\nname=x\nimDir=img1\nframeRate=30\nseqLength=1200\nimWidth=1920\n",
@@ -606,9 +568,6 @@ def mutate_ini(rng: random.Random, text: str) -> str:
         elif chars:
             chars[min(at, len(chars) - 1)] = rng.choice(alphabet)
     return "".join(chars)
-
-
-# ------------------------------------------------------------------- float formatting
 
 
 def interesting_floats(rng: random.Random, n: int) -> list[float]:

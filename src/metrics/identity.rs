@@ -1,40 +1,21 @@
-//! Identity metric family: IDF1, IDR, IDP, IDTP, IDFN, IDFP, ported from
-//! `moteval/metrics/identity.py`.
-//!
-//! One global track-level matching per sequence, on the
-//! `(num_gt_ids + num_pred_ids) x (num_gt_ids + num_pred_ids)` block cost matrix whose
-//! off-diagonal blocks hold `1e10`, solved with scipy's Hungarian solver. The similarity
-//! threshold is not eps-guarded (`similarity >= threshold`), as upstream.
-
 use crate::lsap::linear_sum_assignment;
 use crate::metrics::{Metric, MetricError, Scores, Value, combine_sum};
 use crate::model::SequenceData;
 use crate::numeric::{mean, py_max, sum};
 
-/// The public fields, in the Python `fields` order (`_FLOAT_FIELDS + _INTEGER_FIELDS`).
 pub const FIELDS: &[&str] = &["IDF1", "IDR", "IDP", "IDTP", "IDFN", "IDFP"];
 
-/// `THRESHOLD`: the similarity a potential match needs (no eps guard).
+/// TrackEval's Identity threshold has no eps guard, unlike CLEAR's.
 pub const THRESHOLD: f64 = 0.5;
 
-/// `_INTEGER_FIELDS`: counts, summed by every combiner.
 const INTEGER_FIELDS: &[&str] = &["IDTP", "IDFN", "IDFP"];
 
-/// `_FLOAT_FIELDS`: averaged by `combine_classes_class_averaged`.
 const FLOAT_FIELDS: &[&str] = &["IDF1", "IDR", "IDP"];
 
-/// `moteval.metrics.identity.Identity`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Identity;
 
-/// The `fn_mat` and `fp_mat` of `Identity.eval_sequence`, both `n x n` with
-/// `n = num_gt_ids + num_pred_ids`, in C order.
-///
-/// Python fills them in this order, and each entry ends with the value of its last write:
-/// zeros; `fp[G:, :T] = 1e10`; `fn[:G, T:] = 1e10`; per gt id `g`,
-/// `fn[g, :T] = gt_count[g]` and `fn[g, T + g] = gt_count[g]`; per pred id `p`,
-/// `fp[:G, p] = pred_count[p]` and `fp[p + G, p] = pred_count[p]`; then
-/// `fn[:G, :T] -= potential` and `fp[:G, :T] -= potential`.
+/// TrackEval's `(G+T)x(G+T)` `fn_mat` and `fp_mat`: `1e10` off-diagonal, in its write order.
 fn block_matrices(
     gt_id_count: &[f64],
     pred_id_count: &[f64],
@@ -71,8 +52,6 @@ fn block_matrices(
     (fn_mat, fp_mat)
 }
 
-/// `Identity._compute_final_fields`: derive the ratios, inserting them in the Python
-/// order. Python's `max(1.0, x)` is `py_max`.
 fn compute_final_fields(res: &mut Scores) {
     let idtp = res.float("IDTP");
     let idfn = res.float("IDFN");
@@ -95,7 +74,6 @@ impl Metric for Identity {
     }
 
     fn eval_sequence(&self, data: &SequenceData) -> Result<Scores, MetricError> {
-        // dict.fromkeys(self.fields, 0.0)
         let mut res = Scores::new();
         for &field in FIELDS {
             res.insert(field, Value::Float(0.0));
@@ -113,8 +91,6 @@ impl Metric for Identity {
         let num_gt_ids = data.num_gt_ids();
         let num_pred_ids = data.num_pred_ids();
 
-        // np.bincount over every (gt, pred) pair with similarity >= THRESHOLD, every
-        // frame: each occurrence counts, repeated ids included.
         let mut potential_matches_count = vec![0.0; num_gt_ids * num_pred_ids];
         let mut gt_id_count = vec![0.0; num_gt_ids];
         let mut pred_id_count = vec![0.0; num_pred_ids];
@@ -145,7 +121,6 @@ impl Metric for Identity {
         let cost: Vec<f64> = fn_mat.iter().zip(&fp_mat).map(|(&a, &b)| a + b).collect();
         let (rows, cols) = linear_sum_assignment(&cost, n, n, false)?;
 
-        // float(fn_mat[match_rows, match_cols].sum()): numpy's pairwise sum
         let matched = |mat: &[f64]| -> Vec<f64> {
             rows.iter()
                 .zip(&cols)
@@ -178,13 +153,11 @@ impl Metric for Identity {
         if all_res.is_empty() {
             return Err(MetricError::NoResults { metric: "Identity" });
         }
-        // Float fields are averaged, not recomputed from the summed counts.
         let mut res = Scores::new();
         for &field in INTEGER_FIELDS {
             res.insert(field, combine_sum(all_res, field)?);
         }
         for &field in FLOAT_FIELDS {
-            // float(np.mean(np.asarray([...])))
             let values = all_res
                 .iter()
                 .map(|r| r.require(field).map(Value::float))
@@ -209,8 +182,6 @@ mod tests {
         assert_eq!(FIELDS, joined.as_slice());
     }
 
-    /// The block matrices for two gt ids and one pred id, written out by hand from the
-    /// Python fill order.
     #[test]
     fn block_matrices_follow_the_python_fill_order() {
         let (fn_mat, fp_mat) = block_matrices(&[3.0, 5.0], &[4.0], &[2.0, 0.0]);

@@ -1,6 +1,3 @@
-//! `moteval::numeric` against numpy 2.5.1 outputs dumped as bits by
-//! `scripts/testdata/dump_numeric.py`.
-
 use crate::harness::testgen::{fnv1a64, pattern};
 use crate::harness::{
     as_array, as_str, as_usize, assert_f64s_bit_equal, f64_from_bits, f64s_from_bits, read_json,
@@ -17,7 +14,6 @@ fn input(case: &Json, name: &str, n: usize, seed_field: &str) -> Vec<f64> {
     pattern(name, n, crate::harness::as_u64(&case[seed_field]))
 }
 
-/// Regenerate a case's input and check it against the dumped fingerprint.
 fn checked_input(case: &Json) -> Vec<f64> {
     let values = input(case, as_str(&case["pattern"]), as_usize(&case["n"]), "seed");
     assert_eq!(
@@ -60,8 +56,6 @@ fn sum_mean_and_cumsum_match_numpy() {
 
 #[test]
 fn reduction_order_matters_on_these_inputs() {
-    // The adversarial inputs must tell pairwise from sequential summation, or the test
-    // above proves nothing about order.
     let json = numeric_json();
     let mut differs = 0;
     for case in as_array(&json["reductions"]) {
@@ -206,10 +200,6 @@ fn linspace_matches_numpy() {
     }
 }
 
-/// The SVML `log10` port against numpy's SVML path, on every host: small integers, every
-/// binade, mantissas where the rounded `vrcp14pd` switches (13 of them change the result
-/// if `1/m` stands in for `vrcp14pd`), subnormals, and a fingerprint of
-/// `np.log10(1..=1_000_000)`.
 #[test]
 fn log10_svml_matches_numpy() {
     let json = numeric_json();
@@ -218,13 +208,12 @@ fn log10_svml_matches_numpy() {
     let xs = f64s_from_bits(&case["x"]);
     let got: Vec<f64> = xs.iter().map(|&x| numeric::log10_svml(x)).collect();
     assert_f64s_bit_equal(&f64s_from_bits(&case["out"]), &got, "log10_svml");
-    // The fixture tells SVML from libm only if they disagree somewhere in it. That was
-    // measured for glibc (397 inputs); other libms are not asserted on.
     let libm_differs = xs
         .iter()
         .zip(&got)
         .filter(|&(&x, &y)| !same_bits(x.log10(), y))
         .count();
+    // glibc's log10 differs from SVML on some inputs of this fixture; other libms are unmeasured.
     if cfg!(all(target_os = "linux", target_env = "gnu")) {
         assert!(
             libm_differs > 0,
@@ -286,7 +275,6 @@ fn extrema_match_numpy_and_python() {
 
 #[test]
 fn hota_and_trackmap_constants_match_numpy() {
-    // Spot-check the three constant ranges the metrics build.
     let json = numeric_json();
     let aranges = as_array(&json["arange"]);
     let alphas = numeric::arange(0.05, 0.99, 0.05).expect("alphas");

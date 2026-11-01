@@ -1,6 +1,3 @@
-//! Shared test harness: load the data dumped by `scripts/testdata/*.py`, rebuild
-//! `SequenceData`, and compare scores bit for bit.
-
 pub mod testgen;
 
 use std::fs;
@@ -11,7 +8,6 @@ use moteval::model::{Geometry, Matrix, SequenceData, SequenceDataParts};
 use moteval::rle::RleMask;
 use serde_json::Value as Json;
 
-/// `tests/integration/data`, the committed test data.
 pub fn testdata_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/integration/data")
 }
@@ -47,12 +43,10 @@ pub fn as_array(json: &Json) -> &Vec<Json> {
         .unwrap_or_else(|| panic!("expected an array, got {json}"))
 }
 
-/// A JSON number holding `f64` bits.
 pub fn f64_from_bits(json: &Json) -> f64 {
     f64::from_bits(as_u64(json))
 }
 
-/// A JSON array of `f64` bit patterns.
 pub fn f64s_from_bits(json: &Json) -> Vec<f64> {
     as_array(json).iter().map(f64_from_bits).collect()
 }
@@ -61,13 +55,10 @@ pub fn usizes(json: &Json) -> Vec<usize> {
     as_array(json).iter().map(as_usize).collect()
 }
 
-/// Bit equality where any NaN equals any NaN.
 pub fn same_bits(a: f64, b: f64) -> bool {
     a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan())
 }
 
-/// Assert two float slices are equal bit for bit (NaN equals NaN), naming the first
-/// difference.
 pub fn assert_f64s_bit_equal(expected: &[f64], got: &[f64], label: &str) {
     assert_eq!(
         expected.len(),
@@ -86,7 +77,6 @@ pub fn assert_f64s_bit_equal(expected: &[f64], got: &[f64], label: &str) {
     }
 }
 
-/// A score value as the dump encodes it: `{"shape": [...], "bits": [...]}`.
 pub fn decode_value(json: &Json) -> Value {
     let shape = usizes(&json["shape"]);
     let data = f64s_from_bits(&json["bits"]);
@@ -104,7 +94,6 @@ pub fn decode_value(json: &Json) -> Value {
     }
 }
 
-/// Scores as the dump encodes them: `[[field, value], ...]`, in insertion order.
 pub fn decode_scores(json: &Json) -> Scores {
     let mut scores = Scores::new();
     for pair in as_array(json) {
@@ -113,7 +102,6 @@ pub fn decode_scores(json: &Json) -> Scores {
     scores
 }
 
-/// Per-metric scores as the dump encodes them: `[[metric, scores], ...]`.
 pub fn decode_metric_scores(json: &Json) -> Vec<(String, Scores)> {
     as_array(json)
         .iter()
@@ -121,10 +109,6 @@ pub fn decode_metric_scores(json: &Json) -> Vec<(String, Scores)> {
         .collect()
 }
 
-/// Assert that every field of `expected` is in `got` with the same shape and the same
-/// bits (any NaN equals any NaN). The shape tells a scalar (`[]`, a Python `float`) from a
-/// one-element array (`[1]`). `got` may hold more fields (private state, or fields the
-/// oracle does not freeze).
 pub fn assert_scores_bit_equal(expected: &Scores, got: &Scores, label: &str) {
     for (field, want) in expected.iter() {
         let have = got
@@ -139,44 +123,30 @@ pub fn assert_scores_bit_equal(expected: &Scores, got: &Scores, label: &str) {
     }
 }
 
-/// Assert the field order of `got` equals `expected` (the Python dict order).
 pub fn assert_field_order(expected: &Scores, got: &Scores, label: &str) {
     let want: Vec<&str> = expected.iter().map(|(f, _)| f).collect();
     let have: Vec<&str> = got.iter().map(|(f, _)| f).collect();
     assert_eq!(have, want, "{label}: field order differs from Python");
 }
 
-// ---------------------------------------------------------------------------
-// Scenario cases
-// ---------------------------------------------------------------------------
-
-/// One sequence of a class view, with the key Python's results use for it.
 pub struct CaseSequence {
     pub key: String,
     pub data: SequenceData,
 }
 
-/// One class view of a case.
 pub struct CaseView {
-    /// The class id, or `None` for TrackMAP's spec-built sequences.
     pub class: Option<i64>,
     pub sequences: Vec<CaseSequence>,
-    /// Python moteval's per-sequence scores (raw for synthetic cases, declared fields only
-    /// for real data), by sequence key, then by metric.
     pub moteval_per_sequence: Vec<(String, Vec<(String, Scores)>)>,
-    /// Python moteval's raw `combine_sequences` output, by metric.
     pub moteval_combined: Vec<(String, Scores)>,
 }
 
-/// One dumped scenario case: inputs, the oracle, and Python moteval's own results.
 pub struct Case {
     pub fixture: String,
     pub case: String,
-    /// `per_class` or `sequences_as_classes` (see `tests/integration/data/README.md`).
     pub procedure: String,
     pub metrics: Vec<String>,
     pub views: Vec<CaseView>,
-    /// Oracle sections (`combined`, `class_averaged`, `det_averaged`), by metric.
     pub oracle: Vec<(String, Vec<(String, Scores)>)>,
     pub moteval_class_averaged: Vec<(String, Scores)>,
     pub moteval_det_averaged: Vec<(String, Scores)>,
@@ -191,7 +161,6 @@ impl Case {
     }
 }
 
-/// Load a synthetic case: `tests/integration/data/scenarios/<fixture>/<case>.json`.
 pub fn load_synthetic_case(fixture: &str, case: &str) -> Case {
     let path = testdata_dir()
         .join("scenarios")
@@ -200,7 +169,6 @@ pub fn load_synthetic_case(fixture: &str, case: &str) -> Case {
     load_case(&path)
 }
 
-/// Every synthetic case of one fixture, in file-name order.
 pub fn synthetic_case_names(fixture: &str) -> Vec<String> {
     let dir = testdata_dir().join("scenarios").join(fixture);
     let mut names: Vec<String> = fs::read_dir(&dir)
@@ -213,8 +181,6 @@ pub fn synthetic_case_names(fixture: &str) -> Vec<String> {
     names
 }
 
-/// The real-data test data root from `MOTEVAL_REAL_TESTDATA`, or `None` after printing
-/// the loud skip line the real-data gates use. A skipped gate never counts as passed.
 pub fn real_testdata_dir(what: &str) -> Option<PathBuf> {
     match std::env::var_os("MOTEVAL_REAL_TESTDATA") {
         Some(dir) if !dir.is_empty() && Path::new(&dir).is_dir() => Some(PathBuf::from(dir)),
@@ -236,8 +202,6 @@ pub fn real_testdata_dir(what: &str) -> Option<PathBuf> {
     }
 }
 
-/// Load a real-data case (`<root>/<fixture>/<case>/case.json`), or `None` after printing
-/// the loud skip line when it is absent.
 pub fn load_real_case(root: &Path, fixture: &str, case: &str) -> Option<Case> {
     let path = root.join(fixture).join(case).join("case.json");
     if !path.is_file() {
@@ -251,7 +215,6 @@ pub fn load_real_case(root: &Path, fixture: &str, case: &str) -> Option<Case> {
     Some(load_case(&path))
 }
 
-/// The real-data case names of one fixture under `root`, sorted.
 pub fn real_case_names(root: &Path, fixture: &str) -> Vec<String> {
     let dir = root.join(fixture);
     let Ok(entries) = fs::read_dir(&dir) else {
@@ -266,7 +229,6 @@ pub fn real_case_names(root: &Path, fixture: &str) -> Vec<String> {
     names
 }
 
-/// Load any case file; sequence headers and `.bin` files resolve next to it.
 pub fn load_case(path: &Path) -> Case {
     let json = read_json(path);
     assert_eq!(
@@ -318,7 +280,6 @@ pub fn load_case(path: &Path) -> Case {
     }
 }
 
-/// The flat arrays of one sequence record, inline or in its `.bin` file.
 struct FlatArrays<'a> {
     arrays: &'a serde_json::Map<String, Json>,
     blob: Option<Vec<u8>>,
@@ -381,7 +342,6 @@ impl FlatArrays<'_> {
     }
 }
 
-/// Split a flat array into per-frame pieces of `counts[t] * width` elements.
 fn split_frames<T: Clone>(flat: &[T], counts: &[usize], width: usize) -> Vec<Vec<T>> {
     let mut out = Vec::with_capacity(counts.len());
     let mut at = 0;
@@ -416,7 +376,6 @@ fn masks(arrays: &FlatArrays<'_>, side: &str, counts: &[usize]) -> Vec<Vec<RleMa
     split_frames(&flat, counts, 1)
 }
 
-/// Rebuild one sequence from its record (inline, or `{"header": ...}` beside `dir`).
 fn load_sequence(dir: &Path, record: &Json) -> CaseSequence {
     let header;
     let record = match record.get("header") {
@@ -484,11 +443,6 @@ fn load_sequence(dir: &Path, record: &Json) -> CaseSequence {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Running a case
-// ---------------------------------------------------------------------------
-
-/// The metric named as Python names it (`type(metric).__name__`).
 pub fn metric_by_name(name: &str) -> Box<dyn Metric> {
     use moteval::metrics::{Clear, Count, Hota, Identity, JAndF, TrackMap};
     match name {
@@ -509,14 +463,6 @@ fn find<'a>(by_metric: &'a [(String, Scores)], metric: &str) -> Option<&'a Score
         .map(|(_, scores)| scores)
 }
 
-/// Run `metric` on a case end to end, as `evaluate` does, and assert every oracle field
-/// it covers equals the oracle bit for bit. Returns the number of fields checked.
-///
-/// `per_class`: each view's sequences are scored and combined; with one view the result
-/// is checked against `oracle.combined`, with several the class combiners run over the
-/// views' raw combined state, in class order, and are checked against
-/// `oracle.class_averaged` and `oracle.det_averaged`. `sequences_as_classes`: one view's
-/// declared per-sequence scores go to `combine_classes_class_averaged`.
 pub fn check_case_against_oracle(case: &Case, metric: &dyn Metric) -> usize {
     let name = metric.name();
     let label = format!("{}/{}.{name}", case.fixture, case.case);

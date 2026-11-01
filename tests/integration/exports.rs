@@ -1,7 +1,3 @@
-//! The table, JSON, and CSV writers against the exact bytes Python's `cli.py` and
-//! `results.py` write for the same `EvaluationResult` values, and `evaluate`'s errors
-//! before scoring against Python's messages (`scripts/testdata/dump_results.py`).
-
 use std::fs;
 use std::path::PathBuf;
 
@@ -53,7 +49,6 @@ fn decode_result(json: &Json) -> EvaluationResult {
     }
 }
 
-/// Assert equal text, showing the first differing line on failure.
 fn assert_same_text(want: &str, got: &str, label: &str) {
     if want == got {
         return;
@@ -159,7 +154,6 @@ fn dataset(spec: &Json) -> MOTDataset {
     }
 }
 
-/// A fresh empty directory under the system temp directory.
 fn temp_dir(label: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("moteval-exports-{}-{label}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);

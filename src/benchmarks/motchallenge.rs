@@ -1,12 +1,3 @@
-//! The shared MOTChallenge-layout reader and the generic `load_motchallenge`, ported from
-//! `moteval/benchmarks/motchallenge.py`.
-//!
-//! Default layout: `<root>/<split>/<seq>/gt/gt.txt` plus `<root>/<split>/<seq>/seqinfo.ini`
-//! (`[Sequence]` section, `seqLength=N`). Sequences are the split directory's
-//! subdirectories, sorted. GT rows are read without the class column and stamped with
-//! `MOTChallengeConfig::class_id`. Benchmarks whose layout deviates (BFT, AnimalTrack,
-//! GMOT-40, UAVDT) override the four hooks of `MOTChallengeConfig`.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -16,24 +7,17 @@ use crate::formats::pytext::{PyInt, py_int, py_join, py_name, py_path, py_str};
 use crate::formats::{Track, read_mot};
 use crate::model::{FrameConvention, GtSequence, MOTDataset, Protocol, Sequence};
 
-/// The split `load_motchallenge` reads when the caller names none.
 pub const DEFAULT_SPLIT: &str = "train";
 
-/// `(base, split) -> sequence names`.
 pub type SeqNamesFn = fn(&Path, &str) -> Result<Vec<String>, BenchmarkError>;
-/// `(base, split, sequence) -> GT file`.
 pub type GtPathFn = fn(&Path, &str, &str) -> PathBuf;
-/// `(base, split, sequence, GT tracks) -> num_timesteps`.
 pub type SeqLengthFn = fn(&Path, &str, &str, &[Track]) -> Result<usize, BenchmarkError>;
-/// `(base, split, sequence) -> ignore-region file, if the benchmark has one`.
 pub type IgnorePathFn = fn(&Path, &str, &str) -> Option<PathBuf>;
 
-/// Per-benchmark configuration for the generic MOTChallenge adapter (`MOTChallengeConfig`).
 #[derive(Clone, Debug)]
 pub struct MOTChallengeConfig {
     pub name: String,
     pub protocol: Protocol,
-    /// The class every GT `Track` is tagged with (the adapter reads no class column).
     pub class_id: i64,
     pub seq_names: SeqNamesFn,
     pub gt_path: GtPathFn,
@@ -42,7 +26,6 @@ pub struct MOTChallengeConfig {
 }
 
 impl MOTChallengeConfig {
-    /// The standard layout with class 1, as `MOTChallengeConfig(name=..., protocol=...)`.
     pub fn new(name: impl Into<String>, protocol: Protocol) -> Self {
         Self {
             name: name.into(),
@@ -81,7 +64,6 @@ fn default_ignore_path(_base: &Path, _split: &str, _seq_name: &str) -> Option<Pa
     None
 }
 
-/// A sequence length Python computed, as `usize`.
 fn to_num_timesteps(value: i128, sequence: &str) -> Result<usize, BenchmarkError> {
     usize::try_from(value).map_err(|_| {
         BenchmarkError::Unsupported(format!(
@@ -91,8 +73,6 @@ fn to_num_timesteps(value: i128, sequence: &str) -> Result<usize, BenchmarkError
     })
 }
 
-/// `max_frame_seq_length(seq_name, tracks, offset)`: the last annotated frame plus
-/// `offset`, for benchmarks without a `seqinfo.ini`. Empty GT is an error.
 pub fn max_frame_seq_length(
     seq_name: &str,
     tracks: &[Track],
@@ -104,8 +84,6 @@ pub fn max_frame_seq_length(
     to_num_timesteps(i128::from(last) + i128::from(offset), seq_name)
 }
 
-/// `read_seq_length(seq_dir)`: `[Sequence] seqLength` from `<seq_dir>/seqinfo.ini`, read
-/// with `configparser.ConfigParser`.
 pub fn read_seq_length(seq_dir: &Path) -> Result<usize, BenchmarkError> {
     let seq_dir = py_path(seq_dir);
     let sequence = py_name(&seq_dir);
@@ -123,7 +101,7 @@ pub fn read_seq_length(seq_dir: &Path) -> Result<usize, BenchmarkError> {
         path: path.clone(),
         detail,
     };
-    // `parser.read` skips a file it cannot open.
+    // CPython `ConfigParser.read` skips a file it cannot open.
     let parser = match fs::read(&seqinfo_path) {
         Err(_) => ConfigParser::default(),
         Ok(bytes) => {
@@ -150,7 +128,6 @@ pub fn read_seq_length(seq_dir: &Path) -> Result<usize, BenchmarkError> {
     }
 }
 
-/// `_load_sequence(base, split, seq_name, config)`.
 fn load_sequence(
     base: &Path,
     split: &str,
@@ -182,7 +159,6 @@ fn load_sequence(
     })
 }
 
-/// `load_layout(config, root, split)`: a MOTChallenge-layout split as a `MOTDataset`.
 pub fn load_layout(
     config: &MOTChallengeConfig,
     root: &Path,
@@ -202,7 +178,6 @@ pub fn load_layout(
     })
 }
 
-/// `MOTCHALLENGE_PROTOCOL`: 1-indexed frames, class 1, Python's defaults otherwise.
 pub fn motchallenge_protocol() -> Protocol {
     Protocol::new(
         "motchallenge",
@@ -211,8 +186,6 @@ pub fn motchallenge_protocol() -> Protocol {
     )
 }
 
-/// `load_motchallenge(root, split)`: any standard MOTChallenge-layout directory, named
-/// after `root`.
 pub fn load_motchallenge(root: &Path, split: &str) -> Result<MOTDataset, BenchmarkError> {
     let config = MOTChallengeConfig::new(py_name(root), motchallenge_protocol());
     load_layout(&config, root, split)

@@ -1,17 +1,3 @@
-"""Real-data parity gate vs frozen TrackEval numbers.
-
-DanceTrack val, SportsMOT val, and one MOTS20 mask sequence, scored against
-seeded perturbed predictions (``tests/perturb.py``). The expected numbers in
-``tests/fixtures/real_data.json`` come from official TrackEval run on the same
-data with the same seeds — regenerate with
-``scripts/regen_parity_fixtures.py --real-data``.
-
-Each test skips loudly when its dataset is absent from the data root
-(`moteval.benchmarks.default_data_root`: ``MOTEVAL_DATA_ROOT``, else
-``data/benchmarks/``), naming the ``scripts/download_benchmarks.py download`` script that fetches it. A fully-skipped
-run does not count as the gate passing.
-"""
-
 import json
 from pathlib import Path
 
@@ -44,8 +30,6 @@ def _require(split_root: Path, benchmark: str, expected_sequences: int) -> None:
             f"SKIPPING REAL-DATA PARITY GATE: {benchmark} not found under {split_root} — "
             f"fetch it with `scripts/download_benchmarks.py download {benchmark}`"
         )
-    # A split that is still syncing (e.g. cloud-storage hydration in progress)
-    # skips loudly rather than evaluating a partial dataset.
     seq_dirs = sorted(p for p in split_root.iterdir() if p.is_dir())
     incomplete = [
         p.name
@@ -113,7 +97,7 @@ def test_perturbation_is_seeded_and_independently_numbered():
     a = perturb_box_tracks(gt, 10, convention, seed=7)
     b = perturb_box_tracks(gt, 10, convention, seed=7)
     c = perturb_box_tracks(gt, 10, convention, seed=8)
-    assert a == b  # reproducible
-    assert a != c  # seed actually matters
+    assert a == b
+    assert a != c
     gt_ids = {t.track_id for t in gt}
-    assert not gt_ids & {t.track_id for t in a}  # independently numbered
+    assert not gt_ids & {t.track_id for t in a}

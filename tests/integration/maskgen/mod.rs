@@ -1,19 +1,14 @@
-//! Seeded binary masks and J&F sequences, draw for draw the same as
-//! `scripts/testdata/maskgen.py`. A mask is `h * w` bytes, 0 or 1, in Fortran order.
-
 use crate::harness::testgen::SplitMix64;
 
 const FNV_OFFSET: u64 = 0xCBF2_9CE4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01B3;
 
-/// FNV-1a over raw bytes (`maskgen.fnv1a64_bytes`).
 pub fn fnv1a64_bytes(data: &[u8]) -> u64 {
     data.iter().fold(FNV_OFFSET, |h, &b| {
         (h ^ u64::from(b)).wrapping_mul(FNV_PRIME)
     })
 }
 
-/// FNV-1a over the little-endian 8-byte form of each value (`maskgen.fnv1a64_ints`).
 pub fn fnv1a64_ints(values: &[u64]) -> u64 {
     let mut h = FNV_OFFSET;
     for v in values {
@@ -136,14 +131,12 @@ fn nonempty_mask(rng: &mut SplitMix64, h: usize, w: usize) -> Vec<u8> {
     }
 }
 
-/// One mask with its size.
 pub struct SizedMask {
     pub h: usize,
     pub w: usize,
     pub bytes: Vec<u8>,
 }
 
-/// `maskgen.boundary_case`: two masks with non-empty boundaries and a radius.
 pub fn boundary_case(index: usize) -> (SizedMask, SizedMask, i64) {
     let mut rng = SplitMix64::new(boundary_seed(index));
     let (ha, wa) = if below(&mut rng, 5) == 0 {
@@ -174,13 +167,11 @@ pub fn boundary_case(index: usize) -> (SizedMask, SizedMask, i64) {
     )
 }
 
-/// One detection of a J&F sequence: track id and mask.
 pub struct Detection {
     pub track: usize,
     pub mask: SizedMask,
 }
 
-/// `maskgen.jf_sequence`.
 pub struct JfSequence {
     pub num_timesteps: usize,
     pub num_gt_ids: usize,

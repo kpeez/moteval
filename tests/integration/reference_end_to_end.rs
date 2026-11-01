@@ -1,19 +1,3 @@
-//! The integration gate: the whole Rust pipeline on all nine local benchmarks equals
-//! `tests/fixtures/reference_benchmarks.json`, bit for bit.
-//!
-//! For each `<benchmark>_<split>` case, Rust loads the raw ground truth with
-//! `benchmarks::load_dataset` (from `MOTEVAL_DATA_ROOT`), reads the seeded predictions
-//! `dump_loaders.py` wrote (`loaders_real/<case>/pred/`, the files
-//! `scripts/reference_results.py` scores), and runs `eval::evaluate` with the metrics the
-//! reference scored. Nothing Python computed enters the run.
-//!
-//! - Combined scores equal the reference fixture. `dump_scenarios.py --real-data` stores
-//!   the fixture's numbers as float bits in `reference_benchmarks/<case>/case.json`
-//!   (`oracle.combined`), after checking them against the fixture, because serde_json
-//!   cannot read the fixture's `NaN` tokens.
-//! - Per-sequence scores equal Python moteval's (`moteval.views[0].per_sequence` in the
-//!   same file), in the same sequence and metric order.
-
 use std::path::Path;
 
 use crate::harness::{
@@ -36,7 +20,6 @@ fn data_root() -> Option<std::path::PathBuf> {
     }
 }
 
-/// The nine benchmarks and every split the reference fixture scores.
 const EXPECTED_CASES: usize = 20;
 
 #[test]
@@ -102,8 +85,6 @@ fn rust_pipeline_equals_the_reference_on_nine_benchmarks() {
         let want_keys: Vec<&str> = python.iter().map(|pair| as_str(&pair[0])).collect();
         assert_eq!(keys, want_keys, "{name}: sequence order");
         for (pair, (seq, got)) in python.iter().zip(&result.per_sequence) {
-            // The dump keeps a metric with no declared per-sequence field (TrackMAP) as an
-            // empty map; `evaluate` gives it no per-sequence entry, as Python's does.
             let want: Vec<_> = decode_metric_scores(&pair[1])
                 .into_iter()
                 .filter(|(_, scores)| !scores.is_empty())

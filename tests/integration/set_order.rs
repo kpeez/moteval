@@ -1,10 +1,3 @@
-//! TrackMAP's frame-union set order: `union_frame_order` equals the order CPython 3.14.8
-//! iterates `set(gt.keys()) | set(dt.keys())`, on the seeded key sets and insertion
-//! orders `scripts/testdata/dump_set_order.py` dumped through moteval's own `_union_frames`.
-//!
-//! This file regenerates every case from its seed, draw for draw the same as the Python
-//! generator, and checks `inputs_fnv` first so a generator mismatch fails as such.
-
 use std::collections::HashSet;
 
 use crate::harness::testgen::SplitMix64;
@@ -14,7 +7,6 @@ use moteval::metrics::track_map::union_frame_order;
 const SEPARATOR: u64 = u64::MAX;
 const SPANS: [u64; 5] = [16, 64, 256, 4096, 100_000];
 
-/// FNV-1a over each key's little-endian `u64` bytes (`fnv1a64_keys`).
 fn fnv1a64_keys(keys: impl IntoIterator<Item = u64>) -> u64 {
     let mut h: u64 = 0xCBF2_9CE4_8422_2325;
     for key in keys {
@@ -25,7 +17,6 @@ fn fnv1a64_keys(keys: impl IntoIterator<Item = u64>) -> u64 {
     h
 }
 
-/// `n` distinct keys below `span`, in draw order.
 fn distinct(rng: &mut SplitMix64, n: u64, span: u64) -> Vec<u64> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
@@ -38,7 +29,6 @@ fn distinct(rng: &mut SplitMix64, n: u64, span: u64) -> Vec<u64> {
     out
 }
 
-/// Fisher-Yates, from the last position down.
 fn shuffle(rng: &mut SplitMix64, keys: &mut [u64]) {
     for i in (1..keys.len()).rev() {
         let j = rng.below(i as u64 + 1) as usize;
@@ -46,7 +36,6 @@ fn shuffle(rng: &mut SplitMix64, keys: &mut [u64]) {
     }
 }
 
-/// `set_order_case(regime, seed)`: `(gt_keys, dt_keys)` in dict insertion order.
 fn set_order_case(regime: &str, seed: u64) -> (Vec<u64>, Vec<u64>) {
     let mut rng = SplitMix64::new(seed);
     match regime {
@@ -186,7 +175,6 @@ fn union_frame_order_matches_cpython_set_iteration() {
     }
     assert_eq!(cases, 4304);
     assert_eq!(non_ascending, as_usize(&json["non_ascending"]));
-    // The fuzz must reach the orders the fallback path exists for.
     assert!(
         non_ascending > 1000,
         "only {non_ascending} non-ascending cases"

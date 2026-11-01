@@ -1,28 +1,3 @@
-"""Dump pycocotools, boundary-match, and J&F results on seeded masks for the Rust port.
-
-Writes four files under ``tests/integration/data/``, each checked bit for bit by a Rust test that
-regenerates the same masks from the seeds (``maskgen.py`` / ``tests/maskgen/mod.rs``):
-
-- ``rle.json`` (``tests/rle.rs``): 1,000 masks in 250 same-size families. Per mask:
-  ``encode``, ``decode``, ``area``, ``toBbox``, and the string round trip through
-  ``merge([rle])``. Per family: ``iou`` with every ``iscrowd`` false, every one true, and
-  a mixed split; ``merge`` union and intersection of the family and of its first pair;
-  moteval's ``masks_overlap``. Across neighbouring families (usually other sizes):
-  ``iou`` and ``merge``. Plus non-canonical counts strings that parse like canonical ones,
-  and an overrun string that ``decode`` rejects. ``rle_iou.json`` holds the ``iou``
-  matrices, apart so that each file stays below the repository's 500 KB file limit.
-- ``jf_boundary.json`` (``tests/jf.rs``): 1,000 mask pairs. ``moteval.metrics.jf.
-  _boundary_points`` of each mask, and scipy ``KDTree`` match counts within a radius.
-- ``jf_sequences.json`` (``tests/jf.rs``): 300 random J&F sequences scored by Python
-  moteval's ``JAndF`` (scores or the error it raises), and its three combiners over
-  groups of the scored sequences.
-
-Run with the reference interpreter (CPython 3.14.8, numpy 2.5.1, scipy 1.18.0,
-pycocotools 2.0.11):
-
-    artifacts/rust-port/ref-venv/bin/python scripts/testdata/dump_masks.py
-"""
-
 import json
 import sys
 import warnings
@@ -34,7 +9,6 @@ from pycocotools import mask as mask_utils
 from scipy.spatial import KDTree
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-# After site-packages: `moteval` is the pure-Python reference (scripts/testdata/reference.py).
 if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
@@ -62,7 +36,6 @@ from scripts.testdata.testgen import SplitMix64, f64_bits
 OUT_DIR = Path(__file__).resolve().parents[2] / "tests" / "integration" / "data"
 JF_SEQUENCES = 300
 BOUNDARY_PAIRS = 1000
-# Combiner groups over the scored J&F sequences: sizes cycle through these.
 GROUP_SIZES = (1, 2, 3, 5, 8)
 
 
@@ -83,7 +56,6 @@ def merge(rles: list[RleMask], intersect: bool = False) -> RleMask:
 
 
 def text(rle: RleMask) -> str:
-    """The counts string as text (pycocotools returns ``bytes``)."""
     counts = rle["counts"]
     return counts.decode() if isinstance(counts, bytes) else counts
 
@@ -98,9 +70,7 @@ def iou_bits(dt: list[RleMask], gt: list[RleMask], crowd: list[int]) -> list[int
 
 
 def pad_groups(counts: bytes, rng: SplitMix64) -> bytes:
-    """A non-canonical counts string that ``rleFrString`` parses to the same runs: some
-    groups gain a redundant extra character (``0`` after a positive value, ``O`` after a
-    negative one), with the continuation bit set on the character before it."""
+    # pycocotools' rleFrString sign-extends groups: an extra "0" or "O" keeps a group's value.
     out = bytearray()
     for c in counts:
         v = c - 48
@@ -113,7 +83,6 @@ def pad_groups(counts: bytes, rng: SplitMix64) -> bytes:
 
 
 def dump_rle() -> tuple[dict, dict]:
-    """``rle.json`` and ``rle_iou.json`` (the IoU matrices, apart to keep each file small)."""
     families = []
     family_ious = []
     all_masks: list[list[tuple[bytearray, RleMask]]] = []

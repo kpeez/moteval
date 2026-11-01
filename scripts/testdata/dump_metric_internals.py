@@ -1,32 +1,3 @@
-"""Dump HOTA and TrackMAP intermediates and combiners the scenario fixtures cannot reach.
-
-The scenario fixtures check every public HOTA and TrackMAP output, but some reduction
-orders only show in their last bits, and those bits rarely change an output: HOTA's
-``similarity.sum(1)`` (pairwise once a frame has 8 or more predictions) only moves the
-global alignment score that feeds the assignment, the class combiners only reduce
-pairwise with 8 or more classes, and TrackMAP's track areas only meet the area-range
-bounds. This script checks them directly, through moteval's own code, on seeded inputs:
-
-- ``hota_dense``: dense sequences (8 to 24 ids, most frames with 8 or more detections).
-  It records every cost matrix HOTA hands to ``linear_sum_assignment`` and the scores
-  of ``eval_sequence`` and ``combine_sequences``.
-- ``hota_class_combiners`` and ``trackmap_class_combiners``: 8 to 20 classes of random
-  per-class scores through ``combine_classes_class_averaged`` and
-  ``combine_classes_det_averaged``.
-- ``trackmap_tracks``: ``_group_tracks`` lengths, mean areas, and mean scores.
-
-Each case stores ``inputs_fnv``, a digest of its generated inputs, so a generator
-mismatch fails as such.
-
-It writes ``tests/integration/data/hota_trackmap_internals.json``. The Rust unit tests in
-``metrics/hota.rs`` and ``metrics/track_map.rs`` regenerate each input from its seed with
-the same generator. Score sets are stored per field as ``[field, shape, fnv]``, where
-``fnv`` is FNV-1a 64 over the little-endian ``float64`` bytes (a scalar has shape ``[]``).
-Run with the reference interpreter:
-
-    artifacts/rust-port/ref-venv/bin/python scripts/testdata/dump_metric_internals.py
-"""
-
 import json
 import sys
 from pathlib import Path
@@ -35,7 +6,6 @@ from typing import Any
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-# After site-packages: `moteval` is the pure-Python reference (scripts/testdata/reference.py).
 if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
@@ -72,7 +42,6 @@ Json = Any
 
 
 def fnv1a64_words(words: list[int]) -> int:
-    """FNV-1a over each word's little-endian ``u64`` bytes."""
     h = FNV_OFFSET
     for word in words:
         for byte in word.to_bytes(8, "little"):
@@ -87,13 +56,11 @@ def digest_value(value: float | np.ndarray) -> tuple[list[int], int]:
 
 
 def float_words(values: object) -> list[int]:
-    """The ``u64`` bit patterns of ``values`` (a float or an array), in C order."""
     array = np.ascontiguousarray(np.asarray(values, dtype=np.float64))
     return array.ravel().view(np.uint64).tolist()
 
 
 def sequence_words(data: SequenceData) -> list[int]:
-    """Per frame: the gt id count and ids, the pred id count and ids, the similarity bits."""
     words: list[int] = []
     for gt, pred, sim in zip(data.gt_ids, data.pred_ids, data.similarity, strict=True):
         words += [len(gt), *gt.tolist(), len(pred), *pred.tolist(), *float_words(sim)]
@@ -101,22 +68,16 @@ def sequence_words(data: SequenceData) -> list[int]:
 
 
 def digest_scores(scores: Scores) -> Json:
-    """``[[field, shape, fnv], ...]`` in the dict's order."""
     return [[field, *digest_value(value)] for field, value in scores.items()]
 
 
 def shuffle(rng: SplitMix64, items: list[int]) -> None:
-    """Fisher-Yates, from the last position down."""
     for i in range(len(items) - 1, 0, -1):
         j = rng.below(i + 1)
         items[i], items[j] = items[j], items[i]
 
 
 def frame_ids(rng: SplitMix64, num_ids: int) -> list[int]:
-    """A random subset of ``range(num_ids)`` in random order, usually 8 or more ids.
-
-    One frame in eight repeats its first id, which numpy's fancy-index ``+=`` counts once.
-    """
     count = 8 + rng.below(num_ids - 7) if rng.below(5) else rng.below(3)
     ids = list(range(num_ids))
     shuffle(rng, ids)
@@ -157,7 +118,6 @@ def hota_dense_sequence(rng: SplitMix64, name: str) -> SequenceData:
 
 
 def hota_dense_case(seed: int) -> Json:
-    """Three dense sequences: every LSAP cost matrix, each sequence's scores, combined."""
     rng = SplitMix64(seed)
     sequences = [hota_dense_sequence(rng, f"dense{i}") for i in range(3)]
     costs: list[int] = []
@@ -224,7 +184,6 @@ def combiner_case(seed: int, metric: HOTA | TrackMAP) -> Json:
 
 
 def trackmap_tracks_case(seed: int) -> Json:
-    """Tracks on random frames with random boxes and confidences, ids ascending per frame."""
     rng = SplitMix64(seed)
     num_timesteps = 20 + rng.below(40)
     num_ids = 1 + rng.below(6)

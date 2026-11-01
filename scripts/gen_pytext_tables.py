@@ -1,17 +1,3 @@
-"""Write `src/formats/pytables.rs`: the Unicode tables Python's text parsing uses.
-
-`read_mot` and the loaders parse text the way CPython does. Three character classes come
-from the Unicode database of the running interpreter:
-
-- whitespace (`str.isspace`, `str.strip`, `str.split()`, and `re`'s `\\s`);
-- line boundaries (`str.splitlines`);
-- decimal digits (`int()` and `float()` map every Unicode decimal digit to ASCII).
-
-Run this with the reference interpreter (CPython 3.14.8, Unicode 16.0.0):
-
-    uv run python scripts/gen_pytext_tables.py
-"""
-
 import sys
 import unicodedata
 from pathlib import Path
@@ -29,7 +15,6 @@ def is_line_break(code: int) -> bool:
 
 
 def decimal_ranges() -> list[tuple[int, int, int]]:
-    """`(first, last, value of first)` for each run of consecutive decimal digits."""
     ranges: list[tuple[int, int, int]] = []
     for code in range(MAX_CODE):
         ch = chr(code)

@@ -1,27 +1,3 @@
-//! PyO3 module behind the `moteval` Python package: `moteval._moteval`.
-//!
-//! The Python package keeps only its public data types (frozen dataclasses such as
-//! `MOTDataset`, `GtSequence`, `Track`, `Protocol`, `SequenceData`) and thin functions
-//! that call this module. The boundary is plain data: this module reads the dataclasses by
-//! attribute into Rust-owned values and returns tuples, lists, `float`s, and numpy arrays
-//! (Rust vectors moved into numpy without a copy), from which Python builds its
-//! dataclasses. Long Rust work (loading, reading, evaluating) runs with the GIL released.
-//!
-//! Every Rust error is raised as `RustError(exception, message)`: `exception` names the
-//! Python class the pure-Python code raised (`"ValueError"`, `"OSError"`, `"KeyError"`,
-//! ...) and `message` is its text. `moteval._rust.call` re-raises it as that class.
-//!
-//! - Loaders: `load_benchmark(name, root, split)`, `load_motchallenge`, `load_mots`,
-//!   `default_data_root()`, and `benchmarks_table()`.
-//! - Formats: `read_mot`, `read_mots`, `write_mot`, `write_mots`.
-//! - Metrics: `metric_info(name)`, `metric_eval_sequence(name, data)`, and
-//!   `metric_combine(name, method, all_res)`.
-//! - `evaluate(dataset, predictions, metric_names)`: `moteval.evaluate`.
-//! - `results_table`, `results_to_json`, `results_to_csv`: the CLI table and the JSON and
-//!   CSV exports of a Python `EvaluationResult`.
-//! - `cli_run(argv)`: the CLI with captured output; `main()`: the CLI on `sys.argv`, the
-//!   entry point for the `moteval` console script.
-
 use std::path::PathBuf;
 
 use crate::benchmarks::{self, BENCHMARKS, BenchmarkError};
@@ -51,7 +27,6 @@ create_exception!(
     "A Rust error: args are (Python exception class name, message)."
 );
 
-/// `RustError(exception, message)`.
 fn rust_error(exception: &str, message: String) -> PyErr {
     RustError::new_err((exception.to_string(), message))
 }
@@ -76,9 +51,6 @@ fn value_error(message: impl Into<String>) -> PyErr {
     rust_error("ValueError", message.into())
 }
 
-// ------------------------------------------------------------------ Python -> Rust
-
-/// The Rust metric of a built-in metric class name (`type(metric).__name__`).
 fn metric_by_name(name: &str) -> PyResult<Box<dyn Metric>> {
     Ok(match name {
         "HOTA" => Box::new(Hota),
@@ -143,8 +115,6 @@ fn protocol_from_py(obj: &Bound<'_, PyAny>) -> PyResult<Protocol> {
     })
 }
 
-/// A Python `MOTDataset` as a Rust one. A sequence is a mask sequence exactly when it is
-/// a `moteval.data.model.MaskGtSequence`, as Python's `evaluate` decided.
 fn dataset_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<MOTDataset> {
     let mask_class = py.import("moteval.data.model")?.getattr("MaskGtSequence")?;
     let mut sequences = Vec::new();
@@ -178,7 +148,6 @@ fn dataset_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<MOTDatase
     })
 }
 
-/// `np.ascontiguousarray(obj, dtype)` as a flat vector plus its shape.
 fn flat_array<'py, T: numpy::Element + Copy>(
     py: Python<'py>,
     obj: &Bound<'py, PyAny>,
@@ -194,7 +163,6 @@ fn flat_array<'py, T: numpy::Element + Copy>(
     Ok((data, array.shape().to_vec()))
 }
 
-/// A tuple of per-frame 1-D arrays.
 fn frames_of<'py, T: numpy::Element + Copy>(
     py: Python<'py>,
     obj: &Bound<'py, PyAny>,
@@ -205,7 +173,6 @@ fn frames_of<'py, T: numpy::Element + Copy>(
         .collect()
 }
 
-/// Per-frame ids as indices; a negative id cannot be dense.
 fn id_frames(py: Python<'_>, obj: &Bound<'_, PyAny>, what: &str) -> PyResult<Vec<Vec<usize>>> {
     frames_of::<i64>(py, obj, "int64")?
         .into_iter()
@@ -219,7 +186,6 @@ fn id_frames(py: Python<'_>, obj: &Bound<'_, PyAny>, what: &str) -> PyResult<Vec
         .collect()
 }
 
-/// A tuple of per-frame `(n, 4)` box arrays.
 fn box_frames(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Vec<Vec<[f64; 4]>>> {
     obj.try_iter()?
         .map(|frame| {
@@ -233,8 +199,6 @@ fn box_frames(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Vec<Vec<[f64; 
         .collect()
 }
 
-/// A tuple of per-frame object arrays of pycocotools RLE dicts
-/// (`{"size": [h, w], "counts": bytes | str}`).
 fn mask_frames(obj: &Bound<'_, PyAny>) -> PyResult<Vec<Vec<RleMask>>> {
     obj.try_iter()?
         .map(|frame| {
@@ -242,7 +206,6 @@ fn mask_frames(obj: &Bound<'_, PyAny>) -> PyResult<Vec<Vec<RleMask>>> {
                 .try_iter()?
                 .map(|rle| {
                     let rle = rle?;
-                    // pycocotools gives `size` as a list; accept a tuple as well.
                     let size: Vec<usize> = rle.get_item("size")?.extract()?;
                     let [h, w] = size[..] else {
                         return Err(value_error("an RLE size must hold 2 values"));
@@ -260,7 +223,6 @@ fn mask_frames(obj: &Bound<'_, PyAny>) -> PyResult<Vec<Vec<RleMask>>> {
         .collect()
 }
 
-/// A Python `SequenceData` as a Rust one (checked by `SequenceData::new`).
 fn sequence_data_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<SequenceData> {
     let geometry = obj.getattr("geometry")?;
     let model = py.import("moteval.data.model")?;
@@ -306,8 +268,6 @@ fn model_error(err: ModelError) -> PyErr {
     metric_error(MetricError::Model(err))
 }
 
-/// A score value: a number, or a numpy array of up to two dimensions (read as float64,
-/// C order).
 fn value_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Value> {
     let numpy = py.import("numpy")?;
     if !obj.is_instance(&numpy.getattr("ndarray")?)? {
@@ -327,7 +287,6 @@ fn value_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Value> {
     }
 }
 
-/// `{field: value}`.
 fn scores_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Scores> {
     let mut scores = Scores::new();
     for (field, value) in obj.cast::<PyDict>()?.iter() {
@@ -336,7 +295,6 @@ fn scores_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Scores> {
     Ok(scores)
 }
 
-/// `{metric: {field: value}}`.
 fn metric_scores_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<MetricScores> {
     let mut out = MetricScores::new();
     for (metric, fields) in obj.cast::<PyDict>()?.iter() {
@@ -355,7 +313,6 @@ fn per_sequence_from_py(
         .collect()
 }
 
-/// A Python `EvaluationResult` as a Rust one, mappings in their dict order.
 fn result_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<EvaluationResult> {
     let mut per_class = Vec::new();
     for (cls_id, class_result) in obj.getattr("per_class")?.cast::<PyDict>()?.iter() {
@@ -376,11 +333,7 @@ fn result_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Evaluation
     })
 }
 
-// ------------------------------------------------------------------ Rust -> Python
-
-/// `(frame, track_id, x, y, w, h, conf, class_id)`: the `Track` fields in order.
 type TrackRow = (i64, i64, f64, f64, f64, f64, f64, i64);
-/// `(frame, track_id, class_id, img_h, img_w, rle)`: the `MaskTrack` fields in order.
 type MaskTrackRow = (i64, i64, i64, i64, i64, String);
 
 fn track_row(t: &Track) -> TrackRow {
@@ -398,8 +351,6 @@ fn mask_track_row(t: &MaskTrack) -> MaskTrackRow {
     )
 }
 
-/// `(name, (convention name, first_frame), eval_classes, distractor_classes,
-/// distractor_iou_threshold, ignore_iou_threshold, drop_zero_conf_gt, matching_fill)`.
 type ProtocolRow = (
     String,
     (String, i64),
@@ -427,8 +378,6 @@ fn protocol_row(p: &Protocol) -> ProtocolRow {
     )
 }
 
-/// A loaded dataset as `(name, split, protocol, sequences)`; each sequence is
-/// `("boxes" | "masks", name, num_timesteps, tracks, ignore_regions)` with rows as tuples.
 fn dataset_to_py<'py>(py: Python<'py>, dataset: &MOTDataset) -> PyResult<Bound<'py, PyAny>> {
     let mut sequences = Vec::with_capacity(dataset.sequences.len());
     for seq in &dataset.sequences {
@@ -467,8 +416,6 @@ fn dataset_to_py<'py>(py: Python<'py>, dataset: &MOTDataset) -> PyResult<Bound<'
         .into_any())
 }
 
-/// A value as Python moteval holds it: a `float`, or a float64 numpy array that takes
-/// over the Rust vector without a copy.
 fn value_to_py<'py>(py: Python<'py>, value: Value) -> PyResult<Bound<'py, PyAny>> {
     Ok(match value {
         Value::Float(x) => x.into_pyobject(py)?.into_any(),
@@ -482,7 +429,6 @@ fn value_to_py<'py>(py: Python<'py>, value: Value) -> PyResult<Bound<'py, PyAny>
     })
 }
 
-/// `{field: value}`, in the metric's insertion order.
 fn scores_to_py<'py>(py: Python<'py>, scores: &Scores) -> PyResult<Bound<'py, PyDict>> {
     let out = PyDict::new(py);
     for (field, value) in scores.iter() {
@@ -491,8 +437,6 @@ fn scores_to_py<'py>(py: Python<'py>, scores: &Scores) -> PyResult<Bound<'py, Py
     Ok(out)
 }
 
-/// `{metric: {field: value}}`. Values are cloned out of the shared `Scores` map (a
-/// handful of floats each); arrays then move into numpy without another copy.
 fn metric_scores_to_py<'py>(
     py: Python<'py>,
     scores: &MetricScores,
@@ -515,8 +459,6 @@ fn per_sequence_to_py<'py>(
     Ok(out)
 }
 
-/// The result as the keyword arguments of `EvaluationResult`, with each `per_class`
-/// value as the keyword arguments of `ClassResult`.
 fn result_to_py<'py>(py: Python<'py>, result: &EvaluationResult) -> PyResult<Bound<'py, PyDict>> {
     let per_class = PyDict::new(py);
     for (cls_id, class_result) in &result.per_class {
@@ -546,9 +488,6 @@ fn result_to_py<'py>(py: Python<'py>, result: &EvaluationResult) -> PyResult<Bou
     Ok(out)
 }
 
-// ------------------------------------------------------------------------- loaders
-
-/// The built-in benchmarks as `(name, default split)`, in `BENCHMARKS` order.
 #[pyfunction]
 fn benchmarks_table() -> Vec<(&'static str, &'static str)> {
     BENCHMARKS
@@ -557,15 +496,11 @@ fn benchmarks_table() -> Vec<(&'static str, &'static str)> {
         .collect()
 }
 
-/// `default_data_root()`: `MOTEVAL_DATA_ROOT` when set (an empty value is an error), else
-/// `data/benchmarks`.
 #[pyfunction]
 fn default_data_root() -> PyResult<PathBuf> {
     benchmarks::default_data_root().map_err(benchmark_error)
 }
 
-/// `load_dataset(name, root, split)`: a built-in benchmark by name. `root` defaults to
-/// `default_data_root() / name` and `split` to the benchmark's default split.
 #[pyfunction]
 #[pyo3(signature = (name, root=None, split=None))]
 fn load_benchmark<'py>(
@@ -580,7 +515,6 @@ fn load_benchmark<'py>(
     dataset_to_py(py, &dataset)
 }
 
-/// `load_motchallenge(root, split)`: any directory in the MOTChallenge box layout.
 #[pyfunction]
 fn load_motchallenge<'py>(
     py: Python<'py>,
@@ -593,7 +527,6 @@ fn load_motchallenge<'py>(
     dataset_to_py(py, &dataset)
 }
 
-/// `load_mots(root, split, class_id)`: any directory in the MOTS20 mask layout.
 #[pyfunction]
 fn load_mots<'py>(
     py: Python<'py>,
@@ -607,9 +540,6 @@ fn load_mots<'py>(
     dataset_to_py(py, &dataset)
 }
 
-// ------------------------------------------------------------------------- formats
-
-/// `read_mot(path, class_column=...)` as `Track` field tuples.
 #[pyfunction]
 fn read_mot(py: Python<'_>, path: PathBuf, class_column: bool) -> PyResult<Vec<TrackRow>> {
     let tracks = py
@@ -618,7 +548,6 @@ fn read_mot(py: Python<'_>, path: PathBuf, class_column: bool) -> PyResult<Vec<T
     Ok(tracks.iter().map(track_row).collect())
 }
 
-/// `read_mots(path)` as `MaskTrack` field tuples.
 #[pyfunction]
 fn read_mots(py: Python<'_>, path: PathBuf) -> PyResult<Vec<MaskTrackRow>> {
     let tracks = py
@@ -627,7 +556,6 @@ fn read_mots(py: Python<'_>, path: PathBuf) -> PyResult<Vec<MaskTrackRow>> {
     Ok(tracks.iter().map(mask_track_row).collect())
 }
 
-/// `write_mot(path, tracks)`: `Track` objects as MOTChallenge rows.
 #[pyfunction]
 fn write_mot(py: Python<'_>, path: PathBuf, tracks: &Bound<'_, PyAny>) -> PyResult<()> {
     let tracks = rows_of(tracks, track_from_py)?;
@@ -635,7 +563,6 @@ fn write_mot(py: Python<'_>, path: PathBuf, tracks: &Bound<'_, PyAny>) -> PyResu
         .map_err(format_error)
 }
 
-/// `write_mots(path, tracks)`: `MaskTrack` objects as MOTS rows.
 #[pyfunction]
 fn write_mots(py: Python<'_>, path: PathBuf, tracks: &Bound<'_, PyAny>) -> PyResult<()> {
     let tracks = rows_of(tracks, mask_track_from_py)?;
@@ -643,10 +570,6 @@ fn write_mots(py: Python<'_>, path: PathBuf, tracks: &Bound<'_, PyAny>) -> PyRes
         .map_err(format_error)
 }
 
-// ------------------------------------------------------------------------- metrics
-
-/// `(fields, geometry)` of a built-in metric: its public result fields in order and the
-/// geometry it reads (`"boxes"`, `"masks"`, or `None`).
 #[pyfunction]
 fn metric_info(name: &str) -> PyResult<(Vec<&'static str>, Option<&'static str>)> {
     let metric = metric_by_name(name)?;
@@ -656,7 +579,6 @@ fn metric_info(name: &str) -> PyResult<(Vec<&'static str>, Option<&'static str>)
     ))
 }
 
-/// `metric.eval_sequence(data)` for a built-in metric, on a Python `SequenceData`.
 #[pyfunction]
 fn metric_eval_sequence<'py>(
     py: Python<'py>,
@@ -671,9 +593,6 @@ fn metric_eval_sequence<'py>(
     scores_to_py(py, &scores)
 }
 
-/// `metric.<method>(all_res)` for a built-in metric: `method` is `combine_sequences`,
-/// `combine_classes_class_averaged`, or `combine_classes_det_averaged`, and `all_res`
-/// maps a key to its `Scores` dict (combined in dict order).
 #[pyfunction]
 fn metric_combine<'py>(
     py: Python<'py>,
@@ -699,12 +618,6 @@ fn metric_combine<'py>(
     scores_to_py(py, &combined)
 }
 
-// ---------------------------------------------------------------------- evaluation
-
-/// `evaluate(dataset, predictions, metric_names)`: score a Python `MOTDataset` against
-/// the `<seq>.txt` files in `predictions` with the named built-in metrics. Returns the
-/// keyword arguments of `EvaluationResult` (`per_class` values as those of
-/// `ClassResult`). The GIL is released while Rust reads and scores.
 #[pyfunction]
 fn evaluate<'py>(
     py: Python<'py>,
@@ -723,15 +636,12 @@ fn evaluate<'py>(
     result_to_py(py, &result)
 }
 
-/// The headline table `moteval run` prints for a Python `EvaluationResult`, without the
-/// final newline.
 #[pyfunction]
 fn results_table(py: Python<'_>, result: &Bound<'_, PyAny>) -> PyResult<String> {
     let result = result_from_py(py, result)?;
     cli::table(&result).map_err(|err| value_error(err.to_string()))
 }
 
-/// The JSON text `moteval run --out-json` writes (`json.dumps` of the result's export).
 #[pyfunction]
 fn results_to_json(
     py: Python<'_>,
@@ -746,14 +656,11 @@ fn results_to_json(
     ))
 }
 
-/// The long-form CSV text `moteval run --out-csv` writes.
 #[pyfunction]
 fn results_to_csv(py: Python<'_>, result: &Bound<'_, PyAny>) -> PyResult<String> {
     Ok(results::to_csv(&result_from_py(py, result)?))
 }
 
-/// Run the CLI on `argv` (without the program name) with captured output. Returns
-/// `(exit_code, stdout, stderr)`. The GIL is released while it runs.
 #[pyfunction]
 fn cli_run(py: Python<'_>, argv: Vec<String>) -> (i32, String, String) {
     let (code, stdout, stderr) = py.detach(|| {
@@ -769,8 +676,6 @@ fn cli_run(py: Python<'_>, argv: Vec<String>) -> (i32, String, String) {
     )
 }
 
-/// The `moteval` console script: run the CLI on `sys.argv[1:]`, writing to the process's
-/// stdout and stderr. Returns the exit code.
 #[pyfunction]
 fn main(py: Python<'_>) -> PyResult<i32> {
     let argv: Vec<String> = py.import("sys")?.getattr("argv")?.extract()?;

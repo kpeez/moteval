@@ -1,15 +1,3 @@
-//! ChimpACT loader, ported from `moteval/benchmarks/chimpact.py`.
-//!
-//! One COCO-style JSON per clip, `<root>/ChimpACT_release_v1/labels/<clip>.json`. Each
-//! image's `file_name` stem is a keyframe block; block N is video frame `N * 10`,
-//! 0-indexed. A track in two consecutive blocks is linearly interpolated over the 9
-//! frames between them; a track with no match in the next block holds its box for those
-//! 9 frames. `bbox_id == 23` is dropped. The sequence length is `(max block + 1) * 10`.
-//! The val and test clips are the official lists; every other clip is train.
-//!
-//! The loader runs Python's steps in Python's order, so every error Python raises fires
-//! first; only then are the values converted to `Track` fields.
-
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -19,14 +7,13 @@ use crate::formats::Track;
 use crate::formats::pytext::{PyInt, int_error_message, py_int, py_join, py_name, py_stem, py_str};
 use crate::model::{FrameConvention, GtSequence, MOTDataset, Protocol, Sequence};
 
-/// The split `load_chimpact` reads when the caller names none.
 pub const DEFAULT_SPLIT: &str = "val";
 
 const KEYFRAME_STRIDE: i64 = 10;
 const UNNAMED_BBOX_ID: i128 = 23;
 const CLASS_ID: i64 = 1;
 
-/// `_VAL_CLIPS`, copied verbatim from the official `tools/create_coco_format.py`.
+// Verbatim from ChimpACT's official `tools/create_coco_format.py`.
 pub const VAL_CLIPS: [&str; 17] = [
     "Azibo_ObsChimp_2015_11_25_d_clip_23000_24000",
     "Azibo_ObsChimp_2015_11_26_a_clip_1000_2000",
@@ -47,7 +34,7 @@ pub const VAL_CLIPS: [&str; 17] = [
     "Azibo_ObsNatascha_2018_06_29_a_clip_16000_17000",
 ];
 
-/// `_TEST_CLIPS`, copied verbatim from the official `tools/create_coco_format.py`.
+// Verbatim from ChimpACT's official `tools/create_coco_format.py`.
 pub const TEST_CLIPS: [&str; 19] = [
     "Azibo_ObsChimp_2015_11_25_d_clip_1000_2000",
     "Azibo_ObsChimp_2015_11_26_a_clip_0_1000",
@@ -70,7 +57,6 @@ pub const TEST_CLIPS: [&str; 19] = [
     "Azibo_ObsNatascha_2018_06_29_a_clip_17000_17712",
 ];
 
-/// `_keyframe_block(image)`: `int(Path(image["file_name"]).stem)`.
 fn keyframe_block(image: &Json) -> Result<i64, BenchmarkError> {
     let file_name = image.get("file_name")?;
     let Json::Str(file_name) = file_name else {
@@ -98,12 +84,10 @@ fn keyframe_block(image: &Json) -> Result<i64, BenchmarkError> {
     }
 }
 
-/// `dict.get` / `dict[key]` over `(key, value)` pairs with `dict` semantics.
 fn lookup<'a, V>(map: &'a [(PyKey, V)], key: &PyKey) -> Option<&'a V> {
     map.iter().find(|(k, _)| k == key).map(|(_, v)| v)
 }
 
-/// `d[key] = value`: replace in place, else append.
 fn insert<V>(map: &mut Vec<(PyKey, V)>, key: PyKey, value: V) {
     match map.iter_mut().find(|(k, _)| *k == key) {
         Some(slot) => slot.1 = value,
@@ -111,31 +95,26 @@ fn insert<V>(map: &mut Vec<(PyKey, V)>, key: PyKey, value: V) {
     }
 }
 
-/// One GT row as Python holds it before numpy converts it.
 struct RawTrack {
     frame: i64,
     track_id: Json,
     coords: [Coord; 4],
 }
 
-/// A box coordinate: a JSON value (held keyframe box) or an interpolated float.
 enum Coord {
     Raw(Json),
     Float(f64),
 }
 
-/// The keyframe blocks of a clip, in block order, and every image's block.
 struct Blocks {
     by_block: BTreeMap<i64, Vec<Json>>,
     image_blocks: Vec<i64>,
 }
 
-/// `_keyframe_blocks(labels)`, also keeping each image's block for `_num_timesteps`.
 fn keyframe_blocks(labels: &Json) -> Result<Blocks, BenchmarkError> {
     let mut image_id_to_block: Vec<(PyKey, i64)> = Vec::new();
     let mut image_blocks = Vec::new();
     for image in labels.get("images")?.iter()? {
-        // A dict display evaluates the key, then the value, then hashes the key.
         let id = image.get("id")?.clone();
         let block = keyframe_block(&image)?;
         image_blocks.push(block);
@@ -157,17 +136,13 @@ fn keyframe_blocks(labels: &Json) -> Result<Blocks, BenchmarkError> {
     })
 }
 
-/// `_interpolated_box(cur_bbox, next_bbox, t)`: `c * (1 - t) + n * t` per coordinate,
-/// with `zip(strict=True)` and the 4-value unpack.
 fn interpolated_box(cur: &Json, next: &Json, t: f64) -> Result<[f64; 4], BenchmarkError> {
     let cur = cur.iter()?;
     let next = next.iter()?;
     let mut out = Vec::with_capacity(4);
     for i in 0.. {
-        // The unpack pulls a fifth item to check that the generator is exhausted.
         match (cur.get(i), next.get(i)) {
             (Some(c), Some(n)) => {
-                // The generator computes the value before the unpack sees it.
                 let a = c.mul_float(1.0 - t)?;
                 let b = n.mul_float(t)?;
                 if out.len() == 4 {
@@ -204,7 +179,6 @@ fn interpolated_box(cur: &Json, next: &Json, t: f64) -> Result<[f64; 4], Benchma
     })
 }
 
-/// `_clip_tracks(labels)`, with every image's block.
 fn clip_tracks(labels: &Json) -> Result<(Vec<RawTrack>, Vec<i64>), BenchmarkError> {
     let blocks = keyframe_blocks(labels)?;
     let mut tracks = Vec::new();
@@ -249,12 +223,10 @@ fn clip_tracks(labels: &Json) -> Result<(Vec<RawTrack>, Vec<i64>), BenchmarkErro
     Ok((tracks, blocks.image_blocks))
 }
 
-/// `_load_clip(label_path)`.
 fn load_clip(label_path: &Path) -> Result<GtSequence, BenchmarkError> {
     let name = py_stem(&py_name(label_path)).to_owned();
     let labels = read_json(label_path)?;
     let (raw, image_blocks) = clip_tracks(&labels)?;
-    // _num_timesteps
     if !labels.get("images")?.truthy() {
         return Err(BenchmarkError::EmptyGt(name));
     }
@@ -294,7 +266,6 @@ fn load_clip(label_path: &Path) -> Result<GtSequence, BenchmarkError> {
     })
 }
 
-/// `_split_clip_names(label_dir, split)`.
 fn split_clip_names(label_dir: &Path, split: &str) -> Result<Vec<String>, BenchmarkError> {
     let mut names: Vec<String> = glob_suffix(label_dir, ".json")?
         .iter()
@@ -318,7 +289,6 @@ fn split_clip_names(label_dir: &Path, split: &str) -> Result<Vec<String>, Benchm
     Ok(names)
 }
 
-/// `load_chimpact(root, split)`.
 pub fn load_chimpact(root: &Path, split: &str) -> Result<MOTDataset, BenchmarkError> {
     let label_dir = py_join(root, "ChimpACT_release_v1/labels");
     if !label_dir.is_dir() {

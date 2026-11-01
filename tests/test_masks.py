@@ -1,5 +1,3 @@
-"""Mask geometry: RLE round-trips, mask IoU/IoA, MOTS-txt parsing, MOTS20 end-to-end."""
-
 import numpy as np
 import pytest
 from pycocotools import mask as mask_utils
@@ -25,26 +23,12 @@ def _counts(mask: np.ndarray) -> str:
     return counts.decode()
 
 
-# ---------------------------------------------------------------- RLE encoding
-
-
 def test_rle_round_trip_from_c_order_input():
-    # np.zeros is C-contiguous; encode_mask must convert, not reject.
     mask = _square_mask(12, 15, 2, 7, 3, 9)
     assert mask.flags["C_CONTIGUOUS"]
     rle = encode_mask(mask)
     assert rle["size"] == [12, 15]
     assert np.array_equal(mask_utils.decode(rle), mask)
-
-
-# ------------------------------------------------------------------- mask IoU
-#
-# Mask IoU and IoA run in Rust: tests/integration/rle.rs checks them against
-# pycocotools on 1,000 seeded masks, and tests/jf.rs against the dumped similarity of
-# every MOTS frame.
-
-
-# ------------------------------------------------------------------- MOTS-txt
 
 
 def test_read_mots_parses_and_round_trips(tmp_path):
@@ -80,9 +64,6 @@ def test_read_mots_rejects_malformed_rows(tmp_path):
     path.write_text("1 x 2 10 10 abc\n")
     with pytest.raises(ValueError, match="malformed MOTS row"):
         read_mots(path)
-
-
-# ------------------------------------------------------------ MOTS20 benchmark
 
 
 H, W = 20, 20
@@ -123,7 +104,6 @@ def test_mots20_protocol_declares_mots_matching_semantics(tmp_path):
 def test_mots20_perfect_predictions_evaluate_end_to_end(tmp_path):
     _write_mots20_layout(tmp_path / "data", _perfect_gt_rows())
     dataset = load_mots20(root=tmp_path / "data", split="train")
-    # Predictions identical to GT, but independently numbered (ids 7 and 9).
     preds = [
         _mask_row(1, 7, 2, TRACK1[0]),
         _mask_row(2, 7, 2, TRACK1[1]),
@@ -143,9 +123,6 @@ def test_mots20_perfect_predictions_evaluate_end_to_end(tmp_path):
 
 
 def test_mots20_ignore_region_drops_unmatched_prediction(tmp_path):
-    # GT: track 1 only. An ignore region (class 10) sits at rows 12-18.
-    # Pred A matches GT track 1. Pred B is unmatched and fully inside the
-    # ignore region -> dropped by preprocessing (IoA 1.0 > 0.5).
     gt_rows = [
         _mask_row(1, 1, 2, TRACK1[0]),
         _mask_row(2, 1, 2, TRACK1[1]),
@@ -160,8 +137,8 @@ def test_mots20_ignore_region_drops_unmatched_prediction(tmp_path):
     preds = [
         _mask_row(1, 7, 2, TRACK1[0]),
         _mask_row(2, 7, 2, TRACK1[1]),
-        _mask_row(1, 8, 2, TRACK2[0]),  # inside the frame-1 ignore region
-        _mask_row(2, 8, 2, TRACK2[1]),  # frame 2 has no ignore region -> stays, FP
+        _mask_row(1, 8, 2, TRACK2[0]),
+        _mask_row(2, 8, 2, TRACK2[1]),
     ]
     pred_dir = tmp_path / "preds"
     write_mots(pred_dir / "MOTS20-02.txt", preds)
@@ -197,7 +174,6 @@ def test_mots20_missing_prediction_file_raises(tmp_path):
 def test_mots20_overlapping_predicted_masks_raise(tmp_path):
     _write_mots20_layout(tmp_path / "data", _perfect_gt_rows())
     dataset = load_mots20(root=tmp_path / "data", split="train")
-    # Frame 1: ids 7 and 9 share rows 4-7, cols 4-7. GT masks never overlap.
     preds = [
         _mask_row(1, 7, 2, _square_mask(H, W, 2, 8, 2, 8)),
         _mask_row(1, 9, 2, _square_mask(H, W, 4, 10, 4, 10)),
@@ -211,14 +187,11 @@ def test_mots20_overlapping_predicted_masks_raise(tmp_path):
 def test_mots20_out_of_range_prediction_frame_raises(tmp_path):
     _write_mots20_layout(tmp_path / "data", _perfect_gt_rows())
     dataset = load_mots20(root=tmp_path / "data", split="train")
-    preds = [_mask_row(3, 7, 2, TRACK1[0])]  # seqLength is 2 -> frame 3 invalid
+    preds = [_mask_row(3, 7, 2, TRACK1[0])]
     pred_dir = tmp_path / "preds"
     write_mots(pred_dir / "MOTS20-02.txt", preds)
     with pytest.raises(ValueError, match="out of range"):
         evaluate(dataset, pred_dir, [Count()])
-
-
-# ------------------------------------------------------------ geometry union
 
 
 def _sequence_data(geometry: BoxGeometry | MaskGeometry) -> SequenceData:
@@ -258,7 +231,6 @@ def _objects(*masks) -> np.ndarray:
 
 
 def test_jf_scores_a_sequence_built_from_pycocotools_masks():
-    # pycocotools gives each RLE's "size" as a list; the extension must accept it.
     mask = encode_mask(_square_mask(H, W, 2, 8, 2, 8))
     assert isinstance(mask["size"], list)
     data = SequenceData(
@@ -298,7 +270,6 @@ def test_load_mots_scores_a_custom_layout_without_registration(tmp_path):
     assert dataset.protocol.matching_fill == -10000.0
     assert dataset.protocol.drop_zero_conf_gt is False
     (seq,) = dataset.sequences
-    # Class-10 rows route to ignore regions exactly as in the MOTS20 loader.
     assert len(seq.ignore_regions) == 1
     assert len(seq.tracks) == 2
 

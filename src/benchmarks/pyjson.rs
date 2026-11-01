@@ -1,17 +1,7 @@
-//! `json.loads` as CPython 3.14.8 runs it (the C scanner in `Modules/_json.c`), and the
-//! Python operations the JSON loaders (PanAf500, ChimpACT) apply to the decoded values.
-//!
-//! Every error is the text Python prints: `JSONDecodeError` (`msg: line L column C (char
-//! P)`, positions in code points), `KeyError` (the key's repr), `TypeError`, and
-//! `ValueError` for unpacking. Values outside what a Rust value can hold are errors with
-//! Rust's own text: an integer beyond `i128`, a lone UTF-16 surrogate, and nesting
-//! deeper than `MAX_DEPTH`.
-
 use super::{BenchmarkError, PyException};
 use crate::formats::pytext::{IntError, int_error_message, py_float};
 use crate::pyfmt::repr_str;
 
-/// A decoded JSON value, with Python's `int`/`float` distinction kept.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Json {
     Null,
@@ -20,25 +10,18 @@ pub enum Json {
     Float(f64),
     Str(String),
     Array(Vec<Json>),
-    /// Pairs in document order; a repeated key's last value wins on lookup, as in `dict`.
     Object(Vec<(String, Json)>),
 }
 
-/// Nesting depth past which decoding stops (Python stops at its C recursion limit).
 const MAX_DEPTH: usize = 2000;
 
-/// Why `loads` failed, with the text Python prints.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum JsonError {
-    /// `json.JSONDecodeError`.
     Decode(String),
-    /// `ValueError`: an integer literal of more than 4300 digits.
     TooManyDigits(String),
-    /// A document Python decodes but Rust cannot hold (Rust's own text).
     Unsupported(String),
 }
 
-/// A failed scan: Python's `StopIteration(idx)` ("Expecting value") or a raised error.
 enum Fail {
     Stop(usize),
     Raise(JsonError),
@@ -47,10 +30,8 @@ enum Fail {
 struct Scanner<'a> {
     s: &'a [char],
     depth: usize,
-    /// The first value Python decodes but Rust cannot hold (a lone surrogate, an integer
-    /// beyond `i128`), with Rust's message. A placeholder takes its place and `loads`
-    /// reports it only if the whole document decodes, so every error Python raises
-    /// still comes first.
+    /// The first value Rust cannot hold. A placeholder takes its place, and `loads` reports
+    /// it only if the document otherwise decodes, so every error CPython raises comes first.
     unsupported: std::cell::RefCell<Option<String>>,
 }
 
@@ -58,7 +39,6 @@ fn is_ws(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\n' | '\r')
 }
 
-/// `JSONDecodeError(msg, doc, pos)` as text.
 fn decode_error(s: &[char], msg: &str, pos: usize) -> String {
     let before = &s[..pos.min(s.len())];
     let lineno = before.iter().filter(|&&c| c == '\n').count() + 1;
@@ -70,7 +50,6 @@ fn decode_error(s: &[char], msg: &str, pos: usize) -> String {
 }
 
 impl Scanner<'_> {
-    /// Record the first value Rust cannot hold (see `unsupported`).
     fn defer(&self, message: String) {
         self.unsupported.borrow_mut().get_or_insert(message);
     }
@@ -92,7 +71,6 @@ impl Scanner<'_> {
             .all(|(k, c)| self.s.get(idx + k) == Some(&c))
     }
 
-    /// `scan_once_unicode`.
     fn scan_once(&mut self, idx: usize) -> Result<(Json, usize), Fail> {
         let len = self.s.len();
         if idx >= len {
@@ -142,7 +120,6 @@ impl Scanner<'_> {
         self.match_number(idx)
     }
 
-    /// `_match_number_unicode`.
     fn match_number(&self, start: usize) -> Result<(Json, usize), Fail> {
         let s = self.s;
         let end_idx = s.len() - 1;
@@ -210,7 +187,6 @@ impl Scanner<'_> {
         }
     }
 
-    /// `scanstring_unicode`: `end` is the index after the opening quote.
     fn scan_string(&self, mut end: usize) -> Result<(String, usize), Fail> {
         let s = self.s;
         let len = s.len();
@@ -257,7 +233,6 @@ impl Scanner<'_> {
             } else {
                 next += 1;
                 end = next + 4;
-                // Four hex digits that end the document decode; "Unterminated" follows.
                 if end > len {
                     return Err(self.err("Invalid \\uXXXX escape", next - 1));
                 }
@@ -293,7 +268,6 @@ impl Scanner<'_> {
         }
     }
 
-    /// `_parse_object_unicode`: `idx` is the index after `{`.
     fn parse_object(&mut self, idx: usize) -> Result<(Json, usize), Fail> {
         let len = self.s.len();
         let mut pairs: Vec<(String, Json)> = Vec::new();
@@ -328,7 +302,6 @@ impl Scanner<'_> {
         Ok((Json::Object(pairs), idx + 1))
     }
 
-    /// `_parse_array_unicode`: `idx` is the index after `[`.
     fn parse_array(&mut self, idx: usize) -> Result<(Json, usize), Fail> {
         let len = self.s.len();
         let mut values = Vec::new();
@@ -355,7 +328,6 @@ impl Scanner<'_> {
     }
 }
 
-/// `json.loads(text)` for a `str`.
 pub fn loads(text: &str) -> Result<Json, JsonError> {
     let chars: Vec<char> = text.chars().collect();
     let decode = |msg: &str, pos: usize| JsonError::Decode(decode_error(&chars, msg, pos));
@@ -383,8 +355,6 @@ pub fn loads(text: &str) -> Result<Json, JsonError> {
     Ok(value)
 }
 
-/// Python's `repr(float)`: shortest round-trip digits, exponent form when the decimal
-/// exponent is below -4 or at least 16.
 pub fn float_repr(x: f64) -> String {
     if x.is_nan() {
         return "nan".to_owned();
@@ -419,20 +389,16 @@ pub fn float_repr(x: f64) -> String {
     format!("{sign}{body}")
 }
 
-/// A value usable as a `dict` key, compared as Python compares keys.
-///
-/// `1`, `1.0` and `True` are one key; a NaN never equals another NaN object.
+/// A CPython `dict` key: `1`, `1.0`, and `True` are the same key.
 #[derive(Clone, Debug, PartialEq)]
 pub enum PyKey {
     None,
     Int(i128),
-    /// A float that is not equal to any integer.
     Float(f64),
     Str(String),
 }
 
 impl Json {
-    /// `type(x).__name__`.
     pub fn type_name(&self) -> &'static str {
         match self {
             Json::Null => "NoneType",
@@ -445,7 +411,6 @@ impl Json {
         }
     }
 
-    /// `repr(x)` for a hashable value (the text of a `KeyError`).
     pub fn repr(&self) -> String {
         match self {
             Json::Null => "None".to_owned(),
@@ -457,7 +422,6 @@ impl Json {
         }
     }
 
-    /// `x[key]` with a `str` key: Python's `KeyError` or `TypeError`.
     pub fn get(&self, key: &str) -> Result<&Json, BenchmarkError> {
         match self {
             Json::Object(pairs) => pairs
@@ -479,12 +443,10 @@ impl Json {
         }
     }
 
-    /// `iter(x)`: a list's items, a dict's keys, a string's characters.
     pub fn iter(&self) -> Result<Vec<Json>, BenchmarkError> {
         match self {
             Json::Array(items) => Ok(items.clone()),
             Json::Object(pairs) => {
-                // A dict iterates its distinct keys in first-insertion order.
                 let mut keys: Vec<&String> = Vec::new();
                 for (k, _) in pairs {
                     if !keys.contains(&k) {
@@ -501,7 +463,6 @@ impl Json {
         }
     }
 
-    /// `bool(x)`.
     pub fn truthy(&self) -> bool {
         match self {
             Json::Null => false,
@@ -514,7 +475,6 @@ impl Json {
         }
     }
 
-    /// `a, b, c, d = x`.
     pub fn unpack4(&self) -> Result<[Json; 4], BenchmarkError> {
         let items = match self {
             Json::Array(_) | Json::Object(_) | Json::Str(_) => self.iter()?,
@@ -533,7 +493,7 @@ impl Json {
                 "not enough values to unpack (expected 4, got {})",
                 items.len()
             ))),
-            // Python counts the extra values of a sized container, but not of a string.
+            // CPython reports the count for a list or dict, but not for a str.
             Err(items) => Err(value_error(match self {
                 Json::Str(_) => "too many values to unpack (expected 4)".to_owned(),
                 _ => format!(
@@ -544,7 +504,6 @@ impl Json {
         }
     }
 
-    /// `hash(x)`-compatible key for a `dict`, or Python's `TypeError`.
     pub fn key(&self) -> Result<PyKey, BenchmarkError> {
         Ok(match self {
             Json::Null => PyKey::None,
@@ -561,7 +520,6 @@ impl Json {
         })
     }
 
-    /// `x == n` for an `int` `n`.
     pub fn eq_int(&self, n: i128) -> bool {
         match self {
             Json::Bool(b) => i128::from(*b) == n,
@@ -571,7 +529,6 @@ impl Json {
         }
     }
 
-    /// The value as a Python number (`bool` is an `int`), if it is one.
     pub fn number(&self) -> Option<PyNum> {
         match self {
             Json::Bool(b) => Some(PyNum::Int(i128::from(*b))),
@@ -581,7 +538,6 @@ impl Json {
         }
     }
 
-    /// `a - b` (Python numeric semantics: `int - int` is exact).
     pub fn sub(&self, other: &Json) -> Result<PyNum, BenchmarkError> {
         match (self.number(), other.number()) {
             (Some(PyNum::Int(a)), Some(PyNum::Int(b))) => {
@@ -600,7 +556,6 @@ impl Json {
         }
     }
 
-    /// `x * f` for a `float` `f`.
     pub fn mul_float(&self, f: f64) -> Result<f64, BenchmarkError> {
         match (self, self.number()) {
             (_, Some(n)) => Ok(n.to_f64() * f),
@@ -619,7 +574,6 @@ fn type_error(message: String) -> BenchmarkError {
     BenchmarkError::python(PyException::TypeError, message)
 }
 
-/// A float key: integral floats equal the integer of the same value.
 fn float_key(f: f64) -> PyKey {
     if f.fract() == 0.0 && f.abs() < 1.7e38 {
         PyKey::Int(f as i128)
@@ -628,7 +582,6 @@ fn float_key(f: f64) -> PyKey {
     }
 }
 
-/// A Python `int` or `float`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PyNum {
     Int(i128),
@@ -636,7 +589,6 @@ pub enum PyNum {
 }
 
 impl PyNum {
-    /// `float(x)`: an `int` rounds to the nearest double, ties to even.
     pub fn to_f64(self) -> f64 {
         match self {
             PyNum::Int(i) => i as f64,
@@ -644,7 +596,6 @@ impl PyNum {
         }
     }
 
-    /// The value as an `i64` when it is an `int` that fits.
     pub fn to_i64(self) -> Option<i64> {
         match self {
             PyNum::Int(i) => i64::try_from(i).ok(),
@@ -659,7 +610,6 @@ mod tests {
     use crate::formats::pytext_corpus;
     use serde_json::Value;
 
-    /// The decoded value as `dict(pairs)` would hold it, in `dump_pytext.tag`'s form.
     fn tag(value: &Json) -> Value {
         match value {
             Json::Null => serde_json::json!({"t": "null"}),
@@ -671,7 +621,6 @@ mod tests {
                 serde_json::json!({"t": "list", "v": items.iter().map(tag).collect::<Vec<_>>()})
             }
             Json::Object(pairs) => {
-                // dict(pairs): first position, last value.
                 let mut merged: Vec<(&String, &Json)> = Vec::new();
                 for (k, v) in pairs {
                     match merged.iter_mut().find(|(key, _)| *key == k) {

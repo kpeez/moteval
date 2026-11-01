@@ -1,9 +1,3 @@
-//! BFT loader, ported from `moteval/benchmarks/bft.py`.
-//!
-//! MOTChallenge-style GT rows in a flat per-split directory,
-//! `<root>/annotations_mot/<split>/<seq>.txt`, with no `seqinfo.ini`: the sequence length
-//! is the last annotated frame. Frames are 1-indexed.
-
 use std::path::{Path, PathBuf};
 
 use crate::benchmarks::motchallenge::{MOTChallengeConfig, load_layout, max_frame_seq_length};
@@ -12,7 +6,6 @@ use crate::formats::Track;
 use crate::formats::pytext::{py_join, py_stem, py_str};
 use crate::model::{FrameConvention, MOTDataset, Protocol};
 
-/// The split `load_bft` reads when the caller names none.
 pub const DEFAULT_SPLIT: &str = "val";
 
 fn ann_dir(base: &Path, split: &str) -> PathBuf {
@@ -45,7 +38,6 @@ fn seq_length(
     max_frame_seq_length(seq_name, tracks, 0)
 }
 
-/// `load_bft(root, split)`.
 pub fn load_bft(root: &Path, split: &str) -> Result<MOTDataset, BenchmarkError> {
     let protocol = Protocol::new("bft", FrameConvention::new("1-indexed", 1), vec![1]);
     let config = MOTChallengeConfig {

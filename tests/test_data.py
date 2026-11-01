@@ -28,12 +28,6 @@ from tests.scenarios import (
 CONVENTION = FrameConvention("1-indexed", 1)
 _PROTOCOL = Protocol(name="t", frame_convention=CONVENTION, eval_classes=(1,))
 
-# --------------------------------------------------------------------- model
-#
-# Conversion (id densification, class views, ignore regions), the preprocessing engine,
-# and box IoU/IoA run in Rust. tests/integration/loader_cases.rs replays every call
-# the pure-Python versions of these tests made, bit for bit (tests/integration/data/loader_cases).
-
 
 def test_sequence_data_is_frozen():
     empty = (np.zeros(0),)
@@ -52,9 +46,6 @@ def test_sequence_data_is_frozen():
     )
     with pytest.raises(dataclasses.FrozenInstanceError):
         setattr(data, "name", "mutated")  # noqa: B010  (assignment form fails static checks)
-
-
-# ---------------------------------------------------------------- formats
 
 
 def test_mot_txt_round_trip(tmp_path):
@@ -93,18 +84,6 @@ def test_read_mot_reads_the_class_column_only_when_asked(tmp_path):
     assert [t.class_id for t in read_mot(path)] == [1, 1]
     path.write_text("1,1,10,10,20,20,1,3\n")
     assert [t.class_id for t in read_mot(path, class_column=True)] == [3]
-
-
-# ------------------------------------------------------------ frame indexing
-#
-# Regression proof for the frame-indexing contract (issue #4). Historically
-# track-zoo silently dropped frame 0 of 0-indexed predictions evaluated under
-# a 1-indexed assumption (bit ChimpACT). These tests prove that failure mode
-# is structurally impossible: out-of-range frames raise loudly through the real
-# `evaluate()` path, and a correctly declared 0-indexed benchmark evaluates
-# identically to the same data re-encoded 1-indexed. Every prediction file
-# below is numbered independently of the ground truth -- never derived from
-# GT frame lists.
 
 
 def test_zero_indexed_predictions_against_one_indexed_benchmark_raise_on_frame_0(tmp_path):
@@ -184,12 +163,7 @@ def test_zero_indexed_benchmark_bit_identical_to_one_indexed_reencoding(tmp_path
     one_result = evaluate(one_dataset, one_dir, [Count()])
 
     assert zero_result.combined == one_result.combined
-    # Frame index 0 (0-indexed frame 0 / 1-indexed frame 1) is never silently
-    # dropped: all 5 frames' 2 predictions each are counted on both sides.
     assert zero_result.combined["Count"]["Dets"] == 10.0
-
-
-# --------------------------------------------------------------- evaluate()
 
 
 def test_evaluate_returns_per_sequence_and_combined_count(tmp_path):
@@ -198,7 +172,6 @@ def test_evaluate_returns_per_sequence_and_combined_count(tmp_path):
 
     result = evaluate(dataset, tmp_path, [Count()])
 
-    # Each toy sequence: 2 ids over 5 frames = 10 dets.
     for seq in dataset.sequences:
         scores = result.per_sequence[seq.name]["Count"]
         assert scores == {"Dets": 10.0, "GT_Dets": 10.0, "IDs": 2.0, "GT_IDs": 2.0}
@@ -232,7 +205,6 @@ def _mots_scenario(tmp_dir):
         (CLEAR, _toy_with_offset_id_predictions, True),
         (Identity, _toy_with_offset_id_predictions, True),
         (Count, _toy_with_offset_id_predictions, True),
-        # TrackMAP pools detections across sequences: it declares no per-sequence field.
         (TrackMAP, _toy_with_offset_id_predictions, False),
         (JAndF, _mots_scenario, True),
     ],
@@ -281,7 +253,6 @@ def test_evaluate_rejects_a_metric_that_reads_the_other_geometry(
 
 def test_evaluate_names_every_missing_prediction_file(tmp_path):
     dataset = load_toy()
-    # No prediction files written at all: both sequences are named in one error.
     with pytest.raises(ValueError) as exc:
         evaluate(dataset, tmp_path, [Count()])
 
@@ -293,8 +264,6 @@ def test_evaluate_names_every_missing_prediction_file(tmp_path):
 
 def test_evaluate_checks_prediction_files_before_scoring(tmp_path):
     dataset = load_toy()
-    # toy-0001 has an out-of-range frame that scoring would reject; toy-0002 has no
-    # file. The missing-file error must come first, before any sequence is scored.
     bad_frame = Track(frame=6, track_id=999, x=0, y=0, w=10, h=10, conf=1.0)
     write_mot(tmp_path / "toy-0001.txt", [bad_frame])
 
@@ -321,22 +290,18 @@ def _toy_with_eval_classes(eval_classes: tuple[int, ...]) -> MOTDataset[GtSequen
 
 def test_evaluate_rejects_a_protocol_without_eval_classes(tmp_path):
     dataset = _toy_with_eval_classes(())
-    # Valid predictions, so only the class check can stop the run.
     write_perfect_predictions(dataset, tmp_path)
     with pytest.raises(ValueError, match="declares no eval_classes"):
         evaluate(dataset, tmp_path, [Count()])
 
 
 def test_evaluate_rejects_a_dataset_without_sequences(tmp_path):
-    # Python moteval scored zeros here for CLEAR, Identity and Count and failed inside the
-    # HOTA and TrackMAP combiners; a score of no data is never meant.
     dataset = replace(load_toy(), sequences=())
     with pytest.raises(ValueError, match="^dataset 'toy' has no sequences to score$"):
         evaluate(dataset, tmp_path, [HOTA(), CLEAR(), Identity(), Count(), TrackMAP()])
 
 
 def test_evaluate_rejects_a_repeated_eval_class(tmp_path):
-    # Unchecked, (1, 1) scores class 1 once and reports a multi-class result over it.
     dataset = _toy_with_eval_classes((1, 1))
     write_perfect_predictions(dataset, tmp_path)
     with pytest.raises(ValueError, match="repeats a class"):
@@ -347,25 +312,18 @@ def test_evaluate_scores_each_class_and_both_class_combinations(tmp_path):
     write_two_class_predictions(tmp_path)
     result = evaluate(load_two_class(), tmp_path, [HOTA(), Count()])
 
-    # A multi-class run reports through per_class and the two class combinations.
     assert result.per_sequence == {}
     assert result.combined == {}
     assert list(result.per_class) == [1, 2]
-    # Hand derivation. Every IoU is 1 or 0, so every HOTA alpha agrees.
-    # Class 1: TP 2, FN 0, FP 1 (track 300 on a class-2 box) -> DetA 2/3.
-    # Class 2: TP 2, FN 2 (GT 30), FP 0 -> DetA 1/2.
     class_1, class_2 = result.per_class[1], result.per_class[2]
     assert class_1.combined["Count"] == {"Dets": 3.0, "GT_Dets": 2.0, "IDs": 2.0, "GT_IDs": 1.0}
     assert class_2.combined["Count"] == {"Dets": 2.0, "GT_Dets": 4.0, "IDs": 1.0, "GT_IDs": 2.0}
     assert class_2.per_sequence[TWO_CLASS_SEQUENCE]["Count"] == class_2.combined["Count"]
     np.testing.assert_allclose(class_1.combined["HOTA"]["DetA"], 2 / 3)
     np.testing.assert_allclose(class_2.combined["HOTA"]["DetA"], 1 / 2)
-    # Count sums over the classes in both combinations.
     totals = {"Dets": 5.0, "GT_Dets": 6.0, "IDs": 3.0, "GT_IDs": 3.0}
     assert result.class_averaged["Count"] == totals
     assert result.det_averaged["Count"] == totals
-    # Class-averaged DetA is the mean of the class values: (2/3 + 1/2) / 2 = 7/12.
-    # Det-averaged DetA pools the detections: 4 TP / (4 TP + 2 FN + 1 FP) = 4/7.
     np.testing.assert_allclose(result.class_averaged["HOTA"]["DetA"], 7 / 12)
     np.testing.assert_allclose(result.det_averaged["HOTA"]["DetA"], 4 / 7)
 
@@ -382,10 +340,6 @@ def test_multi_class_predictions_must_give_a_class(tmp_path, row, message):
 
 
 def test_trackmap_det_averaged_weights_classes_by_detection_tracks(tmp_path):
-    # Every track is a 10x10 box over 2 frames, so all are in area_s and time_s.
-    # Class 1: GT 1 and one matching prediction track 101.
-    # Class 2: GT 2, a far-away false-positive track 201 with the higher score (0.9),
-    # and a matching track 202 (score 0.5).
     tracks = (
         Track(frame=f, track_id=tid, x=x, y=x, w=10, h=10, conf=1.0, class_id=cls)
         for tid, x, cls in [(1, 0.0, 1), (2, 100.0, 2)]
@@ -406,21 +360,10 @@ def test_trackmap_det_averaged_weights_classes_by_detection_tracks(tmp_path):
 
     result = evaluate(dataset, tmp_path, [TrackMAP()])
 
-    # At every IoU threshold, class 1 has one true positive: precision 1 at every
-    # recall threshold, so AP = 1 (up to TrackEval's np.spacing(1) in the precision
-    # denominator). Class 2 ranks the false positive first: precision is 0 then 1/2,
-    # which the right-to-left maximum makes 1/2 at every recall threshold, so AP = 1/2.
-    # The detection weights are the non-ignored prediction tracks: 1 and 2.
-    # Class-averaged AP = (1 + 1/2) / 2 = 3/4.
-    # Det-averaged AP = (1 * 1 + 1/2 * 2) / (1 + 2) = 2/3.
     np.testing.assert_allclose(result.class_averaged["TrackMAP"]["AP_all"], np.full(10, 3 / 4))
     np.testing.assert_allclose(result.det_averaged["TrackMAP"]["AP_all"], np.full(10, 2 / 3))
-    # The weights are private state: per-class results hold only the declared fields.
     for class_result in result.per_class.values():
         assert set(class_result.combined["TrackMAP"]) == set(TrackMAP.fields)
-
-
-# ---------------------------------------------------------- extensibility
 
 
 def test_custom_dataset_evaluates_through_public_api(tmp_path):
@@ -529,13 +472,8 @@ def test_custom_dataset_evaluates_through_public_api(tmp_path):
 
 
 def test_distractor_and_ignore_thresholds_are_eps_guarded(tmp_path):
-    """A distractor match needs IoU ``>= 0.5 - eps``; an ignore drop needs IoA ``> 0.5 + eps``.
-
-    Unit boxes on separate rows. Prediction 12 overlaps the class-2 distractor at IoU
-    0.49999999999999994, inside the eps window, so it is matched and removed. Prediction
-    13 overlaps an ignore region at IoA 0.5000000000000001, inside the eps window, so it
-    is kept. Without either eps the count of surviving predictions changes.
-    """
+    # TrackEval's eps guards: IoU 0.49999999999999994 still matches the distractor
+    # (`>= 0.5 - eps`), and IoA 0.5000000000000001 is not an ignore drop (`> 0.5 + eps`).
     distractor = Track(frame=1, track_id=2, x=0.0, y=0.0, w=1.0, h=1.0, conf=1, class_id=2)
     ignore = Track(frame=1, track_id=-1, x=0.4999999999999999, y=300.0, w=5.0, h=1.0, conf=1)
     sequence = GtSequence(
@@ -545,27 +483,18 @@ def test_distractor_and_ignore_thresholds_are_eps_guarded(tmp_path):
         name="t-eps", frame_convention=CONVENTION, eval_classes=(1,), distractor_classes=(2,)
     )
     dataset = MOTDataset(name="t", split="test", sequences=(sequence,), protocol=protocol)
-    # Written by hand: write_mot rounds boxes to two decimals.
     (tmp_path / "edge.txt").write_text("1,12,0.33333333333333337,0,1,1,0.8\n1,13,0,300,1,1,0.7\n")
     result = evaluate(dataset, tmp_path, [Count()])
     assert result.combined["Count"]["Dets"] == 1.0
 
 
 def test_matching_fill_decides_which_prediction_a_distractor_removes(tmp_path):
-    """The engine reads ``Protocol.matching_fill`` (0 on the box path, -10000 on MOTS).
-
-    One frame of boxes 100 wide and 10 high on one row, so IoU is interval overlap. GT
-    ``a`` and ``b`` are evaluated; GT ``c`` is a distractor. Prediction ``x`` covers
-    ``a`` (IoU 1) and ``y`` covers ``b``; ``a-y``, ``b-x``, ``b-z`` and ``c-x`` overlap at
-    IoU 70/130. Fill 0 maximizes the IoU sum: ``a-x`` and ``b-y`` (2.0) beat ``a-y``,
-    ``b-z`` and ``c-x`` (1.615), and nothing is removed. Fill -10000 first maximizes
-    the number of pairs at or above 0.5, so ``x`` is matched to the distractor ``c`` and
-    removed.
-    """
+    # TrackEval fills sub-0.5 cells with 0 on the box path and -10000 on MOTS. -10000 first
+    # maximizes the number of pairs at 0.5 or above, so `x` matches distractor `c`.
     import moteval
 
     convention = moteval.FrameConvention(name="test-fill-1-indexed", first_frame=1)
-    boxes = {"a": 50, "b": 80, "c": 20, "x": 50, "y": 80, "z": 110}  # left edges
+    boxes = {"a": 50, "b": 80, "c": 20, "x": 50, "y": 80, "z": 110}
     tracks = tuple(
         moteval.Track(
             frame=1, track_id=track_id, x=boxes[name], y=0, w=100, h=10, conf=1, class_id=cls
@@ -607,9 +536,6 @@ def test_unknown_dataset_lists_available_names():
     message = str(exc_info.value)
     assert "available:" in message
     assert "dancetrack" in message
-
-
-# ------------------------------------------------------------- Rust errors
 
 
 def test_a_missing_file_raises_oserror_with_python_text(tmp_path):

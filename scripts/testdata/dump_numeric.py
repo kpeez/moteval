@@ -1,13 +1,3 @@
-"""Dump numpy's reductions, ranges, rounding, log10, and moteval's box similarity as bits.
-
-Writes ``tests/integration/data/numeric.json`` and ``tests/integration/data/box_similarity.json``, which
-``tests/integration/numeric.rs`` and ``tests/box_similarity.rs`` check bit for bit.
-Inputs come from ``testgen.py`` (seeded, regenerated in Rust); floats are stored as
-``u64`` bit patterns. Run with the reference interpreter and numpy 2.5.1:
-
-    artifacts/rust-port/ref-venv/bin/python scripts/testdata/dump_numeric.py
-"""
-
 import functools
 import json
 import operator
@@ -19,7 +9,6 @@ from pathlib import Path
 import numpy as np
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-# After site-packages: `moteval` is the pure-Python reference (scripts/testdata/reference.py).
 if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
@@ -40,9 +29,7 @@ LENGTHS = (
 )  # fmt: skip
 PATTERNS = ("alternating", "spread", "big_small", "negzero", "uniform")
 SHAPES = ((1, 1), (1, 19), (3, 8), (5, 9), (25, 19), (45, 10), (7, 129), (130, 3))
-LARGE_SHAPE = (300, 301)  # spread pattern only, to keep the file small
-# One column: numpy reduces axis 0 of an (n, 1) array pairwise, not row by row. Appended
-# after the other shapes so their seeds do not change.
+LARGE_SHAPE = (300, 301)
 COLUMN_SHAPES = ((8, 1), (9, 1), (25, 1), (130, 1))
 
 
@@ -79,7 +66,7 @@ def nanmeans() -> list[dict]:
             seed += 1
             values = pattern(name, n, seed)
             with warnings.catch_warnings():
-                warnings.simplefilter("ignore", RuntimeWarning)  # empty and all-NaN slices
+                warnings.simplefilter("ignore", RuntimeWarning)
                 value = float(np.nanmean(np.array(values, dtype=np.float64)))
             cases.append(
                 {
@@ -140,8 +127,8 @@ def averages() -> list[dict]:
 
 def aranges() -> list[dict]:
     args = (
-        (0.05, 0.99, 0.05),  # HOTA alphas
-        (0.5, 0.96, 0.05),  # TrackMAP IoU thresholds
+        (0.05, 0.99, 0.05),
+        (0.5, 0.96, 0.05),
         (0.0, 1.0, 0.1),
         (0.0, 1.0, 0.01),
         (1.0, 2.0, 0.3),
@@ -164,7 +151,7 @@ def aranges() -> list[dict]:
 
 def linspaces() -> list[dict]:
     args: list[tuple[float, float, int, bool]] = [
-        (0.0, 1.0, int(np.round((1.00 - 0.0) / 0.01) + 1), True),  # TrackMAP recall
+        (0.0, 1.0, int(np.round((1.00 - 0.0) / 0.01) + 1), True),
         (0.0, 1.0, 10, False),
         (0.0, 0.0, 5, True),
         (5.0, 5.0, 1, True),
@@ -173,7 +160,7 @@ def linspaces() -> list[dict]:
         (2.0, 1e-320, 4, True),
         (0.0, 5e-324, 3, True),
     ]
-    args += [(1.0, float(t), 5, True) for t in range(1, 601)]  # J&F decay bins
+    args += [(1.0, float(t), 5, True) for t in range(1, 601)]
     return [
         {
             "start": f64_bits(s),
@@ -233,7 +220,7 @@ def plain_sums() -> list[dict]:
     return cases
 
 
-LOG10_INTEGERS = 1_000_000  # the fixture keeps a fingerprint of np.log10(1..N)
+LOG10_INTEGERS = 1_000_000
 RCP14_SENSITIVE = (
     0x3FF040F0DAE11493, 0x3FF15B38BC4B53C2, 0x40329E477EC11054, 0x3FB3522A792225F0,
     0x3FC41416CD5B8972, 0x4015C989A889F292, 0x4016C155ADAA507E, 0x3FA7D06F7954D294,
@@ -243,12 +230,6 @@ RCP14_SENSITIVE = (
 
 
 def log10s() -> dict:
-    """``np.log10`` on finite ``x > 0``, which CLEAR's MOTAL takes of ``IDSW``.
-
-    numpy computes it with Intel SVML on an AVX-512 (``X86_V4``) Linux host and with libm
-    elsewhere; the two differ in the last bit for some integers. ``numeric::log10_svml``
-    ports the SVML kernel, so this fixture must come from the SVML path.
-    """
     from numpy._core._multiarray_umath import (  # pyrefly: ignore[missing-import]
         __cpu_features__,
     )
@@ -257,17 +238,13 @@ def log10s() -> dict:
         sys.exit("dump the log10 fixture on a Linux host with X86_V4: numpy must use SVML")
     xs = [float(i) for i in range(1, 1025)]
     rng = SplitMix64(7000)
-    for _ in range(1000):  # positive normals across every binade
+    for _ in range(1000):
         exponent = 1 + rng.below(2046)
         xs.append(struct.unpack("<d", struct.pack("<Q", (exponent << 52) | (rng.next() >> 12)))[0])
-    # Mantissas within 2**-14 of 64/d for odd d in 33..63: where vrcp14pd, rounded to a
-    # multiple of 1/32, switches between two values.
     for d in range(33, 64, 2):
         for j in range(-24, 25):
             m = 64 / d * (1 + j * 2.0**-17)
             xs.extend((m, m * 2.0**10, m * 2.0**-3))
-    # Inputs where vrcp14pd and an exact 1/m round to different multiples of 1/32 and
-    # SVML's result changes with it (found by a search on the reference host).
     xs.extend(struct.unpack("<d", struct.pack("<Q", b))[0] for b in RCP14_SENSITIVE)
     xs.extend((5e-324, 2.2250738585072009e-308, 1e-310, 2.2250738585072014e-308, 0.1, 1e-300))
     xs.extend((10.0, 1e22, 2.0**52, 2.0**1023, 1.7976931348623157e308, 1.0 + 2.0**-52))

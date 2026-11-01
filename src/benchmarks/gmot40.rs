@@ -1,10 +1,3 @@
-//! GMOT-40 loader, ported from `moteval/benchmarks/gmot40.py`.
-//!
-//! MOTChallenge-style GT rows in `<root>/track_label/<seq>.txt`, natively 0-indexed, no
-//! `seqinfo.ini`: the sequence length is the last annotated frame plus one. The loader
-//! keeps the raw frame numbers and declares `FrameConvention(first_frame=0)`. "test" is
-//! all 40 sequences; "animal" is the 16 whose name holds bird, fish, insect, or stock.
-
 use std::path::{Path, PathBuf};
 
 use crate::benchmarks::motchallenge::{MOTChallengeConfig, load_layout, max_frame_seq_length};
@@ -13,7 +6,6 @@ use crate::formats::Track;
 use crate::formats::pytext::{py_join, py_stem, py_str};
 use crate::model::{FrameConvention, MOTDataset, Protocol};
 
-/// The split `load_gmot40` reads when the caller names none.
 pub const DEFAULT_SPLIT: &str = "test";
 
 const ANIMAL_SUBSTRINGS: [&str; 4] = ["bird", "fish", "insect", "stock"];
@@ -59,7 +51,6 @@ fn seq_length(
     max_frame_seq_length(seq_name, tracks, 1)
 }
 
-/// `load_gmot40(root, split)`.
 pub fn load_gmot40(root: &Path, split: &str) -> Result<MOTDataset, BenchmarkError> {
     let protocol = Protocol::new("gmot40", FrameConvention::new("0-indexed", 0), vec![1]);
     let config = MOTChallengeConfig {

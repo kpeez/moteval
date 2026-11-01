@@ -1,17 +1,4 @@
-"""Declarative benchmark downloads executed by one shared engine.
-
-Dev tooling, not part of the installed package: populates ``<data root>/<name>`` so
-`moteval.load_dataset` and the real-data parity gate have ground truth to read. External fetch
-tools (``curl``, ``gdown``, ``hf``) must be on PATH for the sources that need them.
-
-    uv run scripts/download_benchmarks.py list
-    uv run scripts/download_benchmarks.py status [--root DIR]
-    uv run scripts/download_benchmarks.py download <benchmark> [--root DIR]
-
-``--root`` overrides the target root; otherwise the root is
-`moteval.benchmarks.default_data_root` (``MOTEVAL_DATA_ROOT``, else ``data/benchmarks``),
-the same root `moteval.load_dataset` reads.
-"""
+"""Declarative benchmark downloads executed by one shared engine."""
 
 import argparse
 import json
@@ -42,8 +29,6 @@ _UAVDT_STUB_SNIFF_MAX = 65_536
 
 @dataclass(frozen=True)
 class LayoutCheck:
-    """Relative directory markers that prove a loader can find its data."""
-
     markers: tuple[str, ...]
     description: str
 
@@ -78,8 +63,7 @@ class DriveFile:
 
 
 @dataclass(frozen=True)
-class PanAf500Files:
-    """Scrape and fetch the complete validated PanAf500 index."""
+class PanAf500Files: ...
 
 
 @dataclass(frozen=True)
@@ -118,8 +102,6 @@ FetchStep = (
 
 @dataclass(frozen=True)
 class DownloadSpec:
-    """One benchmark's source declarations and loader-layout contract."""
-
     name: str
     fetch_steps: tuple[FetchStep, ...]
     expected_layout: LayoutCheck
@@ -292,12 +274,10 @@ class _IndexParser(HTMLParser):
 
 
 def benchmark_names() -> tuple[str, ...]:
-    """Return every managed benchmark name in stable order."""
     return tuple(SPECS)
 
 
 def list_benchmarks() -> tuple[BenchmarkInfo, ...]:
-    """Return fetchability information for all managed benchmarks."""
     return tuple(
         BenchmarkInfo(
             name=spec.name,
@@ -308,7 +288,6 @@ def list_benchmarks() -> tuple[BenchmarkInfo, ...]:
 
 
 def benchmark_status(root: Path) -> tuple[BenchmarkState, ...]:
-    """Check loader-layout markers below a managed data root."""
     return tuple(
         BenchmarkState(
             name=spec.name,
@@ -704,7 +683,6 @@ def _execute_step(step: FetchStep, destination: Path) -> None:
 
 
 def download_benchmark(name: str, root: Path) -> Path:
-    """Fetch one benchmark and verify the exact loader-visible layout."""
     try:
         spec = SPECS[name]
     except KeyError:

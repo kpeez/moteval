@@ -1,13 +1,3 @@
-//! The hota-trackmap gate: HOTA and TrackMAP against the frozen TrackEval oracle and
-//! against Python moteval's own dumped scores, bit for bit.
-//!
-//! The oracle covers the public fields TrackEval reports. Python moteval's dumped scores
-//! also cover the per-sequence private state (`_dt_matches_*`, `_num_dt_*`), every
-//! combiner's output, TrackMAP's det-averaged combiner (the one intended divergence from
-//! TrackEval, so the oracle does not freeze it), and the dict order, which is the export
-//! order. The dumped shapes tell a Python scalar (`[]`) from a one-element array (`[1]`),
-//! so the comparison also checks that each field has the kind Python gives it.
-
 use crate::harness::{
     Case, CaseView, assert_field_order, assert_scores_bit_equal, load_real_case,
     load_synthetic_case, metric_by_name, real_case_names, real_testdata_dir, synthetic_case_names,
@@ -23,14 +13,11 @@ fn find<'a>(by_metric: &'a [(String, Scores)], metric: &str) -> Option<&'a Score
         .map(|(_, scores)| scores)
 }
 
-/// Assert Rust's `got` equals Python's dumped `want`: the same fields in the same order,
-/// every value bit for bit and of the same shape.
 fn assert_same_scores(want: &Scores, got: &Scores, label: &str) {
     assert_field_order(want, got, label);
     assert_scores_bit_equal(want, got, label);
 }
 
-/// Score one view's sequences and combine them, as `evaluate` does.
 fn run_view(metric: &dyn Metric, view: &CaseView, label: &str) -> (Vec<Scores>, Scores) {
     let per_sequence: Vec<Scores> = view
         .sequences
@@ -48,29 +35,15 @@ fn run_view(metric: &dyn Metric, view: &CaseView, label: &str) -> (Vec<Scores>, 
     (per_sequence, combined)
 }
 
-/// One combiner section: its name, the Rust scores, and Python's scores by metric.
 type SectionResult<'a> = (&'static str, Scores, &'a [(String, Scores)]);
 
-/// What one case gave the gate.
 #[derive(Default, Debug)]
 struct Tally {
     cases: usize,
-    /// Oracle (TrackEval) fields equal bit for bit.
     oracle_fields: usize,
-    /// Python moteval score sets (per-sequence, combined, class combiners) equal bit for
-    /// bit, private fields and field order included.
     python_score_sets: usize,
 }
 
-/// Run `metric` on `case` end to end, as `evaluate` does, and compare every oracle field
-/// and every score set Python moteval dumped: per-sequence scores (raw for synthetic
-/// cases, declared fields for real data), each view's combined state, and the class
-/// combiners the procedure runs.
-///
-/// `per_class`: each view's sequences are scored and combined; with one view the result
-/// is checked against `oracle.combined`, with several the class combiners run over the
-/// views' raw combined state, in class order. `sequences_as_classes`: one view's declared
-/// per-sequence scores go to `combine_classes_class_averaged`.
 fn check_case(case: &Case, metric: &dyn Metric, raw_per_sequence: bool, tally: &mut Tally) {
     let name = metric.name();
     let mut combined = Vec::new();
@@ -195,7 +168,6 @@ fn synthetic_cases_match_the_oracle_and_python_bit_for_bit() {
         );
         t.cases
     };
-    // Every HOTA entry of the box and MOTS fixtures, and every TrackMAP entry.
     assert_eq!(get("synthetic_box", "HOTA"), 18);
     assert_eq!(get("synthetic_mots", "HOTA"), 7);
     assert_eq!(get("synthetic_box", "TrackMAP"), 1);
@@ -219,8 +191,6 @@ fn real_data_hota_matches_the_oracle_and_python() {
     assert_eq!(hota.oracle_fields, 3 * 15, "real_data HOTA oracle fields");
 }
 
-/// Not a listed package gate (integration runs the full reference set), but it is the
-/// only real-data test of TrackMAP: long and sparse tracks stress the set-order replay.
 #[test]
 fn reference_benchmarks_hota_and_trackmap_match_python() {
     let Some(root) = real_testdata_dir("hota-trackmap reference_benchmarks.json") else {

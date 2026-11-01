@@ -1,17 +1,3 @@
-"""Dump CPython's float, JSON, CSV, and path text for the Rust `pyfmt` tests.
-
-Writes ``tests/integration/data/pyfmt.json``, which ``tests/integration/pyfmt.rs`` checks byte for
-byte. Run with the reference interpreter (CPython 3.14.8):
-
-    uv run python scripts/testdata/dump_pyfmt.py
-
-Seeded sets (100,000 doubles in all) store only their seed, an FNV-1a hash of the
-generated inputs, and, per chunk of ``CHUNK`` values, an FNV-1a hash of the output strings
-(each followed by a newline). The Rust test regenerates the inputs draw for draw with the
-same generators and prints the first differing chunk in full. Edge cases, strings, CSV
-rows, and paths are stored in full.
-"""
-
 import csv
 import io
 import json
@@ -42,14 +28,11 @@ def fnv_text(texts: list[str]) -> int:
     return h
 
 
-# Each generator draws one value; tests/pyfmt.rs ports them draw for draw.
 def gen_bits(rng: SplitMix64) -> float:
-    """Any bit pattern: every exponent, subnormals, infinities, NaN payloads."""
     return from_bits(rng.next())
 
 
 def gen_decimal(rng: SplitMix64) -> float:
-    """A 1- to 17-digit decimal mantissa times a power of ten in [-30, 30], parsed."""
     ndigits = 1 + rng.below(17)
     mantissa = rng.below(10**ndigits)
     exponent = rng.below(61) - 30
@@ -58,7 +41,6 @@ def gen_decimal(rng: SplitMix64) -> float:
 
 
 def gen_ratio(rng: SplitMix64) -> float:
-    """``k / n`` or ``100 * (k / n)``: the shape of the CLI table's ratios."""
     n = 1 + rng.below(10000)
     k = rng.below(n + 1)
     ratio = k / n
@@ -66,22 +48,18 @@ def gen_ratio(rng: SplitMix64) -> float:
 
 
 def gen_tie5(rng: SplitMix64) -> float:
-    """Six significant digits ending in 5: near (or at) a 5-digit rounding tie."""
     mantissa = (10000 + rng.below(90000)) * 10 + 5
     exponent = rng.below(41) - 20
     return float(f"{mantissa}e{exponent}")
 
 
 def gen_dyadic(rng: SplitMix64) -> float:
-    """``m * 2**-k``: exact binary values, many of them exact decimal ties."""
     mantissa = rng.below(1 << 24)
     shift = rng.below(40)
     return math.ldexp(float(mantissa), -shift)
 
 
 def gen_wide_dyadic(rng: SplitMix64) -> float:
-    """A full 53-bit mantissa times ``2**-k`` for small k: 17-digit repr ties, where two
-    shortest strings lie equally close and dtoa picks the even one."""
     mantissa = (1 << 52) + rng.below(1 << 52)
     shift = rng.below(12)
     return math.ldexp(float(mantissa), -shift)
@@ -131,7 +109,6 @@ def edge_values() -> list[float]:
         1e-7, 1e-300, 1e300, 4.35, 2.675, 0.125, 0.375, 1e5, 99999.0, 100000.0, 999995.0,
         math.pi, math.e, math.inf, -math.inf, math.nan,
         from_bits(0x7FF8000000000001), from_bits(0xFFF8000000000000),
-        # 4092142886402.53125: a 17-digit tie, ...2.5312 in dtoa (round half to even).
         from_bits(0x428DC635C8F01440),
     ]  # fmt: skip
     return values + [-x for x in values if not math.isnan(x)] + [-0.0]

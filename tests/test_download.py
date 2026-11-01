@@ -1,9 +1,3 @@
-"""Tests for the dev download script (scripts/download_benchmarks.py).
-
-Not a package module, so it is loaded here by file path. Fetchers are
-monkeypatched; only the ``network``-marked test touches the real internet.
-"""
-
 import importlib.util
 import io
 import os
@@ -192,7 +186,6 @@ def test_unfetchable_benchmark_fails_before_creating_a_directory(tmp_path: Path)
     assert not (tmp_path / "chimpact").exists()
 
 
-# Every loadable benchmark must have a download spec, listed in name order.
 _EXPECTED_BENCHMARKS = tuple(sorted(BENCHMARKS))
 
 

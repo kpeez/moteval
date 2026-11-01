@@ -1,32 +1,3 @@
-"""Record what Python moteval returns for every call the loader and data tests make.
-
-The port gate says: for every case in ``tests/test_loaders.py`` and
-``tests/test_data.py``, Rust builds the same data as Python. This script runs those two
-test files under pytest with a recording plugin. The plugin wraps each ported function
-(readers and writers, the loaders, ``read_seq_length``, ``preprocess_frame``,
-``build_sequence_data``, ``build_mask_sequence_data``, box IoU and IoA) and the
-missing-prediction check of ``evaluate``. For each call it stores:
-
-- the inputs, with every path under the test's ``tmp_path`` written as ``<TMP>``;
-- a snapshot of the files under ``tmp_path`` just before the call;
-- Python's result, or its exception type and message (``<TMP>`` again).
-
-Calls nested in another recorded call are not cases of their own, except inside
-``evaluate``, which is not ported here. Inside ``build_mask_sequence_data`` the mask
-geometry calls (``masks_overlap``, ``merge_masks``, ``mask_ioa``, ``mask_iou``) are
-recorded in order, so Rust can replay the conversion without the RLE port.
-
-Every test of the two files must record at least one case, or the run fails. Output:
-``tests/integration/data/loader_cases/<test file>/<test name>.json``, read by
-``tests/integration/loader_cases.rs``.
-
-The recorded tests are the ``py-reference`` tag's, extracted with ``git archive``: this
-checkout's tests call the Rust-backed package, which has no Python functions to record.
-Run it with the reference interpreter (``scripts/testdata/reference.py``):
-
-    artifacts/rust-port/ref-venv/bin/python scripts/testdata/record_loader_cases.py
-"""
-
 import functools
 import hashlib
 import inspect
@@ -47,7 +18,6 @@ import numpy as np
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-# After site-packages: `moteval` is the pure-Python reference (scripts/testdata/reference.py).
 if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
@@ -59,7 +29,6 @@ OUT = _REPO_ROOT / "tests" / "integration" / "data" / "loader_cases"
 TEST_FILES = ("tests/test_loaders.py", "tests/test_data.py")
 Json = Any
 
-# Functions whose calls are cases, by module.
 TARGETS: dict[str, tuple[str, ...]] = {
     "moteval.formats": ("read_mot", "read_mots", "write_mot", "write_mots"),
     "moteval.data.convert": ("build_sequence_data", "build_mask_sequence_data"),
@@ -93,16 +62,11 @@ TARGETS: dict[str, tuple[str, ...]] = {
 MASK_GEOMETRY = ("masks_overlap", "merge_masks", "mask_ioa", "mask_iou")
 
 
-# ------------------------------------------------------------------------- encoding
-
-
 def bits(x: Any) -> int:
     return struct.unpack("<Q", struct.pack("<d", float(x)))[0]
 
 
 class Context:
-    """The running test: its id, its ``tmp_path``, and the cases recorded so far."""
-
     def __init__(self, nodeid: str, tmp: Path | None) -> None:
         self.nodeid = nodeid
         self.tmp = tmp
@@ -116,7 +80,6 @@ class Context:
         return self.token(str(Path(p)))
 
     def snapshot(self) -> str | None:
-        """Store the files under ``tmp_path`` (deduplicated); return the snapshot id."""
         if self.tmp is None:
             return None
         entries = []
@@ -195,7 +158,6 @@ def rle(r: Any) -> Json:
 
 
 def dets(arr: Any) -> Json:
-    """A frame's detections: boxes as bits, masks as ``[h, w, counts]``."""
     arr = np.asarray(arr)
     if arr.dtype == object:
         return {"masks": [rle(r) for r in arr]}
@@ -353,8 +315,6 @@ def encode_result(ctx: Context, kind: str, result: Any, args: dict[str, Any]) ->
     return dataset(result)
 
 
-# -------------------------------------------------------------------------- recording
-
 STATE: dict[str, Any] = {"ctx": None, "stack": [], "geometry": None}
 RESULTS: dict[str, Context] = {}
 
@@ -412,7 +372,6 @@ def wrap(kind: str, fn: Any) -> Any:
 
 
 def record_geometry(kind: str, fn: Any, args: Any, kwargs: Any) -> Any:
-    """A mask geometry call inside a recorded mask conversion: inputs and output."""
     log = STATE["geometry"]
     result = fn(*args, **kwargs)
     if log is not None:
@@ -428,7 +387,6 @@ def record_geometry(kind: str, fn: Any, args: Any, kwargs: Any) -> Any:
 
 
 def record_missing(ctx: Context, args: dict[str, Any]) -> None:
-    """`evaluate`'s missing-prediction check, as Python computes it, before the call."""
     dataset_arg = args["dataset"]
     pred_dir = Path(args["predictions"])
     names = [s.name for s in dataset_arg.sequences]
@@ -451,7 +409,6 @@ ORIGINALS: dict[int, Any] = {}
 
 
 def patch_everything() -> None:
-    """Replace every binding of a target function, in every loaded module, by its wrapper."""
     import importlib
 
     for module_name, names in TARGETS.items():
@@ -476,8 +433,6 @@ def patch_everything() -> None:
 
 
 class Recorder:
-    """The pytest plugin."""
-
     def pytest_configure(self, config: Any) -> None:
         patch_everything()
 
@@ -498,15 +453,11 @@ class Recorder:
 
 
 def slug(nodeid: str) -> str:
-    """A file name for a test: its readable name plus a hash, since parameter ids such as
-    ``[]`` and ``[   ]`` collapse to the same readable name."""
     name = re.sub(r"[^A-Za-z0-9_.-]+", "_", nodeid.split("::", 1)[1]).strip("_")
     return f"{name}-{hashlib.sha1(nodeid.encode()).hexdigest()[:8]}"
 
 
 def extract_reference_tests(directory: Path) -> None:
-    """Write the reference tag's ``tests/`` and ``pyproject.toml`` (its pytest
-    settings) into ``directory``."""
     archive = subprocess.run(
         ["git", "-C", str(_REPO_ROOT), "archive", REFERENCE_TAG, "tests", "pyproject.toml"],
         check=True,
@@ -520,8 +471,6 @@ def main() -> None:
     recorder = Recorder()
     with tempfile.TemporaryDirectory() as tmp:
         extract_reference_tests(Path(tmp))
-        # The extracted `tests` package shadows this checkout's; node ids keep the
-        # `tests/<file>.py::<test>` form.
         sys.path.insert(0, tmp)
         os.chdir(tmp)
         code = pytest.main(["-q", "-p", "no:cacheprovider", *TEST_FILES], plugins=[recorder])

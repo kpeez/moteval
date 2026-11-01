@@ -1,12 +1,3 @@
-"""Write `src/pyfmt/printable.rs`: the code points `str.isprintable` rejects.
-
-Python's `repr(str)` escapes every non-printable character, and printability above
-U+00FF comes from the Unicode database of the running interpreter. Run this with the
-reference interpreter (CPython 3.14.8, Unicode 16.0.0):
-
-    uv run python scripts/gen_printable.py
-"""
-
 import sys
 import unicodedata
 from pathlib import Path

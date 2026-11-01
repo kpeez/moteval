@@ -1,15 +1,3 @@
-//! Top-level evaluation, ported from `moteval/eval.py`: score a loaded `MOTDataset`
-//! against `<seq>.txt` prediction files.
-//!
-//! Each class in `protocol.eval_classes` is scored on its own: one `SequenceData` view per
-//! sequence, every metric, then the sequences combined for that class. A multi-class run
-//! also combines the classes, class-averaged and detection-averaged, from the raw
-//! per-class state. Results hold only each metric's declared `fields`.
-//!
-//! Every check that can fail before scoring runs before any prediction file is read.
-//! Sequences are scored in dataset order, metrics in the caller's order, and classes in
-//! `eval_classes` order, as Python does.
-
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -23,28 +11,19 @@ use crate::model::{MOTDataset, Sequence, SequenceData};
 use crate::pyfmt;
 use crate::results::{ClassResult, EvaluationResult, MetricScores};
 
-/// Errors `evaluate` raises before or while scoring. Messages match the Python text; the
-/// Python layer raises each as `ValueError`.
 #[derive(Debug)]
 pub enum EvalError {
-    /// `duplicate metric classes in metrics: {names}` (sorted, comma-separated).
     DuplicateMetrics(Vec<String>),
-    /// `protocol {name!r} declares no eval_classes`.
     NoEvalClasses {
         protocol: String,
     },
-    /// `protocol {name!r} repeats a class in {classes}` (`classes` as a Python tuple).
     RepeatedClass {
         protocol: String,
         classes: Vec<i64>,
     },
-    /// `dataset {name!r} has no sequences to score`. Rust only: Python's metrics gave
-    /// zeros (CLEAR, Identity, Count) or failed in their combiners (HOTA, TrackMAP) on an
-    /// empty dataset. A score of no data is never meant, so `evaluate` stops instead.
     NoSequences {
         dataset: String,
     },
-    /// `{metric} reads {geometry}, but sequence {seq!r} of dataset {dataset!r} holds {kind}`.
     GeometryMismatch {
         metric: String,
         reads: &'static str,
@@ -52,8 +31,6 @@ pub enum EvalError {
         dataset: String,
         holds: &'static str,
     },
-    /// `prediction directory {dir} has no <seq>.txt file for {n} sequence(s): {names}
-    /// (an empty file means no predictions)`.
     MissingPredictions {
         dir: String,
         missing: Vec<String>,
@@ -124,8 +101,6 @@ impl fmt::Display for EvalError {
 impl std::error::Error for EvalError {}
 
 impl EvalError {
-    /// The Python exception class this error stands for (`"OSError"`, `"KeyError"`,
-    /// `"ValueError"`, ...); `"Unsupported"` where Python accepts the input.
     pub fn python_exception(&self) -> &'static str {
         match self {
             Self::Format(err) => err.python_exception(),
@@ -136,10 +111,7 @@ impl EvalError {
     }
 }
 
-/// Whether Python's `except ValueError` catches `exception` (a `python_exception()`
-/// class name). `UnicodeDecodeError` and `json.JSONDecodeError` subclass `ValueError`.
-/// `"Unsupported"` (an input Rust rejects and Python accepts) counts as caught, so it is
-/// reported as a usage error.
+// CPython: `UnicodeDecodeError` and `json.JSONDecodeError` subclass `ValueError`.
 pub fn is_value_error(exception: &str) -> bool {
     matches!(
         exception,
@@ -165,8 +137,6 @@ impl From<MetricError> for EvalError {
     }
 }
 
-/// Set `key` in an insertion-ordered map, keeping its position if present: Python dict
-/// assignment, so two sequences with one name keep one entry, as in Python.
 fn upsert<V>(map: &mut Vec<(String, V)>, key: &str, value: V) {
     match map.iter_mut().find(|(name, _)| name == key) {
         Some((_, slot)) => *slot = value,
@@ -174,10 +144,6 @@ fn upsert<V>(map: &mut Vec<(String, V)>, key: &str, value: V) {
     }
 }
 
-/// Every check `evaluate` makes before it reads a prediction file, in Python's order:
-/// duplicate metric classes, `eval_classes` empty or repeated, no sequences at all (Rust
-/// only), a metric geometry that does not match a sequence (metric by metric, sequence by
-/// sequence), and missing `<seq>.txt` files (every one named, in dataset order).
 fn preflight(
     dataset: &MOTDataset,
     pred_dir: &Path,
@@ -246,32 +212,21 @@ fn preflight(
     Ok(())
 }
 
-/// `pred_dir / f"{name}.txt"`.
 fn prediction_file(pred_dir: &Path, name: &str) -> PathBuf {
     py_join(pred_dir, format!("{name}.txt"))
 }
 
-/// `evaluate(dataset, predictions, metrics)`: score `dataset` against the `<seq>.txt`
-/// files in `predictions` with each metric, class by class.
-///
-/// Raises before reading any prediction file on duplicate metric classes, empty or
-/// repeated `eval_classes`, a dataset with no sequences, a metric geometry that does not
-/// match a sequence, or a
-/// missing `<seq>.txt` (every missing sequence named). Box predictions give their class
-/// in column 8, read only for a multi-class protocol.
 pub fn evaluate(
     dataset: &MOTDataset,
     predictions: &Path,
     metrics: &[Box<dyn Metric>],
 ) -> Result<EvaluationResult, EvalError> {
-    // `Path(predictions)`: messages print the normalized path, and it is the path read.
+    // CPython `pathlib.Path` normalizes the path; the messages and the reads use that string.
     let shown_dir = pyfmt::path_str(&predictions.to_string_lossy());
     let pred_dir = PathBuf::from(&shown_dir);
     preflight(dataset, &pred_dir, &shown_dir, metrics)?;
     let multi_class = dataset.protocol.eval_classes.len() > 1;
 
-    // Read each prediction file once; every class view filters the same rows. Box and
-    // mask predictions are keyed by name in separate maps, as in Python.
     let mut box_preds: Vec<(String, Vec<Track>)> = Vec::new();
     let mut mask_preds: Vec<(String, Vec<MaskTrack>)> = Vec::new();
     for seq in &dataset.sequences {
@@ -306,13 +261,8 @@ pub fn evaluate(
     })
 }
 
-/// Per-sequence declared scores and the raw combined state per metric, for one class.
 type ClassScores = (Vec<(String, MetricScores)>, Vec<(String, Scores)>);
 
-/// `_score_class`: build each sequence's view for `cls_id`, score it with every metric,
-/// and combine the sequences per metric. Per-sequence results keep only declared fields,
-/// and a metric whose declared per-sequence scores are empty (TrackMAP) gets no entry;
-/// the combined state stays raw for the class combiners.
 fn score_class(
     dataset: &MOTDataset,
     metrics: &[Box<dyn Metric>],
@@ -345,7 +295,6 @@ fn score_class(
     Ok((per_sequence, raw_combined))
 }
 
-/// Metric name -> declared fields of each raw combined state.
 fn declared_metrics(raw: &[(String, Scores)], metrics: &[Box<dyn Metric>]) -> MetricScores {
     let mut out = MetricScores::new();
     for ((name, scores), metric) in raw.iter().zip(metrics) {
@@ -354,10 +303,6 @@ fn declared_metrics(raw: &[(String, Scores)], metrics: &[Box<dyn Metric>]) -> Me
     out
 }
 
-/// Score every class in `eval_classes` order with views from `build`, and shape the
-/// result as `evaluate` returns it. The class combiners take the raw per-class combined
-/// state (TrackMAP weights by its private `_num_dt_*` fields), classes in
-/// `eval_classes` order.
 fn score(
     dataset: &MOTDataset,
     metrics: &[Box<dyn Metric>],
@@ -421,22 +366,12 @@ fn score(
 
 #[cfg(test)]
 mod tests {
-    //! The scoring core with stand-in metrics: what reaches each combiner, what the
-    //! result keeps, and in which order. The preflight errors are checked against Python's
-    //! messages in `tests/exports.rs`; the full path (read, convert, real metrics) runs
-    //! once the formats and metric packages land.
-
     use super::*;
     use crate::metrics::Value;
     use crate::model::{
         FrameConvention, Geometry, GtSequence, Matrix, Protocol, SequenceDataParts,
     };
 
-    /// A stand-in metric. `eval_sequence` reports the view's GT detection count (public
-    /// `n`, or private `_n` when `per_sequence_fields` is false, like TrackMAP) and the
-    /// view's name length as the private `_len`. `combine_sequences` sums both and counts
-    /// its inputs. The class-averaged combiner sums the private `_len`, so it must
-    /// receive raw state; the detection-averaged one negates the sum of `n`.
     struct Stub {
         name: &'static str,
         per_sequence_fields: bool,
@@ -512,7 +447,6 @@ mod tests {
         }
     }
 
-    /// A one-frame view named `name` with `dets` GT detections and no predictions.
     fn view(name: &str, dets: usize) -> SequenceData {
         SequenceData::new(SequenceDataParts {
             name: name.to_string(),
@@ -567,7 +501,6 @@ mod tests {
         assert!(!result.is_multi_class());
         assert_eq!(keys(&result.per_sequence), ["s2", "seq1"]);
         let first = &result.per_sequence[0].1;
-        // "A" holds no public per-sequence field, so it has no per-sequence entry.
         let metrics: Vec<&str> = first.iter().map(|(m, _)| m).collect();
         assert_eq!(metrics, ["B"]);
         assert_eq!(field_names(first.get("B").unwrap()), ["n"]);
@@ -575,7 +508,6 @@ mod tests {
         let names: Vec<&str> = result.combined.iter().map(|(m, _)| m).collect();
         assert_eq!(names, ["B", "A"]);
         for (_, scores) in result.combined.iter() {
-            // Declared fields only, in the order the metric inserted them.
             assert_eq!(field_names(scores), ["n", "inputs"]);
             assert_eq!(scores.float("n"), 8.0);
             assert_eq!(scores.float("inputs"), 2.0);
@@ -603,13 +535,10 @@ mod tests {
             ["n", "inputs"]
         );
         for metric in ["B", "A"] {
-            // The class-averaged combiner read the private `_len` of each class's raw
-            // combined state: 2 classes x (3 + 2) characters.
             let averaged = result.class_averaged.get(metric).unwrap();
             assert_eq!(field_names(averaged), ["classes", "n"]);
             assert_eq!(averaged.float("n"), 10.0);
             assert_eq!(averaged.float("classes"), 2.0);
-            // Class 2 has 2 + 2 detections, class 1 has 1 + 1.
             assert_eq!(result.det_averaged.get(metric).unwrap().float("n"), -6.0);
         }
     }

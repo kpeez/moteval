@@ -1,23 +1,3 @@
-"""Golden fixture suite: hand-derived expected values for every box metric.
-
-Independent of the vendored oracle: every expected value below is a hand-derived
-constant, guarding against moteval and the oracle sharing a bug. Scenarios and
-headline values are ported from track-zoo `f48f449:tests/test_metrics.py`
-(perfect / half-missed / ID switch / conf-zero / multi-sequence combine); the
-remaining fields and the empty-GT / empty-preds scenarios are derived by hand
-from the metric definitions — each scenario documents its derivation inline.
-
-Every fixture runs through the full public path: `GtSequence` -> `MOTDataset`
--> `evaluate()` (which reads predictions from a `<seq>.txt` directory, runs the
-protocol engine, densifies ids, and combines sequences). No metric internals
-are called. Geometry uses exactly-overlapping or disjoint boxes so IoU is
-exactly 1.0 or 0.0 (the two HOTA eps-guard tests add an IoU of exactly 0.75 and
-one of about 7e-17) and every expected value is exact in float64 — assertions
-are exact equality, never approx.
-
-The last test calls each combiner directly with a score dict that lacks every field.
-"""
-
 import numpy as np
 import pytest
 
@@ -44,8 +24,6 @@ METRICS = (HOTA, CLEAR, Identity, Count)
 
 
 def _boxes(track_id: int, x0: float, frames: int, conf: float = 1.0) -> list[Track]:
-    # One 20x20 box per frame, drifting in x. Distinct objects sit >=500px apart
-    # so cross-object IoU is exactly 0; identical rows have IoU exactly 1.
     return [
         Track(frame=f, track_id=track_id, x=x0 + f, y=10.0, w=20.0, h=20.0, conf=conf)
         for f in range(1, frames + 1)
@@ -123,7 +101,6 @@ def _clear_expected(
     frames: float,
     motal: float,
 ) -> dict:
-    # All matches have IoU 1.0, so MOTP_sum == TP and MOTP == 1 whenever TP > 0.
     num_gt_ids = mt + pt + ml
     gt_dets = tp + fn
     return {
@@ -164,7 +141,6 @@ def _identity_expected(*, idtp: float, idfn: float, idfp: float) -> dict:
 
 
 def test_perfect_tracking(tmp_path) -> None:
-    # Predictions identical to GT: every ratio is exactly 1, every error count 0.
     gt = _boxes(1, 0.0, 5) + _boxes(2, 500.0, 5)
     dataset = _dataset(GtSequence(name="seq", num_timesteps=5, tracks=tuple(gt)))
     result = _evaluate(dataset, {"seq": gt}, tmp_path)
@@ -185,10 +161,6 @@ def test_perfect_tracking(tmp_path) -> None:
 
 
 def test_half_of_gt_missed(tmp_path) -> None:
-    # 10 GT dets; only object 1 predicted (perfectly), object 2 entirely missed.
-    # DetA = TP/(TP+FN+FP) = 5/10; AssA = 1 (the one pred track is pure), so
-    # HOTA = sqrt(0.5) at every alpha. MOTA = (5-0-0)/10; IDF1 = 5/(5+0+2.5) = 2/3.
-    # Object 1 is tracked 5/5 -> MT; object 2 0/5 -> ML.
     gt = _boxes(1, 0.0, 5) + _boxes(2, 500.0, 5)
     pred = _boxes(1, 0.0, 5)
     dataset = _dataset(GtSequence(name="seq", num_timesteps=5, tracks=tuple(gt)))
@@ -219,13 +191,6 @@ def test_half_of_gt_missed(tmp_path) -> None:
 
 
 def test_exactly_one_id_switch(tmp_path) -> None:
-    # One GT track over 4 frames; tracker id 1 covers frames 1-2, id 2 frames 3-4.
-    # CLEAR: TP=4, one switch -> MOTA = (4-0-1)/4 = 0.75. MOTAL's log10(IDSW)
-    # quirk makes a single switch free: log10(1) = 0 -> MOTAL = 1.0.
-    # Identity can credit only one tracker id: IDTP=2, IDFN=IDFP=2 -> IDF1=0.5.
-    # HOTA association: each pred track overlaps gt for 2 of 4 frames;
-    # ass_a = 2/(4+2-2) = 0.5 per TP -> AssA=0.5, AssRe=0.5 (2/4), AssPr=1 (2/2),
-    # DetA=1 -> HOTA = sqrt(0.5).
     gt = _boxes(1, 0.0, 4)
     pred = [Track(frame=f, track_id=1, x=0.0 + f, y=10.0, w=20.0, h=20.0, conf=1.0) for f in (1, 2)]
     pred += [
@@ -250,6 +215,7 @@ def test_exactly_one_id_switch(tmp_path) -> None:
             loca=1.0,
         ),
     )
+    # TrackEval's MOTAL subtracts log10(IDSW), so one switch costs nothing: MOTAL = 1.0.
     assert_scores_exact(
         scores["CLEAR"],
         _clear_expected(tp=4, fn=0, fp=0, idsw=1, mt=1, pt=0, ml=0, frag=0, frames=4, motal=1.0),
@@ -259,11 +225,8 @@ def test_exactly_one_id_switch(tmp_path) -> None:
 
 
 def test_conf_zero_gt_dropped_but_matched_pred_stays(tmp_path) -> None:
-    # One frame. GT: id 1 (conf 1) at A, id 9 (conf 0, "do not consider") at B.
-    # Preds: id 1 at A, id 2 at B. The protocol drops the conf-zero GT row
-    # (GT_Dets=1, GT_IDs=1), but its matched prediction is NOT removed (only
-    # distractor-class matches are) so it counts as a plain FP:
-    # MOTA = (1-1-0)/1 = 0, CLR_Pr = 0.5, HOTA DetA = 1/2.
+    # TrackEval removes only predictions matched to distractor classes, so the prediction
+    # on the zero-marked GT row stays and counts as a false positive.
     gt = [
         Track(frame=1, track_id=1, x=0.0, y=10.0, w=20.0, h=20.0, conf=1.0),
         Track(frame=1, track_id=9, x=500.0, y=10.0, w=20.0, h=20.0, conf=0.0),
@@ -300,15 +263,8 @@ def test_conf_zero_gt_dropped_but_matched_pred_stays(tmp_path) -> None:
 
 
 def test_hota_alignment_ignores_overlap_at_or_below_eps(tmp_path) -> None:
-    # HOTA's global alignment adds sim / (row sum + column sum - sim) only where that
-    # denominator is above eps. GT ids 1 and 2 and pred id 1 are 100x100 boxes at the
-    # origin in frame 1 (IoU 1 each, a tie). In frames 2 and 3 only GT 2 is there, its left
-    # edge 2**-46 short of the prediction's right edge: IoU ~7e-17, below eps, so it adds
-    # nothing (it would add 1 per frame without the guard and pull frame 1 to GT 2). In
-    # frame 4 only GT 1 is there (IoU 1). Alignment: GT 1 1.5/(2+4-1.5), GT 2
-    # 0.5/(3+4-0.5), so frame 1 matches GT 1. TP=2 (frames 1 and 4), FN=3, FP=2:
-    # DetA=2/7, DetRe=2/5, DetPr=1/2. One pair, matched twice: ass_a = 2/(2+4-2) = 0.5,
-    # AssRe = 2/2, AssPr = 2/4.
+    # TrackEval's HOTA alignment drops a similarity whose Jaccard denominator is at or below
+    # eps: GT 2's IoU of ~7e-17 in frames 2 and 3 adds nothing, so frame 1 matches GT 1.
     box = {"y": 0.0, "w": 100.0, "h": 100.0, "conf": 1.0}
     gt = [Track(frame=f, track_id=1, x=0.0, **box) for f in (1, 4)]
     gt += [Track(frame=1, track_id=2, x=0.0, **box)]
@@ -335,10 +291,8 @@ def test_hota_alignment_ignores_overlap_at_or_below_eps(tmp_path) -> None:
 
 
 def test_hota_alpha_threshold_is_eps_guarded(tmp_path) -> None:
-    # One frame, one GT box and one prediction, 7 wide and shifted by 1: IoU = 60/80 =
-    # 0.75 exactly. The 15th alpha, np.arange(0.05, 0.99, 0.05)[14], is
-    # 0.7500000000000001; HOTA matches at `similarity >= alpha - eps`, so the pair counts
-    # at the first 15 alphas and not at the last 4 (0.8 and up).
+    # IoU is exactly 0.75 and the 15th alpha, np.arange(0.05, 0.99, 0.05)[14], is
+    # 0.7500000000000001: TrackEval's HOTA matches at `similarity >= alpha - eps`.
     gt = [Track(frame=1, track_id=1, x=0.0, y=0.0, w=7.0, h=10.0, conf=1.0)]
     pred = [Track(frame=1, track_id=1, x=1.0, y=0.0, w=7.0, h=10.0, conf=1.0)]
     dataset = _dataset(GtSequence(name="seq", num_timesteps=1, tracks=tuple(gt)))
@@ -351,11 +305,6 @@ def test_hota_alpha_threshold_is_eps_guarded(tmp_path) -> None:
 
 
 def test_multi_sequence_combine_is_detection_weighted(tmp_path) -> None:
-    # Sequence "perfect" is tracked perfectly; sequence "missed" has an empty file.
-    # Combining sums TP/FN/FP (TrackEval-style detection weighting), it does NOT
-    # average the per-sequence scores: combined TP=5, FN=5 -> DetA=0.5, while
-    # AssA is TP-weighted -> (1*5 + 0*0)/5 = 1, so combined HOTA = sqrt(0.5),
-    # strictly between the per-sequence extremes 0 and 1 (and != the 0.5 mean).
     gt = _boxes(1, 0.0, 5)
     dataset = _dataset(
         GtSequence(name="perfect", num_timesteps=5, tracks=tuple(gt)),
@@ -385,8 +334,8 @@ def test_multi_sequence_combine_is_detection_weighted(tmp_path) -> None:
         ),
     )
 
-    # CLR_Frames quirk: the empty-preds early return never sets CLR_Frames, so
-    # "missed" contributes 0 frames and the combined count stays 5, not 10.
+    # TrackEval's CLEAR returns early on empty predictions before it sets CLR_Frames, so
+    # "missed" adds 0 frames.
     assert_scores_exact(
         combined["CLEAR"],
         _clear_expected(tp=5, fn=5, fp=0, idsw=0, mt=1, pt=0, ml=1, frag=0, frames=5, motal=0.5),
@@ -398,9 +347,7 @@ def test_multi_sequence_combine_is_detection_weighted(tmp_path) -> None:
 
 
 def test_empty_gt_sequence(tmp_path) -> None:
-    # No GT at all; 5 predictions. Every prediction is a false positive.
-    # CLEAR's empty-GT early return sets only CLR_FP and MLR=1.0 (upstream quirk:
-    # MLR is 1 despite zero GT tracks) and skips the derived-field computation.
+    # TrackEval's CLEAR returns early on empty GT with only CLR_FP and MLR = 1.0 set.
     pred = _boxes(1, 0.0, 5)
     dataset = _dataset(GtSequence(name="seq", num_timesteps=5, tracks=()))
     result = _evaluate(dataset, {"seq": pred}, tmp_path)
@@ -424,8 +371,7 @@ def test_empty_gt_sequence(tmp_path) -> None:
 
 
 def test_empty_predictions_sequence(tmp_path) -> None:
-    # GT present (10 dets, 2 ids), empty prediction file: everything is missed.
-    # CLEAR's empty-preds early return sets CLR_FN, ML and MLR only.
+    # TrackEval's CLEAR returns early on empty predictions with only CLR_FN, ML and MLR set.
     gt = _boxes(1, 0.0, 5) + _boxes(2, 500.0, 5)
     dataset = _dataset(GtSequence(name="seq", num_timesteps=5, tracks=tuple(gt)))
     result = _evaluate(dataset, {"seq": []}, tmp_path)
@@ -449,7 +395,6 @@ def test_empty_predictions_sequence(tmp_path) -> None:
     assert_scores_exact(scores["Identity"], _identity_expected(idtp=0, idfn=10, idfp=0))
 
 
-# The first field each combiner reads, as the `py-reference` pure-Python metrics raise it.
 FIRST_FIELD_READ = {
     HOTA: ("HOTA_TP", "HOTA_TP", "HOTA_TP"),
     CLEAR: ("CLR_TP", "CLR_TP", "CLR_TP"),

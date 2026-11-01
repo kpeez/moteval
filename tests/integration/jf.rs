@@ -1,14 +1,3 @@
-//! J&F and mask similarity against Python moteval and the TrackEval oracle.
-//!
-//! - Boundary matching: `_boundary_points` and scipy `KDTree` counts on 1,000 seeded mask
-//!   pairs (`tests/integration/data/jf_boundary.json`).
-//! - 300 seeded random J&F sequences scored by Python moteval, errors included, and its
-//!   three combiners over groups of them (`tests/integration/data/jf_sequences.json`).
-//! - Every `synthetic_mots` case: the J&F oracle entries, Python moteval's raw per-sequence
-//!   and combined J&F state, and `mask_iou` against the dumped per-frame similarity.
-//! - Real data (`MOTEVAL_REAL_TESTDATA`): the MOTS20 entry of `real_data.json` and the
-//!   MOTS20 split of the reference benchmarks, checked the same way.
-
 use crate::harness::{
     Case, as_array, as_str, as_u64, as_usize, assert_f64s_bit_equal, assert_field_order,
     assert_scores_bit_equal, check_case_against_oracle, f64s_from_bits, load_real_case,
@@ -80,7 +69,6 @@ fn boundary_points_and_matches_equal_scipy_kdtree_on_1000_pairs() {
     eprintln!("checked {points} boundary points");
 }
 
-/// Dumped scores `[[field, [bits]]]`, in Python's insertion order.
 fn dumped_scores(json: &Json) -> Scores {
     let mut scores = Scores::new();
     for pair in as_array(json) {
@@ -215,8 +203,6 @@ fn random_sequences_match_python_jf_scores_errors_and_combiners() {
     );
 }
 
-/// `mask_iou(gt_masks[t], pred_masks[t])` equals the dumped `similarity[t]`, bit for bit.
-/// Returns the number of frames compared.
 fn check_mask_similarity(case: &Case) -> usize {
     let mut frames = 0;
     for view in &case.views {
@@ -246,9 +232,6 @@ fn find<'a>(by_metric: &'a [(String, Scores)], metric: &str) -> Option<&'a Score
     by_metric.iter().find(|(m, _)| m == metric).map(|(_, s)| s)
 }
 
-/// J&F on one case: the oracle fields, and every J&F result Python moteval dumped
-/// (per-sequence, combined, class-averaged, det-averaged), with field order. Returns
-/// the number of oracle fields checked.
 fn check_jf_case(case: &Case) -> usize {
     let metric = JAndF;
     let label = format!("{}/{}", case.fixture, case.case);
@@ -261,7 +244,6 @@ fn check_jf_case(case: &Case) -> usize {
             let got = metric.eval_sequence(&seq.data).unwrap();
             if let Some(want) = find(by_metric, "JAndF") {
                 let l = format!("{label} {key}");
-                // Real-data dumps hold the declared fields only, in the same order.
                 assert_field_order(want, &got.declared(&field_names(want)), &l);
                 assert_scores_bit_equal(want, &got, &l);
             }
@@ -320,7 +302,6 @@ fn synthetic_mots_cases_match_oracle_and_python() {
         );
         oracle_fields += check_jf_case(&case);
     }
-    // 8 oracle entries (6 single-class cases, class- and det-averaged), 8 fields each.
     assert_eq!(oracle_fields, 64);
     eprintln!("checked {oracle_fields} oracle fields and {frames} similarity frames");
 }

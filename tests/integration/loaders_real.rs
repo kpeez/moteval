@@ -1,18 +1,3 @@
-//! Real-data loader gate: on all nine local benchmarks, every split with GT, the Rust
-//! loader and readers give what Python moteval gives, and every class view's
-//! `SequenceData` equals Python's bit for bit.
-//!
-//! Inputs, under `MOTEVAL_REAL_TESTDATA`:
-//! - `loaders_real/<benchmark>_<split>/` from `scripts/testdata/dump_loaders.py`: Python's
-//!   loaded GT, the seeded prediction files, Python's parse of them, and (masks) the
-//!   mask geometry calls;
-//! - `reference_benchmarks/<benchmark>_<split>/` from `scripts/testdata/dump_scenarios.py
-//!   --real-data`: Python's `SequenceData` for each class view, built from the same
-//!   prediction files.
-//!
-//! The GT comes from `MOTEVAL_DATA_ROOT`. Missing data skips loudly
-//! (`SKIPPING REAL-DATA GATE`); a skip never counts as a pass.
-
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fs;
@@ -26,7 +11,6 @@ use moteval::model::{Geometry, Matrix, Sequence, SequenceData};
 use moteval::rle::{RleError, RleMask};
 use serde_json::Value as Json;
 
-/// `data.bin` with its array records.
 struct Blob {
     data: Vec<u8>,
 }
@@ -121,7 +105,6 @@ fn rle_text(r: &RleMask) -> (usize, usize, Vec<u8>) {
     (r.height(), r.width(), r.to_compressed())
 }
 
-/// Every field of two `SequenceData`, floats bit for bit.
 fn same_sequence_data(expected: &SequenceData, got: &SequenceData, label: &str) {
     assert_eq!(expected.name(), got.name(), "{label}: name");
     let counts = |d: &SequenceData| {
@@ -162,7 +145,6 @@ fn same_sequence_data(expected: &SequenceData, got: &SequenceData, label: &str) 
     }
 }
 
-/// FNV-1a 64 over `"{h} {w} {counts}\n"` for each mask (`dump_loaders.mask_digest`).
 fn mask_digest(masks: &[RleMask]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for m in masks {
@@ -185,8 +167,6 @@ fn matrix(j: &Json) -> Matrix {
     Matrix::new(size(0), size(1), data).expect("a matrix")
 }
 
-/// The recorded mask geometry calls of one conversion, replayed in order; each checks
-/// that Rust passes the masks Python passed (by digest).
 struct ReplayGeometry {
     calls: RefCell<VecDeque<Json>>,
     label: String,
@@ -227,7 +207,6 @@ impl MaskGeometry for ReplayGeometry {
     }
 }
 
-/// The data root the GT loads from, or `None` after the loud skip line.
 fn data_root(what: &str) -> Option<PathBuf> {
     match std::env::var_os("MOTEVAL_DATA_ROOT") {
         Some(root) if Path::new(&root).is_dir() => Some(PathBuf::from(root)),
@@ -270,7 +249,6 @@ fn check_case(case: &str) {
     let dataset = load_dataset(benchmark, Some(&root.join(benchmark)), Some(split))
         .unwrap_or_else(|err| panic!("{case}: {err}"));
 
-    // The dataset and its protocol.
     assert_eq!(dataset.name, as_str(&header["name"]), "{case}: name");
     assert_eq!(
         dataset.split,

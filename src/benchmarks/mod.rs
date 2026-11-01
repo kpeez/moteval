@@ -1,15 +1,3 @@
-//! Built-in benchmark loaders, keyed by name, ported from `moteval/benchmarks/`.
-//!
-//! `BENCHMARKS` is the explicit index the CLI resolves `--dataset` names against;
-//! `load_dataset` reads `default_data_root()/<name>` unless the caller passes a root.
-//! Custom data never registers anything: it loads through `load_motchallenge` or
-//! `load_mots`, or builds a `MOTDataset` directly.
-//!
-//! Loaders find files as pathlib does (`py_path`, dot files match `*`), read text as
-//! Python does, and fail with Python's message for every input Python rejects. Where
-//! Python accepts a value Rust cannot hold (an integer beyond `i64`, a negative sequence
-//! length, a non-numeric JSON coordinate) the loader fails with `Unsupported`.
-
 pub mod animaltrack;
 pub mod bft;
 pub mod chimpact;
@@ -34,10 +22,8 @@ use crate::formats::pytext::{self, py_join, py_path, py_str};
 use crate::model::{MOTDataset, ModelError};
 use crate::pyfmt::repr_str;
 
-/// A loader: `(root, split) -> MOTDataset`.
 pub type Loader = fn(&Path, &str) -> Result<MOTDataset, BenchmarkError>;
 
-/// `BENCHMARKS`: name, loader, and the loader's default split, in Python's order.
 pub const BENCHMARKS: &[(&str, Loader, &str)] = &[
     (
         "animaltrack",
@@ -62,65 +48,47 @@ pub const BENCHMARKS: &[(&str, Loader, &str)] = &[
     ("uavdt", uavdt::load_uavdt, uavdt::DEFAULT_SPLIT),
 ];
 
-/// The Python exception a `BenchmarkError::Python` stands for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PyException {
-    /// `OSError` and its subclasses (`FileNotFoundError`, `IsADirectoryError`, ...).
     OsError,
-    /// `UnicodeDecodeError` (a `ValueError`).
     UnicodeDecodeError,
-    /// `json.JSONDecodeError` (a `ValueError`).
     JsonDecodeError,
-    /// Any other `ValueError` (unpacking, `zip(strict=True)`, `int()`).
     ValueError,
     KeyError,
     TypeError,
-    /// `configparser.InterpolationError` (not a `ValueError`).
     InterpolationError,
 }
 
-/// Errors from finding and loading a benchmark. Messages match the Python text.
 #[derive(Clone, Debug, PartialEq)]
 pub enum BenchmarkError {
-    /// `MOTEVAL_DATA_ROOT must not be empty`.
     EmptyDataRoot,
-    /// `unknown dataset {name!r}; available: {names}`.
     UnknownDataset(String),
-    /// `split directory not found: {path}`.
     SplitDirNotFound(String),
-    /// `labels directory not found: {path}` (ChimpACT).
     LabelsDirNotFound(String),
-    /// `unknown {benchmark} split {split!r}; expected {expected}`.
     UnknownSplit {
         benchmark: &'static str,
         split: String,
         expected: &'static str,
     },
-    /// `animaltrack split {split!r} not found at {path}`.
     SplitFileNotFound {
         split: String,
         path: String,
     },
-    /// `missing {file} for sequence {sequence!r} at {path}` (`gt.txt`, `seqinfo.ini`).
     MissingFile {
         file: &'static str,
         sequence: String,
         path: String,
     },
-    /// `malformed seqinfo.ini for sequence {sequence!r} at {path}: {detail}`.
     MalformedSeqinfo {
         sequence: String,
         path: String,
         detail: String,
     },
-    /// `cannot derive sequence length for empty gt: {sequence!r}`.
     EmptyGt(String),
-    /// An exception Python raises from a library call, with its text.
     Python {
         exception: PyException,
         message: String,
     },
-    /// A value Python accepts that Rust cannot hold. The message is Rust's own.
     Unsupported(String),
     Format(FormatError),
     Model(ModelError),
@@ -197,9 +165,6 @@ impl From<FormatError> for BenchmarkError {
 }
 
 impl BenchmarkError {
-    /// The Python exception class this error stands for (`OSError` for every subclass,
-    /// `InterpolationError` for configparser's); `"Unsupported"` where Python raises
-    /// nothing.
     pub fn python_exception(&self) -> &'static str {
         match self {
             Self::Python { exception, .. } => match exception {
@@ -231,7 +196,6 @@ impl BenchmarkError {
     }
 }
 
-/// `Path.read_text()`, failing as Python's `OSError` or `UnicodeDecodeError`.
 fn read_text(path: &Path) -> Result<String, BenchmarkError> {
     crate::formats::read_text(path).map_err(|err| match err {
         FormatError::Decode(message) => {
@@ -241,7 +205,6 @@ fn read_text(path: &Path) -> Result<String, BenchmarkError> {
     })
 }
 
-/// `json.loads(path.read_text())`.
 fn read_json(path: &Path) -> Result<pyjson::Json, BenchmarkError> {
     let text = read_text(path)?;
     pyjson::loads(&text).map_err(|err| match err {
@@ -255,8 +218,6 @@ fn read_json(path: &Path) -> Result<pyjson::Json, BenchmarkError> {
     })
 }
 
-/// A JSON value a loader stores in an integer `Track` field. Python stores any value and
-/// fails (or not) later; Rust reads an `int` (or `bool`, an `int` in Python) that fits.
 fn json_i64(value: &pyjson::Json, field: &str, source: &Path) -> Result<i64, BenchmarkError> {
     value
         .number()
@@ -271,7 +232,6 @@ fn json_i64(value: &pyjson::Json, field: &str, source: &Path) -> Result<i64, Ben
         })
 }
 
-/// A JSON value a loader stores in a float `Track` field (`np.float64(value)` later).
 fn json_f64(value: &pyjson::Json, field: &str, source: &Path) -> Result<f64, BenchmarkError> {
     value.number().map(pyjson::PyNum::to_f64).ok_or_else(|| {
         BenchmarkError::Unsupported(format!(
@@ -283,7 +243,6 @@ fn json_f64(value: &pyjson::Json, field: &str, source: &Path) -> Result<f64, Ben
     })
 }
 
-/// A file or directory name as a `str`; Rust cannot hold Python's surrogate-escaped names.
 fn entry_name(name: OsString, dir: &Path) -> Result<String, BenchmarkError> {
     name.into_string().map_err(|name| {
         BenchmarkError::Unsupported(format!(
@@ -294,7 +253,6 @@ fn entry_name(name: OsString, dir: &Path) -> Result<String, BenchmarkError> {
     })
 }
 
-/// `sorted(p.name for p in dir.iterdir() if p.is_dir())`.
 fn sorted_subdirs(dir: &Path) -> Result<Vec<String>, BenchmarkError> {
     let dir = py_path(dir);
     let entries = fs::read_dir(&dir).map_err(|err| BenchmarkError::os(&err, &dir))?;
@@ -309,10 +267,9 @@ fn sorted_subdirs(dir: &Path) -> Result<Vec<String>, BenchmarkError> {
     Ok(names)
 }
 
-/// The names `dir.glob("*{suffix}")` yields: every entry (file, directory, dot file)
-/// whose name ends with `suffix`. Like pathlib, an unreadable directory yields nothing.
 fn glob_suffix(dir: &Path, suffix: &str) -> Result<Vec<String>, BenchmarkError> {
     let dir = py_path(dir);
+    // CPython `Path.glob` yields nothing for an unreadable directory.
     let Ok(entries) = fs::read_dir(&dir) else {
         return Ok(Vec::new());
     };
@@ -326,8 +283,6 @@ fn glob_suffix(dir: &Path, suffix: &str) -> Result<Vec<String>, BenchmarkError> 
     Ok(names)
 }
 
-/// `default_data_root()` given the value of `MOTEVAL_DATA_ROOT` (Rust tests cannot set
-/// the environment without `unsafe`).
 #[doc(hidden)]
 pub fn default_data_root_with_env(value: Option<OsString>) -> Result<PathBuf, BenchmarkError> {
     match value {
@@ -339,14 +294,10 @@ pub fn default_data_root_with_env(value: Option<OsString>) -> Result<PathBuf, Be
     }
 }
 
-/// `default_data_root()`: `MOTEVAL_DATA_ROOT` when set (an empty or blank value is an
-/// error), else `data/benchmarks` relative to the working directory.
 pub fn default_data_root() -> Result<PathBuf, BenchmarkError> {
     default_data_root_with_env(std::env::var_os("MOTEVAL_DATA_ROOT"))
 }
 
-/// `load_dataset(name, root, split)`: a built-in benchmark by name. `root` defaults to
-/// `default_data_root()/<name>` and `split` to the loader's default.
 pub fn load_dataset(
     name: &str,
     root: Option<&Path>,
@@ -355,8 +306,6 @@ pub fn load_dataset(
     load_dataset_with_env(name, root, split, std::env::var_os("MOTEVAL_DATA_ROOT"))
 }
 
-/// `load_dataset` with the value of `MOTEVAL_DATA_ROOT` passed in (Rust tests cannot set
-/// the environment without `unsafe`).
 #[doc(hidden)]
 pub fn load_dataset_with_env(
     name: &str,
