@@ -220,16 +220,19 @@ fn log10_svml_matches_numpy() {
     let xs = f64s_from_bits(&case["x"]);
     let got: Vec<f64> = xs.iter().map(|&x| numeric::log10_svml(x)).collect();
     assert_f64s_bit_equal(&f64s_from_bits(&case["out"]), &got, "log10_svml");
-    // The fixture is only a test if libm disagrees with numpy somewhere in it.
+    // The fixture tells SVML from libm only if they disagree somewhere in it. That was
+    // measured for glibc (397 inputs); other libms are not asserted on.
     let libm_differs = xs
         .iter()
         .zip(&got)
         .filter(|&(&x, &y)| !same_bits(x.log10(), y))
         .count();
-    assert!(
-        libm_differs > 0,
-        "no input where libm log10 differs from SVML"
-    );
+    if cfg!(all(target_os = "linux", target_env = "gnu")) {
+        assert!(
+            libm_differs > 0,
+            "no input where glibc log10 differs from SVML"
+        );
+    }
     let n = harness::as_u64(&case["integers"]);
     let ints: Vec<f64> = (1..=n).map(|i| numeric::log10_svml(i as f64)).collect();
     assert_eq!(
