@@ -70,3 +70,6 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+
+# Rust
+/rust/target/

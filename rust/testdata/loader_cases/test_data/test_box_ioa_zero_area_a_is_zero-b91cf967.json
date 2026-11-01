@@ -1,0 +1,1 @@
+{"test":"tests/test_data.py::test_box_ioa_zero_area_a_is_zero","snapshots":{},"cases":[{"kind":"box_ioa","snapshot":null,"inputs":{"a":{"boxes":[[0,0,0,0]]},"b":{"boxes":[[0,0,4621819117588971520,4621819117588971520]]}},"ok":[1,1,[0]]}]}

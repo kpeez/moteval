@@ -1,5 +1,5 @@
 name: "Setup Python Environment"
-description: "Install uv from mise.toml, then sync the locked environment for one Python version"
+description: "Install uv and Rust from mise.toml, then sync the locked environment for one Python version"
 
 inputs:
   python-version:
@@ -13,10 +13,12 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Install uv (version from mise.toml)
+    # `uv sync` builds the editable install with maturin, which compiles the Rust
+    # extension `moteval._moteval`, so the Python jobs need Rust too.
+    - name: Install uv and Rust (versions from mise.toml)
       uses: jdx/mise-action@v5
       with:
-        install_args: uv
+        install_args: uv rust
 
     - name: Cache uv downloads
       uses: actions/cache@v6
@@ -33,5 +35,5 @@ runs:
         uv --version
         uv sync ${{ inputs.install-args }}
         echo "UV_PYTHON=$UV_PYTHON" >> "$GITHUB_ENV"
-        # Python jobs need only uv; stop `mise run` from installing rust and hyperfine.
+        # Stop `mise run` from installing the remaining tools (hyperfine).
         echo "MISE_TASK_RUN_AUTO_INSTALL=false" >> "$GITHUB_ENV"

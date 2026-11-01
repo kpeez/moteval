@@ -18,6 +18,9 @@ numbers are interpreted under a declared `FrameConvention`.
 from dataclasses import dataclass
 from pathlib import Path
 
+from moteval import _moteval
+from moteval._rust import call
+
 
 @dataclass(frozen=True)
 class Track:
@@ -49,32 +52,7 @@ def read_mot(path: Path, *, class_column: bool = False) -> list[Track]:
     than silently scoring in no class. `evaluate` sets it for multi-class protocols
     only.
     """
-    tracks: list[Track] = []
-    for lineno, line in enumerate(path.read_text().splitlines(), start=1):
-        line = line.strip()
-        if not line:
-            continue
-        fields = line.split(",")
-        if len(fields) < (8 if class_column else 6):
-            raise ValueError(f"malformed MOT row in {path}:{lineno}: {line!r}")
-        try:
-            conf = float(fields[6]) if len(fields) > 6 else 1.0
-            track = Track(
-                frame=int(fields[0]),
-                track_id=int(fields[1]),
-                x=float(fields[2]),
-                y=float(fields[3]),
-                w=float(fields[4]),
-                h=float(fields[5]),
-                conf=conf,
-                class_id=int(fields[7]) if class_column else 1,
-            )
-        except ValueError as err:
-            raise ValueError(f"malformed MOT row in {path}:{lineno}: {line!r}") from err
-        if track.class_id < 0:
-            raise ValueError(f"MOT row without a class (column 8) in {path}:{lineno}: {line!r}")
-        tracks.append(track)
-    return tracks
+    return [Track(*row) for row in call(_moteval.read_mot, path, class_column)]
 
 
 def write_mot(path: Path, tracks: list[Track]) -> None:
@@ -83,13 +61,7 @@ def write_mot(path: Path, tracks: list[Track]) -> None:
     Column 8 holds ``class_id``, so `read_mot` with ``class_column=True`` reads the
     classes back. The two trailing fields are ``-1``.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    rows = sorted(tracks, key=lambda t: (t.frame, t.track_id))
-    lines = [
-        f"{t.frame},{t.track_id},{t.x:.2f},{t.y:.2f},{t.w:.2f},{t.h:.2f},{t.conf:.4f},{t.class_id},-1,-1"
-        for t in rows
-    ]
-    path.write_text("\n".join(lines) + ("\n" if lines else ""))
+    call(_moteval.write_mot, path, tracks)
 
 
 @dataclass(frozen=True)
@@ -113,32 +85,9 @@ class MaskTrack:
 
 def read_mots(path: Path) -> list[MaskTrack]:
     """Parse a MOTS txt file into `MaskTrack` rows."""
-    tracks: list[MaskTrack] = []
-    for lineno, line in enumerate(path.read_text().splitlines(), start=1):
-        line = line.strip()
-        if not line:
-            continue
-        fields = line.split()
-        if len(fields) != 6:
-            raise ValueError(f"malformed MOTS row in {path}:{lineno}: {line!r}")
-        try:
-            track = MaskTrack(
-                frame=int(fields[0]),
-                track_id=int(fields[1]),
-                class_id=int(fields[2]),
-                img_h=int(fields[3]),
-                img_w=int(fields[4]),
-                rle=fields[5],
-            )
-        except ValueError as err:
-            raise ValueError(f"malformed MOTS row in {path}:{lineno}: {line!r}") from err
-        tracks.append(track)
-    return tracks
+    return [MaskTrack(*row) for row in call(_moteval.read_mots, path)]
 
 
 def write_mots(path: Path, tracks: list[MaskTrack]) -> None:
-    """Write `MaskTrack` rows as a MOTS txt file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    rows = sorted(tracks, key=lambda t: (t.frame, t.track_id))
-    lines = [f"{t.frame} {t.track_id} {t.class_id} {t.img_h} {t.img_w} {t.rle}" for t in rows]
-    path.write_text("\n".join(lines) + ("\n" if lines else ""))
+    """Write `MaskTrack` rows as a MOTS txt file, sorted by ``(frame, track_id)``."""
+    call(_moteval.write_mots, path, tracks)

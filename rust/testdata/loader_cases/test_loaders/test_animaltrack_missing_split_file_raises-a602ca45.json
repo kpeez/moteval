@@ -1,0 +1,1 @@
+{"test":"tests/test_loaders.py::test_animaltrack_missing_split_file_raises","snapshots":{"9dc41b909013":[{"path":"gt_all","dir":true}]},"cases":[{"kind":"load_animaltrack","snapshot":"9dc41b909013","inputs":{"root":"<TMP>","split":"train"},"error":{"type":"ValueError","message":"animaltrack split 'train' not found at <TMP>/train_test_splits/videos_train.txt"}}]}

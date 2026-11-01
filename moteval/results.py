@@ -11,15 +11,18 @@ single-class JSON and CSV keep their original shape:
 - CSV: single-class columns are ``seq, metric, field, value``. Multi-class columns
   are ``class, seq, metric, field, value``: one block per class id (each sequence,
   then ``COMBINED``), then ``class_averaged`` and ``det_averaged`` rows with
-  ``seq = COMBINED``.
+  ``seq = COMBINED``. An array field is reduced to its mean.
+
+The Rust extension writes both exports (``rust/moteval/src/results.rs``), so the CLI and
+the Python API give the same bytes.
 """
 
-from collections.abc import Iterator
+import json
 from dataclasses import dataclass, field
 from typing import TypeAlias, TypedDict, cast
 
-import numpy as np
-
+from moteval import _moteval
+from moteval._rust import call
 from moteval.metrics.base import Scores
 
 # metric name -> field -> value
@@ -27,12 +30,6 @@ MetricScores = dict[str, Scores]
 JsonScalar: TypeAlias = str | int | float
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"]
 JsonScores: TypeAlias = dict[str, dict[str, JsonValue]]
-CsvValue: TypeAlias = int | float
-CsvRow: TypeAlias = tuple[str, str, str, CsvValue] | tuple[str, str, str, str, CsvValue]
-
-COMBINED = "COMBINED"
-CLASS_AVERAGED = "class_averaged"
-DET_AVERAGED = "det_averaged"
 
 
 class JsonClassResult(TypedDict):
@@ -91,90 +88,17 @@ class EvaluationResult:
         return bool(self.per_class)
 
 
-def _to_json_value(value: float | np.ndarray) -> JsonValue:
-    if isinstance(value, np.ndarray):
-        return cast(JsonValue, value.tolist())
-    if isinstance(value, np.generic):
-        return cast(int | float, value.item())
-    return value
-
-
-def _json_scores(scores: MetricScores) -> JsonScores:
-    return {
-        metric: {name: _to_json_value(value) for name, value in fields.items()}
-        for metric, fields in scores.items()
-    }
-
-
-def _json_per_sequence(per_sequence: dict[str, MetricScores]) -> dict[str, JsonScores]:
-    return {sequence: _json_scores(scores) for sequence, scores in per_sequence.items()}
+def to_json(result: EvaluationResult, *, dataset: str, split: str) -> str:
+    """The stable JSON export text: ``moteval run --out-json`` writes exactly this."""
+    return call(_moteval.results_to_json, result, dataset, split)
 
 
 def to_json_dict(result: EvaluationResult, *, dataset: str, split: str) -> JsonResult:
-    """Convert an evaluation result to the stable JSON export schema."""
-    exported: JsonResult = {
-        "dataset": dataset,
-        "split": split,
-        "per_sequence": _json_per_sequence(result.per_sequence),
-        "combined": _json_scores(result.combined),
-    }
-    if result.is_multi_class:
-        exported["per_class"] = {
-            str(cls_id): {
-                "per_sequence": _json_per_sequence(class_result.per_sequence),
-                "combined": _json_scores(class_result.combined),
-            }
-            for cls_id, class_result in result.per_class.items()
-        }
-        exported["class_averaged"] = _json_scores(result.class_averaged)
-        exported["det_averaged"] = _json_scores(result.det_averaged)
-    return exported
+    """The stable JSON export as a dict (`to_json` parsed; NaN stays ``float("nan")``)."""
+    return cast(JsonResult, json.loads(to_json(result, dataset=dataset, split=split)))
 
 
-def _to_csv_value(value: float | np.ndarray) -> CsvValue:
-    scalar = np.mean(value) if isinstance(value, np.ndarray) else value
-    if isinstance(scalar, np.generic):
-        return cast(int | float, scalar.item())
-    return scalar
-
-
-def _scored_rows(
-    per_sequence: dict[str, MetricScores], combined: MetricScores
-) -> Iterator[tuple[str, MetricScores]]:
-    yield from per_sequence.items()
-    yield COMBINED, combined
-
-
-def iter_scored_rows(result: EvaluationResult) -> Iterator[tuple[tuple[str, ...], MetricScores]]:
-    """Yield ``(row labels, scores)`` in export order.
-
-    Labels are ``(seq,)`` for a single-class run and ``(class, seq)`` for a
-    multi-class run; `row_label_names` names them.
-    """
-    if not result.is_multi_class:
-        for sequence, scores in _scored_rows(result.per_sequence, result.combined):
-            yield (sequence,), scores
-        return
-    for cls_id, class_result in result.per_class.items():
-        for sequence, scores in _scored_rows(class_result.per_sequence, class_result.combined):
-            yield (str(cls_id), sequence), scores
-    yield (CLASS_AVERAGED, COMBINED), result.class_averaged
-    yield (DET_AVERAGED, COMBINED), result.det_averaged
-
-
-def row_label_names(result: EvaluationResult) -> tuple[str, ...]:
-    """Name the labels `iter_scored_rows` yields: ``("seq",)`` or ``("class", "seq")``."""
-    return ("class", "seq") if result.is_multi_class else ("seq",)
-
-
-def csv_header(result: EvaluationResult) -> tuple[str, ...]:
-    """The CSV column names for ``result``; see the module docstring."""
-    return (*row_label_names(result), "metric", "field", "value")
-
-
-def iter_csv_rows(result: EvaluationResult) -> Iterator[CsvRow]:
-    """Yield the stable long-form CSV rows, with array fields reduced to their mean."""
-    for labels, scores in iter_scored_rows(result):
-        for metric, fields in scores.items():
-            for field_name, value in fields.items():
-                yield cast(CsvRow, (*labels, metric, field_name, _to_csv_value(value)))
+def to_csv(result: EvaluationResult) -> str:
+    """The stable long-form CSV export text: ``moteval run --out-csv`` writes exactly
+    this (``\\r\\n`` line ends, as Python's `csv.writer` writes)."""
+    return call(_moteval.results_to_csv, result)

@@ -21,12 +21,18 @@ import numpy as np
 from pycocotools import mask as mask_utils
 
 from moteval.data.model import FrameConvention, RleMask
-from moteval.data.similarity import masks_overlap
 from moteval.formats import MaskTrack, Track
 from tests.rle import encode_mask
 
 _BASE_ID = 1000
 _FRESH_ID = 5000
+
+
+def masks_overlap(rles: list[RleMask]) -> bool:
+    """Whether any two RLE masks in the list overlap (TrackEval rejects such input)."""
+    merged_area = mask_utils.area(mask_utils.merge(rles, intersect=False))
+    total_area = sum(mask_utils.area(rle) for rle in rles)
+    return bool(total_area > merged_area)
 
 
 def perturb_box_tracks(

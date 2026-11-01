@@ -1,0 +1,1 @@
+{"test":"tests/test_data.py::test_read_mot_defaults_conf_when_absent","snapshots":{"1df75c46343b":[{"path":"seq.txt","text":"1,1,10,10,20,20\n"}]},"cases":[{"kind":"read_mot","snapshot":"1df75c46343b","inputs":{"path":"<TMP>/seq.txt","class_column":false},"ok":[[1,1,1,4621819117588971520,4621819117588971520,4626322717216342016,4626322717216342016,4607182418800017408]]}]}

@@ -1,185 +1,30 @@
-"""Command-line interface for moteval."""
+"""Command-line interface for moteval.
 
-import argparse
-import csv
-import json
+The CLI is the Rust binary's (``rust/moteval/src/cli.rs``): `main` runs it in-process
+and writes its output to `sys.stdout` and `sys.stderr`, so the ``moteval`` console
+script (``moteval._moteval:main``) and this function behave the same.
+"""
+
+import sys
 from collections.abc import Sequence
-from pathlib import Path
 
-import numpy as np
-
-from moteval import (
-    CLEAR,
-    HOTA,
-    Count,
-    Identity,
-    JAndF,
-    Metric,
-    MOTDataset,
-    TrackMAP,
-    evaluate,
-    load_dataset,
-    load_motchallenge,
-    load_mots,
-)
-from moteval.results import (
-    EvaluationResult,
-    csv_header,
-    iter_csv_rows,
-    iter_scored_rows,
-    row_label_names,
-    to_json_dict,
-)
-
-_DEFAULT_METRICS = "hota,clear,identity,count"
-_METRICS: dict[str, type[Metric]] = {
-    "hota": HOTA,
-    "clear": CLEAR,
-    "identity": Identity,
-    "count": Count,
-    "track_map": TrackMAP,
-    "jf": JAndF,
-}
-_HEADLINES = (
-    ("HOTA", "HOTA", "HOTA"),
-    ("HOTA", "DetA", "DetA"),
-    ("HOTA", "AssA", "AssA"),
-    ("CLEAR", "MOTA", "MOTA"),
-    ("CLEAR", "MOTP", "MOTP"),
-    ("CLEAR", "IDSW", "IDSW"),
-    ("Identity", "IDF1", "IDF1"),
-    ("Count", "Dets", "Dets"),
-    ("Count", "GT_Dets", "GT_Dets"),
-)
-_INTEGER_HEADLINES = {"IDSW", "Dets", "GT_Dets"}
-_INTEGER_FORMAT = "{:d}"
-_RATIO_FORMAT = "{:1.5g}"
-
-
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="moteval")
-    subcommands = parser.add_subparsers(dest="command", required=True)
-
-    run = subcommands.add_parser("run", help="evaluate prediction files")
-    run.add_argument("--dataset", help="built-in benchmark name (omit to load --gt directly)")
-    run.add_argument("--split", help="dataset split (uses the loader default when omitted)")
-    run.add_argument("--gt", type=Path, help="ground-truth dataset root")
-    run.add_argument(
-        "--format",
-        choices=("mot", "mots"),
-        default="mot",
-        help="ground-truth layout when --dataset is omitted (default: mot)",
-    )
-    run.add_argument("--pred", type=Path, required=True, help="prediction directory")
-    run.add_argument("--metrics", default=_DEFAULT_METRICS, help="comma-separated metrics")
-    run.add_argument("--out-csv", type=Path, help="write long-form CSV results")
-    run.add_argument("--out-json", type=Path, help="write JSON results")
-    run.set_defaults(handler=_run)
-    return parser
-
-
-def _resolve_metrics(raw_names: str) -> list[Metric]:
-    names = [name.strip().lower() for name in raw_names.split(",") if name.strip()]
-    unknown = sorted(set(names) - _METRICS.keys())
-    if unknown:
-        available = ", ".join(_METRICS)
-        raise ValueError(f"unknown metric(s): {', '.join(unknown)}; available: {available}")
-    if not names:
-        available = ", ".join(_METRICS)
-        raise ValueError(f"no metrics selected; available: {available}")
-    return [_METRICS[name]() for name in names]
-
-
-def _load(args: argparse.Namespace) -> MOTDataset:
-    if args.dataset is not None:
-        return load_dataset(args.dataset, root=args.gt, split=args.split)
-    if args.gt is None:
-        raise ValueError("--gt is required when --dataset is omitted")
-    split = args.split if args.split is not None else "train"
-    if args.format == "mots":
-        return load_mots(args.gt, split=split)
-    return load_motchallenge(args.gt, split=split)
-
-
-def _scalar(value: float | np.ndarray) -> float:
-    if isinstance(value, np.ndarray):
-        return float(np.mean(value))
-    return float(value)
-
-
-def _format_headline(value: float, label: str) -> str:
-    if label in _INTEGER_HEADLINES:
-        return _INTEGER_FORMAT.format(int(value))
-    return _RATIO_FORMAT.format(100 * value)
-
-
-def _table(result: EvaluationResult) -> str:
-    """Headline table: one row per sequence plus ``COMBINED``.
-
-    A multi-class run adds a leading ``class`` column, repeats the rows for each
-    class id, and ends with ``class_averaged`` and ``det_averaged`` rows.
-    """
-    available = result.class_averaged if result.is_multi_class else result.combined
-    columns = [column for column in _HEADLINES if column[0] in available]
-    label_names = row_label_names(result)
-    headers = [*label_names, *(label for _metric, _field, label in columns)]
-    rows: list[list[str]] = []
-    for labels, scores in iter_scored_rows(result):
-        values = list(labels)
-        for metric, field, label in columns:
-            value = _scalar(scores[metric][field])
-            values.append(_format_headline(value, label))
-        rows.append(values)
-
-    widths = [
-        max(len(headers[index]), *(len(row[index]) for row in rows))
-        for index in range(len(headers))
-    ]
-    template = "  ".join(
-        f"{{:{'<' if index < len(label_names) else '>'}{width}}}"
-        for index, width in enumerate(widths)
-    )
-    return "\n".join([template.format(*headers), *(template.format(*row) for row in rows)])
-
-
-def _write_csv(path: Path, result: EvaluationResult) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="") as file:
-        writer = csv.writer(file)
-        writer.writerow(csv_header(result))
-        writer.writerows(iter_csv_rows(result))
-
-
-def _write_json(path: Path, result: EvaluationResult, dataset: MOTDataset) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(to_json_dict(result, dataset=dataset.name, split=dataset.split)))
-
-
-def _run(args: argparse.Namespace) -> int:
-    metrics = _resolve_metrics(args.metrics)
-    if args.gt is not None and not args.gt.is_dir():
-        raise ValueError(f"ground-truth root not found or not a directory: {args.gt}")
-    if not args.pred.is_dir():
-        raise ValueError(f"prediction directory not found or not a directory: {args.pred}")
-
-    dataset = _load(args)
-    result = evaluate(dataset, args.pred, metrics)
-    print(_table(result))
-    if args.out_csv is not None:
-        _write_csv(args.out_csv, result)
-    if args.out_json is not None:
-        _write_json(args.out_json, result, dataset)
-    return 0
+from moteval import _moteval
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the moteval command-line interface."""
-    parser = _parser()
-    args = parser.parse_args(argv)
-    try:
-        return args.handler(args)
-    except ValueError as error:
-        parser.error(str(error))
+    """Run the moteval command-line interface on ``argv`` (default ``sys.argv[1:]``).
+
+    Returns 0 on success. A usage error raises ``SystemExit(2)`` after the usage text, as
+    argparse does; an error Python moteval did not catch (an I/O error, for example)
+    raises ``SystemExit(1)``.
+    """
+    args = list(sys.argv[1:] if argv is None else argv)
+    code, out, err = _moteval.cli_run(args)
+    sys.stdout.write(out)
+    sys.stderr.write(err)
+    if code != 0:
+        raise SystemExit(code)
+    return 0
 
 
 if __name__ == "__main__":

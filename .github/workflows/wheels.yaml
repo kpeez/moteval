@@ -1,0 +1,75 @@
+name: wheels
+
+# abi3 wheels (CPython 3.10 and later) for the targets users need: Linux x86_64
+# (manylinux) and macOS arm64. Add a target only when a user needs it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wheels-${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  wheel:
+    name: wheel (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2_28"
+          - name: macos-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+            manylinux: ""
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          # Keep in step with the rust pin in mise.toml.
+          rust-toolchain: "1.99.1"
+          args: --release --locked --out dist
+
+      # The oldest supported interpreter imports the abi3 wheel and runs the Rust CLI.
+      # Run outside the checkout, so `import moteval` finds the wheel, not the sources.
+      - name: Smoke test
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m pip install "$GITHUB_WORKSPACE"/dist/*.whl
+          python -c "import moteval, moteval._moteval as m; code, out, err = m.cli_run(['run', '--pred', 'no-such-dir']); assert code == 2 and 'prediction directory not found' in err, (code, out, err)"
+          moteval --help
+          # Score a tiny MOTChallenge layout end to end with numpy as the only dependency.
+          python -c "import importlib.util as u; assert u.find_spec('scipy') is None and u.find_spec('pycocotools') is None"
+          mkdir -p gt/train/S/gt pred
+          printf '1,1,10,10,20,20,1\n2,1,12,10,20,20,1\n' > gt/train/S/gt/gt.txt
+          printf '[Sequence]\nseqLength=2\n' > gt/train/S/seqinfo.ini
+          printf '1,7,10,10,20,20,1\n2,7,12,10,20,20,1\n' > pred/S.txt
+          moteval run --gt gt --pred pred --metrics hota,clear,identity,count,track_map --out-json out.json
+          python -c "import json; r = json.load(open('out.json'))['combined']; assert (r['CLEAR']['MOTA'], r['Identity']['IDF1'], r['HOTA']['HOTA(0)']) == (1.0, 1.0, 1.0), r"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheel-${{ matrix.name }}
+          path: dist/*.whl
+          retention-days: 7

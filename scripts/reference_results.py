@@ -27,7 +27,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from moteval import CLEAR, HOTA, Count, Identity, JAndF, TrackMAP, evaluate
+from moteval import CLEAR, HOTA, Count, Identity, JAndF, Metric, MOTDataset, TrackMAP, evaluate
 from moteval.benchmarks import default_data_root, load_dataset
 from moteval.data.model import MaskGtSequence
 from moteval.formats import write_mot, write_mots
@@ -63,22 +63,31 @@ def case_key(benchmark: str, split: str) -> str:
     return f"{benchmark}/{split}"
 
 
+def write_predictions(dataset: MOTDataset, pred_dir: Path) -> None:
+    """Write seeded perturbed predictions: sequence ``i`` gets seed ``REAL_DATA_SEED + i``."""
+    convention = dataset.protocol.frame_convention
+    for i, seq in enumerate(dataset.sequences):
+        seed = REAL_DATA_SEED + i
+        if isinstance(seq, MaskGtSequence):
+            masks = perturb_mask_tracks(seq.tracks, seq.num_timesteps, convention, seed=seed)
+            write_mots(pred_dir / f"{seq.name}.txt", masks)
+        else:
+            boxes = perturb_box_tracks(seq.tracks, seq.num_timesteps, convention, seed=seed)
+            write_mot(pred_dir / f"{seq.name}.txt", boxes)
+
+
+def metrics_for(dataset: MOTDataset) -> list[Metric]:
+    """Every applicable metric: TrackMAP on boxes, J&F on masks."""
+    is_masks = isinstance(dataset.sequences[0], MaskGtSequence)
+    return [HOTA(), CLEAR(), Identity(), Count(), JAndF() if is_masks else TrackMAP()]
+
+
 def evaluate_case(benchmark: str, split: str, root: Path) -> JsonResult:
     """Load one benchmark split, score seeded perturbed predictions, return the JSON dict."""
     dataset = load_dataset(benchmark, root=root / benchmark, split=split)
-    convention = dataset.protocol.frame_convention
     with tempfile.TemporaryDirectory() as tmp:
-        for i, seq in enumerate(dataset.sequences):
-            seed = REAL_DATA_SEED + i
-            if isinstance(seq, MaskGtSequence):
-                masks = perturb_mask_tracks(seq.tracks, seq.num_timesteps, convention, seed=seed)
-                write_mots(Path(tmp) / f"{seq.name}.txt", masks)
-            else:
-                boxes = perturb_box_tracks(seq.tracks, seq.num_timesteps, convention, seed=seed)
-                write_mot(Path(tmp) / f"{seq.name}.txt", boxes)
-        is_masks = isinstance(dataset.sequences[0], MaskGtSequence)
-        metrics = [HOTA(), CLEAR(), Identity(), Count(), JAndF() if is_masks else TrackMAP()]
-        result = evaluate(dataset, tmp, metrics)
+        write_predictions(dataset, Path(tmp))
+        result = evaluate(dataset, tmp, metrics_for(dataset))
     return to_json_dict(result, dataset=benchmark, split=split)
 
 

@@ -1,0 +1,1 @@
+{"test":"tests/test_loaders.py::test_chimpact_missing_labels_dir_raises","snapshots":{"97d170e1550e":[]},"cases":[{"kind":"load_chimpact","snapshot":"97d170e1550e","inputs":{"root":"<TMP>","split":"train"},"error":{"type":"ValueError","message":"labels directory not found: <TMP>/ChimpACT_release_v1/labels"}}]}

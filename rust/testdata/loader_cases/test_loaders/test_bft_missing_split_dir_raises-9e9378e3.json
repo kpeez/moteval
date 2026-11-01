@@ -1,0 +1,1 @@
+{"test":"tests/test_loaders.py::test_bft_missing_split_dir_raises","snapshots":{"97d170e1550e":[]},"cases":[{"kind":"load_bft","snapshot":"97d170e1550e","inputs":{"root":"<TMP>","split":"val"},"error":{"type":"ValueError","message":"split directory not found: <TMP>/annotations_mot/val"}}]}

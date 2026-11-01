@@ -1,26 +1,20 @@
-"""Shared test fixtures: the in-memory toy dataset and a two-class dataset.
+"""Shared test helpers: the in-memory toy dataset and a two-class dataset.
 
 Two tiny 1-indexed MOTChallenge-style sequences, two tracks each over five
 frames. Ground truth is generated in memory so tests stay hermetic;
 predictions are read from a ``<seq>.txt`` directory by ``evaluate``;
 `write_perfect_predictions` writes GT boxes under prediction-owned track ids
-(AGENTS.md: predictions are numbered independently of GT). Tests that
-resolve the dataset by name (CLI ``--dataset toy``) request the ``toy_benchmark``
-fixture, which registers a loader in `BENCHMARKS` for that test only. That loader
-takes the required ``root`` and the ``split`` keyword like every benchmark loader, and
-ignores both — the data is synthesized, not read from disk.
+(AGENTS.md: predictions are numbered independently of GT). The CLI runs in Rust and
+cannot see a dataset built in Python, so CLI tests write the toy dataset to disk with
+`write_toy_layout` and read it with ``--gt``.
 
 `load_two_class` is a one-sequence dataset whose protocol evaluates classes 1 and 2;
-`write_two_class_predictions` writes its predictions with the class in column 8, and
-the ``two_class_benchmark`` fixture registers it as ``two-class``.
+`write_two_class_predictions` writes its predictions with the class in column 8.
 """
 
 from dataclasses import replace
 from pathlib import Path
 
-import pytest
-
-from moteval.benchmarks import BENCHMARKS
 from moteval.data.model import FrameConvention, GtSequence, MOTDataset
 from moteval.data.protocol import Protocol
 from moteval.formats import Track, write_mot
@@ -61,8 +55,13 @@ def load_toy() -> MOTDataset[GtSequence]:
     )
 
 
-def _toy_loader(root: str | Path, split: str = "val") -> MOTDataset[GtSequence]:
-    return load_toy()
+def write_toy_layout(root: Path) -> None:
+    """Write `load_toy` in the MOTChallenge layout under ``root`` (split ``val``):
+    ``load_motchallenge(root, "val")`` reads the same sequences and tracks."""
+    for seq in load_toy().sequences:
+        seq_dir = root / "val" / seq.name
+        write_mot(seq_dir / "gt" / "gt.txt", list(seq.tracks))
+        (seq_dir / "seqinfo.ini").write_text(f"[Sequence]\nseqLength={seq.num_timesteps}\n")
 
 
 # Prediction ids differ from the GT ids (1, 2) and reverse their order.
@@ -79,9 +78,20 @@ def write_perfect_predictions(dataset: MOTDataset[GtSequence], pred_dir: Path) -
         write_mot(pred_dir / f"{seq.name}.txt", preds)
 
 
-@pytest.fixture
-def toy_benchmark(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(BENCHMARKS, "toy", _toy_loader)
+def write_flawed_predictions(dataset: MOTDataset[GtSequence], pred_dir: Path) -> None:
+    """Per sequence: GT 1 -> ids 11 (frames 1-2), 12 (frames 3-5); GT 2 -> ids 13
+    (frames 1-2), 14 (frames 3-4), frame 5 dropped; id 15 is a far-away box in
+    frames 1-2. Every kept box copies its GT box, so each IoU is exactly 1 or 0."""
+    pred_ids = {(1, 1): 11, (1, 2): 11, (1, 3): 12, (1, 4): 12, (1, 5): 12}
+    pred_ids |= {(2, 1): 13, (2, 2): 13, (2, 3): 14, (2, 4): 14}
+    for sequence in dataset.sequences:
+        preds = [
+            replace(t, track_id=pred_ids[t.track_id, t.frame])
+            for t in sequence.tracks
+            if (t.track_id, t.frame) in pred_ids
+        ]
+        preds += [Track(frame=f, track_id=15, x=500, y=500, w=10, h=10, conf=1.0) for f in (1, 2)]
+        write_mot(pred_dir / f"{sequence.name}.txt", preds)
 
 
 TWO_CLASS_SEQUENCE = "two-class-0001"
@@ -122,12 +132,3 @@ def write_two_class_predictions(pred_dir: Path) -> None:
     ]
     pred_dir.mkdir(parents=True, exist_ok=True)
     (pred_dir / f"{TWO_CLASS_SEQUENCE}.txt").write_text("\n".join(rows) + "\n")
-
-
-def _two_class_loader(root: str | Path, split: str = "val") -> MOTDataset[GtSequence]:
-    return load_two_class()
-
-
-@pytest.fixture
-def two_class_benchmark(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(BENCHMARKS, "two-class", _two_class_loader)

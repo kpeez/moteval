@@ -1,0 +1,1077 @@
+{
+ "format": 1,
+ "python": "3.14.8",
+ "fixture": {
+  "dirs": [
+   "pred",
+   "gt"
+  ],
+  "files": [
+   "file.txt"
+  ]
+ },
+ "cases": [
+  {
+   "argv": [],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: the following arguments are required: command\n"
+  },
+  {
+   "argv": [
+    "-h"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval [-h] {run} ...\n\npositional arguments:\n  {run}\n    run       evaluate prediction files\n\noptions:\n  -h, --help  show this help message and exit\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "--help"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval [-h] {run} ...\n\npositional arguments:\n  {run}\n    run       evaluate prediction files\n\noptions:\n  -h, --help  show this help message and exit\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "--he"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval [-h] {run} ...\n\npositional arguments:\n  {run}\n    run       evaluate prediction files\n\noptions:\n  -h, --help  show this help message and exit\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "--h"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval [-h] {run} ...\n\npositional arguments:\n  {run}\n    run       evaluate prediction files\n\noptions:\n  -h, --help  show this help message and exit\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "-hx"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval [-h] {run} ...\n\npositional arguments:\n  {run}\n    run       evaluate prediction files\n\noptions:\n  -h, --help  show this help message and exit\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "-hh"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval [-h] {run} ...\n\npositional arguments:\n  {run}\n    run       evaluate prediction files\n\noptions:\n  -h, --help  show this help message and exit\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "-h=x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument -h/--help: ignored explicit argument 'x'\n"
+  },
+  {
+   "argv": [
+    "--help=x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument -h/--help: ignored explicit argument 'x'\n"
+  },
+  {
+   "argv": [
+    "--help="
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument -h/--help: ignored explicit argument ''\n"
+  },
+  {
+   "argv": [
+    "-h",
+    "run"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval [-h] {run} ...\n\npositional arguments:\n  {run}\n    run       evaluate prediction files\n\noptions:\n  -h, --help  show this help message and exit\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "--version"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: the following arguments are required: command\n"
+  },
+  {
+   "argv": [
+    "frob"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument command: invalid choice: 'frob' (choose from 'run')\n"
+  },
+  {
+   "argv": [
+    "rn"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument command: invalid choice: 'rn' (choose from 'run')\n"
+  },
+  {
+   "argv": [
+    "RUN"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument command: invalid choice: 'RUN' (choose from 'run')\n"
+  },
+  {
+   "argv": [
+    "-"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument command: invalid choice: '-' (choose from 'run')\n"
+  },
+  {
+   "argv": [
+    ""
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument command: invalid choice: '' (choose from 'run')\n"
+  },
+  {
+   "argv": [
+    "--"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: the following arguments are required: command\n"
+  },
+  {
+   "argv": [
+    "--",
+    "run"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: the following arguments are required: --pred\n"
+  },
+  {
+   "argv": [
+    "-x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: the following arguments are required: command\n"
+  },
+  {
+   "argv": [
+    "-x",
+    "run"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: the following arguments are required: --pred\n"
+  },
+  {
+   "argv": [
+    "-x",
+    "frob"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument command: invalid choice: 'frob' (choose from 'run')\n"
+  },
+  {
+   "argv": [
+    "--=x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument -h/--help: ignored explicit argument 'x'\n"
+  },
+  {
+   "argv": [
+    "---"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: the following arguments are required: command\n"
+  },
+  {
+   "argv": [
+    "-1"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument command: invalid choice: '-1' (choose from 'run')\n"
+  },
+  {
+   "argv": [
+    "-1",
+    "run"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument command: invalid choice: '-1' (choose from 'run')\n"
+  },
+  {
+   "argv": [
+    "- x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument command: invalid choice: '- x' (choose from 'run')\n"
+  },
+  {
+   "argv": [
+    "-x y"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: argument command: invalid choice: '-x y' (choose from 'run')\n"
+  },
+  {
+   "argv": [
+    "run",
+    "-h"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\n\noptions:\n  -h, --help           show this help message and exit\n  --dataset DATASET    built-in benchmark name (omit to load --gt directly)\n  --split SPLIT        dataset split (uses the loader default when omitted)\n  --gt GT              ground-truth dataset root\n  --format {mot,mots}  ground-truth layout when --dataset is omitted (default:\n                       mot)\n  --pred PRED          prediction directory\n  --metrics METRICS    comma-separated metrics\n  --out-csv OUT_CSV    write long-form CSV results\n  --out-json OUT_JSON  write JSON results\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "run",
+    "--help"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\n\noptions:\n  -h, --help           show this help message and exit\n  --dataset DATASET    built-in benchmark name (omit to load --gt directly)\n  --split SPLIT        dataset split (uses the loader default when omitted)\n  --gt GT              ground-truth dataset root\n  --format {mot,mots}  ground-truth layout when --dataset is omitted (default:\n                       mot)\n  --pred PRED          prediction directory\n  --metrics METRICS    comma-separated metrics\n  --out-csv OUT_CSV    write long-form CSV results\n  --out-json OUT_JSON  write JSON results\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "run",
+    "--hel"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\n\noptions:\n  -h, --help           show this help message and exit\n  --dataset DATASET    built-in benchmark name (omit to load --gt directly)\n  --split SPLIT        dataset split (uses the loader default when omitted)\n  --gt GT              ground-truth dataset root\n  --format {mot,mots}  ground-truth layout when --dataset is omitted (default:\n                       mot)\n  --pred PRED          prediction directory\n  --metrics METRICS    comma-separated metrics\n  --out-csv OUT_CSV    write long-form CSV results\n  --out-json OUT_JSON  write JSON results\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "run",
+    "-hx"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\n\noptions:\n  -h, --help           show this help message and exit\n  --dataset DATASET    built-in benchmark name (omit to load --gt directly)\n  --split SPLIT        dataset split (uses the loader default when omitted)\n  --gt GT              ground-truth dataset root\n  --format {mot,mots}  ground-truth layout when --dataset is omitted (default:\n                       mot)\n  --pred PRED          prediction directory\n  --metrics METRICS    comma-separated metrics\n  --out-csv OUT_CSV    write long-form CSV results\n  --out-json OUT_JSON  write JSON results\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "run",
+    "-h=x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument -h/--help: ignored explicit argument 'x'\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--help=x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument -h/--help: ignored explicit argument 'x'\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "-h"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\n\noptions:\n  -h, --help           show this help message and exit\n  --dataset DATASET    built-in benchmark name (omit to load --gt directly)\n  --split SPLIT        dataset split (uses the loader default when omitted)\n  --gt GT              ground-truth dataset root\n  --format {mot,mots}  ground-truth layout when --dataset is omitted (default:\n                       mot)\n  --pred PRED          prediction directory\n  --metrics METRICS    comma-separated metrics\n  --out-csv OUT_CSV    write long-form CSV results\n  --out-json OUT_JSON  write JSON results\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "run",
+    "--format",
+    "png",
+    "-h"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --format: invalid choice: 'png' (choose from 'mot', 'mots')\n"
+  },
+  {
+   "argv": [
+    "run",
+    "-h",
+    "--format",
+    "png"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\n\noptions:\n  -h, --help           show this help message and exit\n  --dataset DATASET    built-in benchmark name (omit to load --gt directly)\n  --split SPLIT        dataset split (uses the loader default when omitted)\n  --gt GT              ground-truth dataset root\n  --format {mot,mots}  ground-truth layout when --dataset is omitted (default:\n                       mot)\n  --pred PRED          prediction directory\n  --metrics METRICS    comma-separated metrics\n  --out-csv OUT_CSV    write long-form CSV results\n  --out-json OUT_JSON  write JSON results\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "run",
+    "--bogus",
+    "-h"
+   ],
+   "exit": 0,
+   "stdout": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\n\noptions:\n  -h, --help           show this help message and exit\n  --dataset DATASET    built-in benchmark name (omit to load --gt directly)\n  --split SPLIT        dataset split (uses the loader default when omitted)\n  --gt GT              ground-truth dataset root\n  --format {mot,mots}  ground-truth layout when --dataset is omitted (default:\n                       mot)\n  --pred PRED          prediction directory\n  --metrics METRICS    comma-separated metrics\n  --out-csv OUT_CSV    write long-form CSV results\n  --out-json OUT_JSON  write JSON results\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "-h"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --pred: expected one argument\n"
+  },
+  {
+   "argv": [
+    "run"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: the following arguments are required: --pred\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --pred: expected one argument\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "-x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --pred: expected one argument\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "--split"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --pred: expected one argument\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "--",
+    "pred"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --pred: expected one argument\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--dataset",
+    "toy"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: the following arguments are required: --pred\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--format",
+    "png"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --format: invalid choice: 'png' (choose from 'mot', 'mots')\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--format",
+    "MOT"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --format: invalid choice: 'MOT' (choose from 'mot', 'mots')\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--format",
+    ""
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --format: invalid choice: '' (choose from 'mot', 'mots')\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--format=mots",
+    "--format",
+    "x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --format: invalid choice: 'x' (choose from 'mot', 'mots')\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "extra"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unrecognized arguments: extra\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "extra",
+    "more"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unrecognized arguments: extra more\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--out",
+    "a"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: ambiguous option: --out could match --out-csv, --out-json\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--out=a"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: ambiguous option: --out=a could match --out-csv, --out-json\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--o",
+    "a"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: ambiguous option: --o could match --out-csv, --out-json\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--bogus"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unrecognized arguments: --bogus\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--bogus",
+    "val"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unrecognized arguments: --bogus val\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--bogus=val"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unrecognized arguments: --bogus=val\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--",
+    "x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unrecognized arguments: -- x\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unrecognized arguments: --\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "-"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unrecognized arguments: -\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "-p",
+    "x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unrecognized arguments: -p x\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "-pred"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unrecognized arguments: -pred\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--gt"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --gt: expected one argument\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--out-json"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --out-json: expected one argument\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--=x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: ambiguous option: --=x could match --help, --dataset, --split, --gt, --format, --pred, --metrics, --out-csv, --out-json\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--split",
+    "-x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: argument --split: expected one argument\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--split",
+    "-1"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: --gt is required when --dataset is omitted\n"
+  },
+  {
+   "argv": [
+    "-x",
+    "run",
+    "--pred",
+    "pred",
+    "--y"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unrecognized arguments: -x --y\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--=x",
+    "--pred",
+    "pred"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval run [-h] [--dataset DATASET] [--split SPLIT] [--gt GT]\n                   [--format {mot,mots}] --pred PRED [--metrics METRICS]\n                   [--out-csv OUT_CSV] [--out-json OUT_JSON]\nmoteval run: error: ambiguous option: --=x could match --help, --dataset, --split, --gt, --format, --pred, --metrics, --out-csv, --out-json\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred=pred",
+    "--metrics=",
+    "--bogus"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unrecognized arguments: --bogus\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--metrics",
+    ","
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: no metrics selected; available: hota, clear, identity, count, track_map, jf\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--metrics",
+    ""
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: no metrics selected; available: hota, clear, identity, count, track_map, jf\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--metrics",
+    " , ,"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: no metrics selected; available: hota, clear, identity, count, track_map, jf\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--metrics",
+    " HOTA , Foo,bar,foo,,"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unknown metric(s): bar, foo; available: hota, clear, identity, count, track_map, jf\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--metrics",
+    "TRACK_MAP,Jf,zz,ZZ,É,é"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unknown metric(s): zz, é; available: hota, clear, identity, count, track_map, jf\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--metrics",
+    "hota\u001f, clear　,x​"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unknown metric(s): x​; available: hota, clear, identity, count, track_map, jf\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--metrics",
+    "unknown",
+    "--gt",
+    "missing"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unknown metric(s): unknown; available: hota, clear, identity, count, track_map, jf\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "missing"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: prediction directory not found or not a directory: missing\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "file.txt"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: prediction directory not found or not a directory: file.txt\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred/"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: --gt is required when --dataset is omitted\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "./pred//."
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: --gt is required when --dataset is omitted\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    ""
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: --gt is required when --dataset is omitted\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred="
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: --gt is required when --dataset is omitted\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "-1"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: prediction directory not found or not a directory: -1\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "-1.5"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: prediction directory not found or not a directory: -1.5\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "-a b"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: prediction directory not found or not a directory: -a b\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "prédiction/日本"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: prediction directory not found or not a directory: prédiction/日本\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--pred",
+    "missing"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: prediction directory not found or not a directory: missing\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pre=pred",
+    "--metr",
+    "x"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unknown metric(s): x; available: hota, clear, identity, count, track_map, jf\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--format",
+    "mots"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: --gt is required when --dataset is omitted\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--gt",
+    "missing-gt"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: ground-truth root not found or not a directory: missing-gt\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--gt",
+    "file.txt"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: ground-truth root not found or not a directory: file.txt\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--gt",
+    "missing/"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: ground-truth root not found or not a directory: missing\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--gt",
+    "gt",
+    "--pred",
+    "missing"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: prediction directory not found or not a directory: missing\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--split",
+    "test"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: --gt is required when --dataset is omitted\n"
+  },
+  {
+   "argv": [
+    "--",
+    "run",
+    "--pred",
+    "pred"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: --gt is required when --dataset is omitted\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "pred",
+    "--metrics",
+    "hota,hota"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: --gt is required when --dataset is omitted\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--dataset",
+    "x",
+    "--gt",
+    "missing",
+    "--pred",
+    "pred"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: ground-truth root not found or not a directory: missing\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--dataset",
+    "dancetrack",
+    "--pred",
+    "missing",
+    "--gt",
+    "missing"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: ground-truth root not found or not a directory: missing\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--dataset",
+    "toy",
+    "--pred",
+    "pred",
+    "--metrics",
+    "hota,not-a-metric"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: unknown metric(s): not-a-metric; available: hota, clear, identity, count, track_map, jf\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--dataset",
+    "toy",
+    "--pred",
+    "missing-predictions"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: prediction directory not found or not a directory: missing-predictions\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--dataset",
+    "dancetrack",
+    "--pred",
+    ".",
+    "--gt",
+    "missing-ground-truth"
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: ground-truth root not found or not a directory: missing-ground-truth\n"
+  },
+  {
+   "argv": [
+    "run",
+    "--pred",
+    "."
+   ],
+   "exit": 2,
+   "stdout": "",
+   "stderr": "usage: moteval [-h] {run} ...\nmoteval: error: --gt is required when --dataset is omitted\n"
+  }
+ ]
+}

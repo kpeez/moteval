@@ -1,0 +1,1 @@
+{"test":"tests/test_loaders.py::test_animaltrack_unknown_split_raises","snapshots":{"9dc41b909013":[{"path":"gt_all","dir":true}]},"cases":[{"kind":"load_animaltrack","snapshot":"9dc41b909013","inputs":{"root":"<TMP>","split":"nope"},"error":{"type":"ValueError","message":"unknown animaltrack split 'nope'; expected 'all', 'train', or 'test'"}}]}
