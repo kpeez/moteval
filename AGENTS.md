@@ -28,6 +28,13 @@ keeps the public names.
   is never acceptable. Regression tests must number predictions independently of GT.
 - Per-benchmark preprocessing is a declarative `Protocol` executed by the shared engine —
   never subclass-hook preprocessing logic.
+- Floats are compared with `f64::to_bits`, never a tolerance. Every reduction goes
+  through `numeric`, which holds the upstream order. Use no rayon, SIMD, or `mul_add`;
+  `numeric::log10_svml` is the one exception, because SVML's fused instructions round once.
+- `Scores` is insertion-ordered, and that order is the export order. Fields that start
+  with `_` are private combiner state.
+- Each module's error enum has a hand-written `Display`. Tests pin that text, so change it
+  only on purpose.
 
 ## Layout
 
