@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "MOT evaluation library: a from-scratch TrackEval rewrite producing bit-identical numbers."
 readme = "README.md"
 requires-python = ">=3.10"
+license-files = ["THIRD_PARTY_NOTICES.md"]
 dependencies = [
     "numpy>=2",
 ]
