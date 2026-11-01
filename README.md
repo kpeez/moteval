@@ -13,7 +13,8 @@ pip install git+https://github.com/kpeez/moteval.git
 ```
 
 The package includes a Rust extension built with maturin, so an install from source
-needs a Rust toolchain (1.99 or later, for example from [rustup](https://rustup.rs/)).
+needs a Rust toolchain: [rustup](https://rustup.rs/) installs the pinned version from
+`rust-toolchain.toml`, and any other install must be Rust 1.99 or later.
 Its only Python runtime dependency is numpy. The `moteval` command is the Rust CLI; the
 same binary builds on its own with `cargo build --release` (`target/release/moteval`).
 
@@ -26,6 +27,7 @@ tasks:
 ```sh
 git clone https://github.com/kpeez/moteval.git
 cd moteval
+rustup component add clippy rustfmt
 mise run install     # uv sync (builds the Rust extension) + pre-commit hooks
 mise run check       # ruff format + lint + pyrefly type-check
 mise run test        # pytest

@@ -52,7 +52,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust from rust-toolchain.toml
-        run: rustup toolchain install
+        run: |
+          rustup toolchain install
+          rustup component add clippy rustfmt
 
       - name: Cache cargo
         uses: actions/cache@v6
