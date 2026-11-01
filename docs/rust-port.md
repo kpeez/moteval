@@ -37,6 +37,8 @@ scipy 1.18.0's `linear_sum_assignment` line by line, pycocotools 2.0.11's mask A
 decay bins, `round_ties_even` for `np.round`, numpy's `log10` for CLEAR's MOTAL (Intel
 SVML's kernel on an AVX-512 Linux host, libm elsewhere), and CPython's text formats (`repr(float)`,
 `format(x, "1.5g")`, `json.dumps`, `csv.writer`, argparse 3.14) for the CLI and exports.
+`THIRD_PARTY_NOTICES.md` holds the licenses of the projects these come from; the wheel
+ships it.
 
 ## Gates
 
@@ -83,15 +85,19 @@ Behavior (all non-numeric):
 
 - `evaluate` runs the six built-in metrics only; a user-defined `Metric` subclass raises
   `ValueError`. Each metric object's `eval_sequence` and combiners still work on their own.
+  Issue #65 tracks user-defined metrics.
 - `evaluate` on a dataset with no sequences raises `ValueError` ("dataset 'x' has no
   sequences to score") before reading any file. Python gave integer zeros (CLEAR,
   Identity, Count), an `IndexError` (HOTA), or numpy's "need at least one array to
   concatenate" (TrackMAP). Called directly with no results, a combiner raises
-  `ValueError` ("HOTA: no results to combine"), and called with a score dict that lacks
-  a field the combiner reads, it raises `pyo3_runtime.PanicException`, which derives
-  from `BaseException`, not `Exception` (Python raised `KeyError`).
-- Scores are Python `float` or float64 numpy arrays. Some CLEAR fields were `np.float64`
-  and the empty-dataset zeros were `int`; the values are the same.
+  `ValueError` ("HOTA: no results to combine"). Called with a score dict that lacks a
+  field, it raises the same `KeyError` as Python.
+- Scores are Python `float` or float64 numpy arrays. Some CLEAR fields and the combined
+  J&F fields were `np.float64`, and the empty-dataset zeros were `int`; the values are
+  the same.
+- numpy's `RuntimeWarning: Mean of empty slice`, which the reference printed for J&F
+  sequences with an empty decay bin (the parity review saw it on MOTS20 and on a
+  300-frame sequence), is not emitted. The scores are the same.
 - Exceptions keep their class and text, with three exceptions: a file error is `OSError`
   (not its subclass, such as `FileNotFoundError`); a decode error is `ValueError` with
   `UnicodeDecodeError`'s text (its base class); a `json.JSONDecodeError` has `doc=None`.
