@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from pycocotools import mask as mask_utils
 
-from moteval import CLEAR, HOTA, Count, Identity, SequenceData, evaluate, load_mots
+from moteval import CLEAR, HOTA, Count, Identity, JAndF, SequenceData, evaluate, load_mots
 from moteval.benchmarks import BENCHMARKS
 from moteval.data.model import BoxGeometry, MaskGeometry
 from moteval.formats import MaskTrack, read_mots, write_mots
@@ -249,6 +249,33 @@ def test_geometry_accessors_fail_loudly_across_kinds():
     assert mask_data.gt_masks[0].shape == (0,)
     with pytest.raises(TypeError, match="mask geometry"):
         _ = mask_data.gt_boxes
+
+
+def _objects(*masks) -> np.ndarray:
+    frame = np.empty(len(masks), dtype=object)
+    frame[:] = masks
+    return frame
+
+
+def test_jf_scores_a_sequence_built_from_pycocotools_masks():
+    # pycocotools gives each RLE's "size" as a list; the extension must accept it.
+    mask = encode_mask(_square_mask(H, W, 2, 8, 2, 8))
+    assert isinstance(mask["size"], list)
+    data = SequenceData(
+        name="s",
+        num_timesteps=1,
+        num_gt_ids=1,
+        num_pred_ids=1,
+        num_gt_dets=1,
+        num_pred_dets=1,
+        gt_ids=(np.array([0]),),
+        pred_ids=(np.array([0]),),
+        pred_confidences=(np.ones(1),),
+        geometry=MaskGeometry(gt=(_objects(mask),), pred=(_objects(dict(mask)),)),
+        similarity=(np.ones((1, 1)),),
+    )
+    scores = JAndF().eval_sequence(data)
+    assert (scores["J-Mean"], scores["F-Mean"], scores["J&F"]) == (1.0, 1.0, 1.0)
 
 
 def test_load_mots_scores_a_custom_layout_without_registration(tmp_path):

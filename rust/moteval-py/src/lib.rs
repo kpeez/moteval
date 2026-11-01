@@ -242,7 +242,11 @@ fn mask_frames(obj: &Bound<'_, PyAny>) -> PyResult<Vec<Vec<RleMask>>> {
                 .try_iter()?
                 .map(|rle| {
                     let rle = rle?;
-                    let (h, w): (usize, usize) = rle.get_item("size")?.extract()?;
+                    // pycocotools gives `size` as a list; accept a tuple as well.
+                    let size: Vec<usize> = rle.get_item("size")?.extract()?;
+                    let [h, w] = size[..] else {
+                        return Err(value_error("an RLE size must hold 2 values"));
+                    };
                     let counts = rle.get_item("counts")?;
                     let bytes: Vec<u8> = match counts.cast::<PyString>() {
                         Ok(text) => text.to_str()?.as_bytes().to_vec(),
