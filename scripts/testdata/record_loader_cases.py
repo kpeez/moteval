@@ -55,7 +55,7 @@ from scripts.testdata.reference import REFERENCE_TAG, require_reference
 
 require_reference()
 
-OUT = _REPO_ROOT / "rust" / "testdata" / "loader_cases"
+OUT = _REPO_ROOT / "tests" / "integration" / "data" / "loader_cases"
 TEST_FILES = ("tests/test_loaders.py", "tests/test_data.py")
 Json = Any
 
