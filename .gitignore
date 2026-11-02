@@ -5,17 +5,14 @@ mise.local.toml
 private
 tests/temp/
 
-# IDE temp files #
 .vscode/
 .cursor/
 .claude/
 .ipynb_checkpoints
 *.egg-info
 
-# C extensions
 *.so
 
-# Python files #
 .venv
 .mypy_cache
 .ruff_cache
@@ -25,17 +22,13 @@ build
 *.pytest_cache
 __pycache__
 
-# mkdocs documentation
 /site
 
-# OS generated files #
-######################
 .directory
 .DS_Store
 Icon?
 Thumbs.db
 
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -55,8 +48,6 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-
-# Unit test / coverage reports
 htmlcov/
 .tox/
 .nox/
@@ -71,5 +62,4 @@ coverage.xml
 .pytest_cache/
 cover/
 
-# Rust
-/rust/target/
+/target/

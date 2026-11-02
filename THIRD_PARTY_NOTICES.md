@@ -5,7 +5,7 @@ require these notices in copies of the source code and in binary distributions.
 
 ## scipy 1.18.0
 
-`rust/moteval/src/lsap.rs` ports `scipy/optimize/rectangular_lsap/rectangular_lsap.cpp` and `scipy/optimize/_lsapmodule.c` line by line.
+`src/lsap.rs` ports `scipy/optimize/rectangular_lsap/rectangular_lsap.cpp` and `scipy/optimize/_lsapmodule.c` line by line.
 
 scipy:
 
@@ -88,7 +88,7 @@ Author: PM Larsen
 
 ## pycocotools 2.0.11 (cocoapi)
 
-`rust/moteval/src/rle.rs` ports `common/maskApi.c` and the parts of `_mask.pyx` that moteval calls.
+`src/rle.rs` ports `common/maskApi.c` and the parts of `_mask.pyx` that moteval calls.
 
 cocoapi:
 
@@ -123,7 +123,7 @@ either expressed or implied, of the FreeBSD Project.
 
 ## numpy 2.5.1
 
-`rust/moteval/src/numeric.rs` reproduces numpy's summation orders, ranges, and rounding. `numeric::log10_svml` holds the algorithm and constants of numpy's SVML `log10` kernel (`numpy/_core/src/umath/svml/linux/avx512/svml_z0_log10_d_ha.s`). That directory's LICENSE is the second text below; the source file itself carries an Intel Corporation copyright header.
+`src/numeric.rs` reproduces numpy's summation orders, ranges, and rounding. `numeric::log10_svml` holds the algorithm and constants of numpy's SVML `log10` kernel (`numpy/_core/src/umath/svml/linux/avx512/svml_z0_log10_d_ha.s`). That directory's LICENSE is the second text below; the source file itself carries an Intel Corporation copyright header.
 
 numpy:
 

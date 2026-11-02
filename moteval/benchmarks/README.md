@@ -3,7 +3,7 @@
 The built-in benchmark loaders. For the user-facing dataset table (sources, download
 tooling, on-disk layouts) see [docs/DATASETS.md](../../docs/DATASETS.md).
 
-- The loaders run in Rust: one module per benchmark in `rust/moteval/src/benchmarks/`
+- The loaders run in Rust: one module per benchmark in `src/benchmarks/`
   (`dancetrack.rs`, `sportsmot.rs`, `mots20.rs`, `bft.rs`, `animaltrack.rs`, `gmot40.rs`,
   `chimpact.rs`, `panaf500.rs`, `uavdt.rs`), each with a `load_<name>(root, split)` that
   reads the on-disk ground truth into a `MOTDataset` and declares its `Protocol`. `root`
@@ -29,11 +29,11 @@ tooling, on-disk layouts) see [docs/DATASETS.md](../../docs/DATASETS.md).
 
 ## Adding a benchmark
 
-1. Write `rust/moteval/src/benchmarks/<name>.rs` with a `load_<name>(root, split)`
+1. Write `src/benchmarks/<name>.rs` with a `load_<name>(root, split)`
    loader that returns a `MOTDataset` and declares its `Protocol` (frame convention,
    eval classes, preprocessing) — never subclass-hook preprocessing. Errors are a
    `BenchmarkError` whose text names the file and the problem.
-2. Add it to `BENCHMARKS` in `rust/moteval/src/benchmarks/mod.rs`; the Python
+2. Add it to `BENCHMARKS` in `src/benchmarks/mod.rs`; the Python
    `BENCHMARKS` and the CLI pick it up from there.
 3. Add a `DownloadSpec` to `scripts/download_benchmarks.py` (or an `unfetchable_reason`
    if the data needs manual acquisition).

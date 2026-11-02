@@ -1,8 +1,3 @@
-"""Per-benchmark loader tests: common MOTChallenge-adapter machinery is
-parameterized over a representative matrix; everything below is a targeted
-quirk test for one loader's documented deviation from the default layout.
-"""
-
 import json
 from pathlib import Path
 
@@ -21,18 +16,9 @@ load_panaf500 = BENCHMARKS["panaf500"]
 load_sportsmot = BENCHMARKS["sportsmot"]
 load_uavdt = BENCHMARKS["uavdt"]
 
-# ChimpACT's evaluated class, and the first clip of its official val and test splits.
 _CHIMPACT_CLASS_ID = 1
 _CHIMPACT_VAL_CLIP = "Azibo_ObsChimp_2015_11_25_d_clip_23000_24000"
 _CHIMPACT_TEST_CLIP = "Azibo_ObsChimp_2015_11_25_d_clip_1000_2000"
-
-# ------------------------------------------------------------ common matrix
-#
-# BFT, AnimalTrack, and GMOT-40 all reuse the MOTChallengeConfig adapter with
-# a flat, seqinfo-free GT directory. Each entry provides a GT writer matching
-# its loader's real layout and the loader itself, so sequence discovery, last-
-# annotated-frame seq_length derivation, and end-to-end evaluate are proven
-# once per dataset without repeating the same assertions three times over.
 
 
 def _write_bft_gt(root: Path, seq: str, rows: list[str]) -> None:
@@ -66,9 +52,6 @@ def _load_gmot40(root: Path, split: str) -> object:
 
 
 _MATRIX = (
-    # (loader, write_gt, seq_name, last_frame_offset) -- offset is added to the
-    # last annotated frame number to get num_timesteps: 0 for 1-indexed
-    # loaders (bft, animaltrack), 1 for gmot40's native 0-indexed frames.
     pytest.param(_load_bft, _write_bft_gt, "seqA", 0, id="bft"),
     pytest.param(_load_animaltrack, _write_animaltrack_gt, "chicken_1", 0, id="animaltrack"),
     pytest.param(_load_gmot40, _write_gmot40_gt, "bird-0", 1, id="gmot40"),
@@ -106,9 +89,6 @@ def test_end_to_end_evaluate_with_independently_numbered_predictions(
 
     dataset = loader(gt_root, "val")
     (seq,) = dataset.sequences
-    # Predictions numbered independently of GT: literal frame and track id,
-    # single-frame box (not a copy of any GT row). Frame 1 is in range for
-    # every loader in the matrix, gmot40's 0-indexed one included.
     write_mot(
         pred_dir / f"{seq.name}.txt",
         [Track(frame=1, track_id=901, x=11, y=11, w=20, h=20, conf=0.9)],
@@ -122,9 +102,6 @@ def test_end_to_end_evaluate_with_independently_numbered_predictions(
         "IDs": 1.0,
         "GT_IDs": 1.0,
     }
-
-
-# ---------------------------------------------------------------- animaltrack
 
 
 def test_animaltrack_train_test_selection_from_split_file(tmp_path):
@@ -154,9 +131,6 @@ def test_animaltrack_unknown_split_raises(tmp_path):
         load_animaltrack(root=tmp_path, split="nope")
 
 
-# ----------------------------------------------------------------------- bft
-
-
 def test_bft_missing_split_dir_raises(tmp_path):
     with pytest.raises(ValueError, match="split directory not found"):
         load_bft(root=tmp_path, split="val")
@@ -166,11 +140,6 @@ def test_bft_empty_gt_raises_on_seq_length_derivation(tmp_path):
     _write_bft_gt(tmp_path, "seqA", [])
     with pytest.raises(ValueError, match="empty gt"):
         load_bft(root=tmp_path, split="val")
-
-
-# ---------------------------------------------------------- BFT/AnimalTrack/GMOT-40
-# num_timesteps undercounts when a sequence has no GT in its final frames --
-# harmless for metrics, but a prediction past the last annotated frame raises.
 
 
 def test_bft_prediction_past_last_annotated_frame_raises(tmp_path):
@@ -186,9 +155,6 @@ def test_bft_prediction_past_last_annotated_frame_raises(tmp_path):
     )
     with pytest.raises(ValueError, match="out of range"):
         evaluate(dataset, pred_dir, [Count()])
-
-
-# --------------------------------------------------------------------- gmot40
 
 
 def test_gmot40_sequence_discovery_and_animal_subset(tmp_path):
@@ -210,13 +176,6 @@ def test_gmot40_unknown_split_raises(tmp_path):
         load_gmot40(root=tmp_path, split="nope")
 
 
-# ---------------------------------------------------- GMOT-40 + ChimpACT: 0-indexing
-#
-# Both are natively 0-indexed and both loaders keep raw 0-indexed frame
-# numbers, declaring FrameConvention(first_frame=0), rather than shifting like
-# the legacy loader did (ADR-0002).
-
-
 def test_gmot40_frame_zero_contributes(tmp_path):
     _write_gmot40_gt(
         tmp_path,
@@ -227,11 +186,7 @@ def test_gmot40_frame_zero_contributes(tmp_path):
     dataset = load_gmot40(root=tmp_path, split="test")
     (seq,) = dataset.sequences
 
-    # Raw frame numbers are kept, not shifted to 1-indexed like the legacy loader.
     assert sorted(t.frame for t in seq.tracks) == [0, 1]
-    # The loader's own protocol must accept them (a 1-indexed one raises on 0), and
-    # frame 0 (the first timestep) must contribute -- the silent-drop bug this rewrite
-    # exists to kill would have discarded it. A prediction only at frame 0 matches.
     pred_dir = tmp_path / "pred"
     write_mot(pred_dir / "bird-0.txt", [Track(frame=0, track_id=5, x=10, y=20, w=30, h=40, conf=1)])
     clear = evaluate(dataset, pred_dir, [CLEAR()]).combined["CLEAR"]
@@ -267,25 +222,15 @@ def test_chimpact_frame_zero_contributes(tmp_path):
         [Track(frame=0, track_id=5, x=1.0, y=2.0, w=3.0, h=4.0, conf=1.0)],
     )
 
-    # Frame 0 is the first timestep -- the silent-drop bug this rewrite
-    # exists to kill would have discarded it. A prediction only at frame 0 matches.
     assert min(t.frame for t in seq.tracks) == 0
     assert evaluate(dataset, pred_dir, [CLEAR()]).combined["CLEAR"]["CLR_TP"] == 1.0
 
 
-# ------------------------------------------------------------------ chimpact
-#
-# Interpolation/hold semantics replicate legacy track-zoo exactly (issue #12
-# decision): comparability with arXiv:2511.02591's published baselines
-# requires matching legacy output even where a "cleaner" rule would diverge.
+# ChimpACT's interpolation and hold rules copy the loader that produced the published
+# baselines of arXiv:2511.02591 (issue #12).
 
 
 def test_chimpact_interpolation_matches_hand_derived_fixture(tmp_path):
-    # Three keyframes (blocks 0, 1, 2); block 2 exists only so block 1 is not
-    # the clip's terminal keyframe, keeping frames 0-10 pure interpolation,
-    # untouched by the trailing hold-tail (tested separately below). Track
-    # moves by (100, 50) in x/y between blocks 0 and 1; values hand-computed:
-    # at frame f (0 <= f <= 10), x = 100 * f/10, y = 50 * f/10.
     labels = {
         "images": [_coco_image(0, 0), _coco_image(1, 1), _coco_image(2, 2)],
         "annotations": [
@@ -309,7 +254,6 @@ def test_chimpact_interpolation_matches_hand_derived_fixture(tmp_path):
         assert row.w == pytest.approx(20.0)
         assert row.h == pytest.approx(30.0)
         assert row.track_id == 5
-    # Fractional intermediate frames are the interesting hand-checked cases.
     assert (by_frame[3].x, by_frame[3].y) == pytest.approx((30.0, 15.0))
     assert (by_frame[7].x, by_frame[7].y) == pytest.approx((70.0, 35.0))
     assert seq.num_timesteps == 30
@@ -332,10 +276,6 @@ def test_chimpact_bbox_id_23_is_dropped(tmp_path):
 
 
 def test_chimpact_hold_last_box_when_track_has_no_match_in_next_keyframe(tmp_path):
-    # Ported from legacy track-zoo's test_missing_next_keyframe_holds_last_box.
-    # A single keyframe block for the whole clip holds its box constant
-    # through all 9 interior frames that follow it -- there is no next block
-    # to interpolate toward.
     labels = {
         "images": [_coco_image(0, 0)],
         "annotations": [_coco_ann(0, 0, 0, [5.0, 5.0, 10.0, 10.0])],
@@ -352,14 +292,6 @@ def test_chimpact_hold_last_box_when_track_has_no_match_in_next_keyframe(tmp_pat
 
 
 def test_chimpact_birth_death_boundaries(tmp_path):
-    # Track 5 lives at blocks 0 and 1, then dies (absent from block 2, which
-    # exists with a different track). Legacy holds a dead track's box for
-    # exactly the one block of interior frames following its last keyframe,
-    # then emits nothing further -- it does not retroactively reappear once
-    # an unrelated later block exists. Track 7 is born at block 1 (no rows
-    # before its first keyframe), survives into block 2 (interpolates), and
-    # -- block 2 being the clip's terminal keyframe -- holds through the
-    # clip's derived tail too.
     labels = {
         "images": [_coco_image(0, 0), _coco_image(1, 1), _coco_image(2, 2)],
         "annotations": [
@@ -388,10 +320,6 @@ def test_chimpact_birth_death_boundaries(tmp_path):
 
 
 def test_chimpact_missing_intervening_keyframe_block_yields_zero_rows_for_that_window(tmp_path):
-    # Ported from legacy's test_frame_with_no_keyframe_block_has_no_gt_rows,
-    # with the missing block sandwiched between two real keyframes: block 1
-    # has no image entry at all, so frames 10-19 get zero GT rows for any
-    # track, regardless of which tracks are alive on either side of the gap.
     labels = {
         "images": [_coco_image(0, 0), _coco_image(2, 2)],
         "annotations": [
@@ -417,11 +345,6 @@ def test_chimpact_missing_intervening_keyframe_block_yields_zero_rows_for_that_w
 
 
 def test_chimpact_multi_block_gap_then_reappearance_has_no_back_connection(tmp_path):
-    # Track 5 lives at block 0, is absent from blocks 1 and 2 (a different
-    # track, 9, exists there), then reappears at block 3 with an unrelated
-    # box. Legacy holds for exactly one block after death, is silent through
-    # the entire multi-block gap, then treats the reappearance as a fresh,
-    # unconnected keyframe -- no interpolation back to its old position.
     labels = {
         "images": [_coco_image(0, 0), _coco_image(1, 1), _coco_image(2, 2), _coco_image(3, 3)],
         "annotations": [
@@ -447,12 +370,6 @@ def test_chimpact_multi_block_gap_then_reappearance_has_no_back_connection(tmp_p
 
 
 def test_chimpact_gt_class_id_matches_declared_constant_not_raw_coco_category(tmp_path):
-    # Regression for the class_id hazard (issue #12 review comment): this
-    # loader never touches read_mot, so every Track must be stamped
-    # explicitly with the module's declared class. Each fixture annotation
-    # also carries the real ChimpACT COCO schema's `category_id` (always 0,
-    # "Chimpanzee"), so a loader that blindly forwarded that raw field
-    # instead would produce `class_id == 0` here, not 1.
     labels = {
         "images": [_coco_image(0, 0)],
         "annotations": [_coco_ann(0, 0, 1, [0.0, 0.0, 10.0, 10.0])],
@@ -491,9 +408,6 @@ def test_chimpact_split_partition_uses_official_clip_names(tmp_path):
     assert [s.name for s in load_chimpact(root=tmp_path, split="val").sequences] == [val_clip]
     assert [s.name for s in load_chimpact(root=tmp_path, split="test").sequences] == [test_clip]
     assert [s.name for s in load_chimpact(root=tmp_path, split="train").sequences] == [train_clip]
-
-
-# ---------------------------------------------------------------- motchallenge
 
 
 def _write_seqinfo(seq_dir: Path, seq_length: int | str) -> None:
@@ -607,17 +521,12 @@ def test_motchallenge_frames_binned_regardless_of_file_order(tmp_path):
 
     dataset = load_motchallenge(tmp_path, "val")
     (seq,) = dataset.sequences
-    # Predictions sorted by frame, as write_mot writes them. Binning GT by file order
-    # would put frame 3's box (x=14) at the first timestep and lower MOTP below 1.
     pred_dir = tmp_path / "pred"
     write_mot(pred_dir / "seq-01.txt", [t for t in seq.tracks])
 
     clear = evaluate(dataset, pred_dir, [CLEAR()]).combined["CLEAR"]
     assert seq.num_timesteps == 3
     assert (clear["CLR_TP"], clear["MOTP"]) == (3.0, 1.0)
-
-
-# --------------------------------------------------------------------- uavdt
 
 
 def _uavdt_gt_dir(root: Path) -> Path:
@@ -674,8 +583,6 @@ def test_uavdt_ignore_file_parses_into_gt_sequence_ignore_regions(tmp_path):
 
 
 def test_uavdt_missing_ignore_file_yields_no_ignore_regions(tmp_path):
-    # Legacy layout has no marker distinguishing "deliberately no ignore
-    # regions" from "file just doesn't exist" -- absence means no regions.
     _write_uavdt_gt(tmp_path, "M0101", ["1,1,0,0,10,10,1,1,-1"])
 
     dataset = load_uavdt(root=tmp_path, split="all")
@@ -698,9 +605,7 @@ def test_uavdt_prediction_inside_ignore_region_excluded_through_evaluate(tmp_pat
     write_mot(
         pred_dir / f"{seq.name}.txt",
         [
-            # Fully inside the ignore region, unmatched to any GT: excluded.
             Track(frame=1, track_id=901, x=110, y=110, w=20, h=20, conf=0.9),
-            # Far from GT and the ignore region, unmatched: kept.
             Track(frame=1, track_id=902, x=300, y=300, w=20, h=20, conf=0.9),
         ],
     )
@@ -713,12 +618,6 @@ def test_uavdt_prediction_inside_ignore_region_excluded_through_evaluate(tmp_pat
         "IDs": 1.0,
         "GT_IDs": 1.0,
     }
-
-
-# ------------------------------------------------------ dancetrack / sportsmot
-#
-# Both reuse the default MOTChallengeConfig layout unmodified; only the root
-# override and registered dataset name need proving per benchmark.
 
 
 def test_dancetrack_loads_with_explicit_root(tmp_path):
@@ -741,9 +640,6 @@ def test_sportsmot_loads_with_explicit_root(tmp_path):
     assert [seq.name for seq in dataset.sequences] == ["v_00001"]
 
 
-# ------------------------------------------------------------ load_dataset root
-
-
 def test_load_dataset_reads_benchmark_under_moteval_data_root(tmp_path, monkeypatch):
     _make_mc_sequence(
         tmp_path / "dancetrack", "val", "env-root-seq", seq_length=3, rows=["1,1,10,10,20,20,1"]
@@ -762,9 +658,6 @@ def test_load_dataset_rejects_blank_moteval_data_root(value, monkeypatch):
 
     with pytest.raises(ValueError, match="MOTEVAL_DATA_ROOT must not be empty"):
         load_dataset("dancetrack")
-
-
-# -------------------------------------------------------------------- panaf500
 
 
 def _write_panaf500_ann(root: Path, split: str, video_id: str, annotations: list[dict]) -> None:
@@ -813,9 +706,6 @@ def test_panaf500_missing_split_dir_raises(tmp_path):
 
 
 def test_panaf500_empty_annotations_raises_on_seq_length_derivation(tmp_path):
-    # Consistent with BFT/AnimalTrack/GMOT-40: no frame-count source other than
-    # the annotations themselves, so an empty video raises loudly rather than
-    # silently defaulting to num_timesteps=0.
     _write_panaf500_ann(tmp_path, "validation", "vid1", [])
 
     with pytest.raises(ValueError, match="empty gt"):
@@ -839,8 +729,6 @@ def test_panaf500_end_to_end_evaluate_with_independently_numbered_predictions(tm
 
     dataset = load_panaf500(root=gt_root, split="validation")
     (seq,) = dataset.sequences
-    # Predictions numbered independently of GT: different track id, and only a
-    # disjoint one-frame subset of the two GT frames.
     write_mot(
         pred_dir / f"{seq.name}.txt",
         [Track(frame=1, track_id=900, x=11, y=21, w=50, h=100, conf=0.9)],
@@ -854,9 +742,6 @@ def test_panaf500_end_to_end_evaluate_with_independently_numbered_predictions(tm
         "IDs": 1.0,
         "GT_IDs": 1.0,
     }
-
-
-# ------------------------------------------------ generic loader (no registration)
 
 
 def test_load_motchallenge_scores_a_custom_layout_without_registration(tmp_path):
@@ -873,7 +758,6 @@ def test_load_motchallenge_scores_a_custom_layout_without_registration(tmp_path)
 
     pred_dir = tmp_path / "pred"
     pred_dir.mkdir()
-    # Predictions numbered independently of GT.
     write_mot(
         pred_dir / "SEQ01.txt",
         [Track(frame=1, track_id=901, x=10, y=10, w=20, h=20, conf=0.9)],
@@ -900,5 +784,4 @@ def test_load_motchallenge_drops_conf_zero_gt_rows(tmp_path):
     (pred_dir / "SEQ01.txt").write_text("")
     result = evaluate(dataset, pred_dir, [Count()])
 
-    # The conf-zero "consider" flag row is excluded from evaluation.
     assert result.combined["Count"]["GT_Dets"] == 1.0

@@ -5,9 +5,8 @@ GitHub Issues on this repo instead and close it with `Fixes #N`.
 
 MOT evaluation library: a from-scratch TrackEval rewrite that must produce **bit-identical
 numbers** to official TrackEval commit `12c8791b`. Evaluation only — it never runs models.
-The implementation is Rust (`rust/`); the Python package `moteval/` is a thin wrapper that
-keeps the public names. It must give the same bits as the pure-Python moteval of the
-`py-reference` tag (`docs/rust-port.md`).
+The implementation is Rust (`src/`); the Python package `moteval/` is a thin wrapper that
+keeps the public names.
 
 ## Non-negotiables
 
@@ -29,18 +28,22 @@ keeps the public names. It must give the same bits as the pure-Python moteval of
   is never acceptable. Regression tests must number predictions independently of GT.
 - Per-benchmark preprocessing is a declarative `Protocol` executed by the shared engine —
   never subclass-hook preprocessing logic.
+- Floats are compared with `f64::to_bits`, never a tolerance. Every reduction goes
+  through `numeric`, which holds the upstream order. Use no rayon, SIMD, or `mul_add`;
+  `numeric::log10_svml` is the one exception, because SVML's fused instructions round once.
+- `Scores` is insertion-ordered, and that order is the export order. Fields that start
+  with `_` are private combiner state.
+- Each module's error enum has a hand-written `Display`. Tests pin that text, so change it
+  only on purpose.
 
 ## Layout
 
-- `rust/` — the implementation: a Cargo workspace with the `moteval` crate (library plus
-  the `moteval` binary; zero runtime dependencies) and the `moteval-py` PyO3 crate,
-  which maturin builds into the extension `moteval._moteval` (stubs in
-  `moteval/_moteval.pyi`). `rust/README.md` has the module map, commands, rules, and how
-  to regenerate `rust/testdata/` (dumped from the pure-Python reference, never
-  hand-edited). One crate module per old Python module: `model`, `numeric` (every numpy
-  and builtin reduction order), `lsap` (scipy's solver), `similarity`, `rle`
-  (pycocotools), `metrics/`, `formats`, `convert`, `protocol`, `benchmarks/`, `eval`,
-  `results`, `pyfmt` (Python-compatible text), `cli`.
+- `Cargo.toml`, `src/` — one crate, `moteval`: the library and the `moteval` binary
+  (`src/main.rs`), with zero runtime dependencies. The `python` feature adds pyo3 and
+  numpy and compiles `src/python.rs`, the extension `moteval._moteval` (stubs in
+  `moteval/_moteval.pyi`); maturin builds with that feature (`[tool.maturin]`).
+  `numeric` holds every numpy and builtin reduction order, `lsap` is scipy's solver,
+  `rle` is pycocotools' mask API, and `pyfmt` writes CPython-compatible text.
 - `moteval/` — the Python package: the frozen dataclasses (`data/model.py`,
   `data/protocol.py` `Protocol`, `formats.py` `Track`/`MaskTrack`, `results.py`) and thin
   functions over the extension: `evaluate` (`eval.py`), the loaders
@@ -77,12 +80,16 @@ keeps the public names. It must give the same bits as the pure-Python moteval of
   `write_two_class_predictions` to write their prediction files, and `write_toy_layout`
   to write the toy dataset to disk for CLI tests). The shared helpers use the public API
   only, because the dump scripts import them under the reference venv. `tests/temp/` is
-  gitignored scratch for data, not tests (see Gotchas). The Rust tests live in
-  `rust/moteval/tests/`.
+  gitignored scratch for data, not tests (see Gotchas).
+- `tests/integration/` — the Rust tests: one test target (`main.rs`), the shared
+  `harness/`, and the committed expected values in `tests/integration/data/`.
+- `scripts/testdata/` — the scripts that write `tests/integration/data/` (see Gotchas).
+  `scripts/gen_printable.py` and `scripts/gen_pytext_tables.py` regenerate
+  `src/pyfmt/printable.rs` and `src/formats/pytables.rs` from the interpreter's Unicode
+  database.
 - CI: `ci` runs `check`, the Python suite on 3.10 to 3.14 (every Python job installs
-  Rust, because `uv sync` builds the extension), and `rust` (`cargo fmt --check`,
-  `cargo clippy -D warnings`, `cargo test`); `wheels` builds abi3 wheels for Linux
-  x86_64 and macOS arm64.
+  Rust, because `uv sync` builds the extension), and `rust` (the cargo commands below,
+  without real data); `wheels` builds abi3 wheels for Linux x86_64 and macOS arm64.
 
 ## Commands
 
@@ -91,18 +98,18 @@ mise run install   # uv sync --locked, prek hooks (main checkout only)
 mise run check     # ruff format, ruff check --fix, pyrefly check
 mise run test      # pytest (testpaths: tests/; real-data gate deselected by default)
 mise run test-real # slow real-data gate: parity + raw-GT loader checks (needs the data root)
-cargo fmt --manifest-path rust/Cargo.toml --all --check
-cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
-cargo test --manifest-path rust/Cargo.toml   # real-data tests skip loudly without the env:
-MOTEVAL_RUST_TESTDATA=artifacts/rust-port/testdata MOTEVAL_DATA_ROOT=<root> \
-  cargo test --manifest-path rust/Cargo.toml
+cargo fmt --all --check
+cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets --all-features -- -D warnings   # also checks src/python.rs
+cargo test   # real-data tests skip loudly without the env:
+MOTEVAL_REAL_TESTDATA=artifacts/rust-port/testdata MOTEVAL_DATA_ROOT=<root> cargo test
 ```
 
-`check`, `test`, and `test-real` must pass before any PR, and so must the three cargo
-commands when the PR touches `rust/` (CI runs them without real data).
+`check`, `test`, and `test-real` must pass before any PR, and so must the cargo commands
+when the PR touches Rust.
 
-`mise.toml` pins uv, rust, and hyperfine and holds the tasks. uv pins Python through
-`.python-version`; mise does not. Run `mise run install` first in every fresh clone or git
+`mise.toml` holds the tasks only. `rust-toolchain.toml` pins Rust, and uv pins Python
+through `.python-version`. Run `mise run install` first in every fresh clone or git
 worktree: the venv is an editable install, and it rebuilds the Rust extension when a
 Rust source changes (`[tool.uv] cache-keys`). Host-only settings,
 such as `MOTEVAL_DATA_ROOT`, go in the gitignored `mise.local.toml`. `mise run` trusts its own
@@ -123,28 +130,34 @@ installs the git hooks only in the main checkout, because a worktree shares `.gi
 - `tests/fixtures/reference_benchmarks.json` is not an oracle fixture. It freezes moteval's
   own combined results (every applicable metric, floats exact) on all nine local
   benchmarks and each split with ground truth, scored against seeded `tests/perturb.py`
-  predictions. The Rust port is checked against it, so it changes only when a metric
+  predictions. The Rust pipeline is checked against it, so it changes only when a metric
   changes on purpose. Never hand-edit it. Regenerate with
   `MOTEVAL_DATA_ROOT=<root> uv run python scripts/reference_results.py --out-dir artifacts/reference --reference-fixture tests/fixtures/reference_benchmarks.json`;
   `tests/test_reference_real.py` (`real_data`, bit for bit, `np.array_equal` with
-  `equal_nan`) checks it through Python, `rust/moteval/tests/reference_end_to_end.rs`
+  `equal_nan`) checks it through Python, `tests/integration/reference_end_to_end.rs`
   through the Rust pipeline alone, and both skip loudly when data is absent.
-- The dump scripts in `rust/scripts/` (and `scripts/regen_parity_fixtures.py`) take
-  their expected values from the pure-Python reference: the `py-reference` tag installed
-  in `artifacts/rust-port/ref-venv` (`rust/README.md` shows how to build it). Never
-  install it into the project `.venv`; both packages are named `moteval`. Each script
-  appends the repository root to `sys.path` and exits unless `moteval` is the reference
-  (`rust/scripts/reference.py`). Run with the project venv, they would test Rust against
-  itself.
-- `rust/testdata/loader_cases/` records the `py-reference` tag's `test_loaders.py` and
-  `test_data.py`, not this checkout's (`record_loader_cases.py` extracts them with
-  `git archive`). Python tests whose subject moved to Rust were removed; the Rust tests
-  that cover them are listed in `docs/rust-port.md`.
+- `tests/integration/data/` is never hand-edited. Its expected values come from the
+  pure-Python moteval of the `py-reference` tag, and the Rust tests compare them bit for
+  bit (each float is stored as its `u64` bit pattern; any NaN equals any NaN). Each
+  `scripts/testdata/dump_*.py` script, and `record_loader_cases.py`, rewrites its own
+  files there, byte-identical when nothing changed. Run them, and
+  `scripts/regen_parity_fixtures.py`, with the reference venv, never the project `.venv`:
+  both packages are named `moteval`, and the project one would test Rust against itself.
+  Each script appends the repository root to `sys.path` and exits unless `moteval` is the
+  reference (`scripts/testdata/reference.py`). Build the venv once:
+  `uv venv --python 3.14.8 artifacts/rust-port/ref-venv`, then
+  `uv pip install --python artifacts/rust-port/ref-venv/bin/python "moteval @ git+file://$PWD@py-reference" numpy==2.5.1 scipy==1.18.0 pycocotools==2.0.11 pytest`.
+  The real-data dumps go to `artifacts/rust-port/testdata` (`MOTEVAL_REAL_TESTDATA`):
+  `dump_loaders.py` writes the predictions that `dump_scenarios.py --real-data` scores,
+  so run both together, with `MOTEVAL_DATA_ROOT` set.
+- `tests/integration/data/loader_cases/` records the `py-reference` tag's
+  `test_loaders.py` and `test_data.py`, not this checkout's (`record_loader_cases.py`
+  extracts them with `git archive`).
 - The Rust CLI cannot see a dataset built or registered in Python. CLI tests write the
   toy dataset to disk (`write_toy_layout`) and pass `--gt <root> --split val`.
 - numpy's float64 `log10` (CLEAR's MOTAL) is Intel SVML on an AVX-512 Linux host and
   libm elsewhere, and the two differ in the last bit. `numeric::log10` makes numpy's
-  choice at run time; `rust/testdata/numeric.json` holds SVML's output, so dump it on an
+  choice at run time; `tests/integration/data/numeric.json` holds SVML's output, so dump it on an
   AVX-512 Linux host (`dump_numeric.py` refuses otherwise).
 - `mise run install` (and any `uv run`) rebuilds the extension in release mode after a
   Rust source change; a build error there is a Rust compile error.

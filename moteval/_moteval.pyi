@@ -1,5 +1,3 @@
-"""Type stubs for the Rust extension `moteval._moteval` (rust/moteval-py/src/lib.rs)."""
-
 from collections.abc import Iterable
 from os import PathLike
 from pathlib import Path
@@ -11,14 +9,10 @@ from moteval.results import EvaluationResult
 
 _Path: TypeAlias = str | PathLike[str]
 
-class RustError(Exception):
-    """``args`` is ``(Python exception class name, message)``."""
+class RustError(Exception): ...
 
-# (frame, track_id, x, y, w, h, conf, class_id)
 TrackRow: TypeAlias = tuple[int, int, float, float, float, float, float, int]
-# (frame, track_id, class_id, img_h, img_w, rle)
 MaskTrackRow: TypeAlias = tuple[int, int, int, int, int, str]
-# (name, split, protocol, sequences); see moteval.benchmarks._dataset.
 DatasetRow: TypeAlias = tuple[str, str, tuple[Any, ...], list[tuple[Any, ...]]]
 
 def benchmarks_table() -> list[tuple[str, str]]: ...
