@@ -1,12 +1,3 @@
-"""Parity vs frozen TrackEval oracle numbers on the shared synthetic scenarios.
-
-The JSON fixtures under ``tests/fixtures/`` hold the output of official TrackEval
-(pinned commit, numpy>=2 alias patches only) on every scenario in
-``tests/scenarios.py``. They are never hand-edited; regenerate them with
-``scripts/regen_parity_fixtures.py``. Equality is exact — any divergence is a
-parity regression, not a tolerance problem.
-"""
-
 import json
 from pathlib import Path
 
@@ -77,16 +68,10 @@ def test_hota_combine_classes_class_averaged(tmp_path):
     frozen = SYNTHETIC_BOX["combine_classes_class_averaged"]["HOTA"]
     _assert_fields_equal(class_avg, frozen, "combine_classes_class_averaged.HOTA")
 
-    # The combiners differ on this input, so the class-averaged check above has teeth.
-    # (HOTA det_averaged matches upstream; the multi-class tests below check it against
-    # the oracle. Only TrackMAP's det_averaged diverges.)
     det_avg = HOTA().combine_classes_det_averaged(all_res)
     assert not np.array_equal(class_avg["DetA"], det_avg["DetA"])
 
 
-# TrackMAP's det_averaged is the sole permitted divergence (upstream's is a copy of its
-# class-averaged combiner), so the regen script never freezes it; test_data.py pins
-# moteval's detection-weighted value with a hand-derived test.
 _COMBINATIONS = ("class_averaged", "det_averaged")
 
 
@@ -107,6 +92,7 @@ def test_box_multi_class_combinations(tmp_path):
     metrics = (*BOX_METRICS, TrackMAP)
     result = evaluate(dataset, predictions_dir(tmp_path), [m() for m in metrics])
     names = {m.__name__ for m in metrics}
+    # TrackEval's TrackMAP det_averaged copies its class-averaged combiner; ours diverges.
     expected = {"class_averaged": names, "det_averaged": names - {"TrackMAP"}}
     _assert_combinations_equal(result, SYNTHETIC_BOX, expected)
 

@@ -2,9 +2,7 @@
 
 Multi-object tracking (MOT) evaluation for Python: HOTA, CLEAR, Identity, TrackMAP, and
 J&F over 2D boxes and RLE segmentation masks, with a typed data model, built-in benchmark
-loaders, and a CLI. The scoring runs in Rust: about 10 times faster than the pure-Python
-moteval it replaces, with the same numbers to the last bit
-([docs/rust-port.md](docs/rust-port.md)).
+loaders, and a CLI. The scoring runs in Rust.
 
 ## Installation
 
@@ -15,23 +13,25 @@ pip install git+https://github.com/kpeez/moteval.git
 ```
 
 The package includes a Rust extension built with maturin, so an install from source
-needs a Rust toolchain (1.99 or later, for example from [rustup](https://rustup.rs/)).
+needs a Rust toolchain: [rustup](https://rustup.rs/) installs the pinned version from
+`rust-toolchain.toml`, and any other install must be Rust 1.99 or later.
 Its only Python runtime dependency is numpy. The `moteval` command is the Rust CLI; the
-same binary builds on its own with `cargo build --release --manifest-path
-rust/Cargo.toml` (`rust/target/release/moteval`).
+same binary builds on its own with `cargo build --release` (`target/release/moteval`).
 
 ### Development
 
-Requires [mise](https://mise.jdx.dev/), which installs the pinned uv and Rust:
+Requires [uv](https://docs.astral.sh/uv/), [rustup](https://rustup.rs/) (it reads the
+pinned toolchain from `rust-toolchain.toml`), and [mise](https://mise.jdx.dev/) for the
+tasks:
 
 ```sh
 git clone https://github.com/kpeez/moteval.git
 cd moteval
-mise install         # pinned tools from mise.toml
+rustup component add clippy rustfmt
 mise run install     # uv sync (builds the Rust extension) + pre-commit hooks
 mise run check       # ruff format + lint + pyrefly type-check
 mise run test        # pytest
-cargo test --manifest-path rust/Cargo.toml   # the Rust tests (see rust/README.md)
+cargo test           # the Rust tests
 ```
 
 ## Quick start
@@ -145,11 +145,6 @@ loader, so `mise run test-real` checks them another way: their published ground 
 submitted as predictions, must match exactly (`tests/test_loaders_real.py`). ChimpACT
 submits only its labelled keyframes, so the frames its loader fills in between count as
 misses.
-
-The scoring is a Rust port of the pure-Python moteval (the `py-reference` tag), checked
-to give the same bits as it on every fixture, on the nine local benchmarks, and through
-all three entry points (Python API, console script, binary); see
-[docs/rust-port.md](docs/rust-port.md).
 
 One documented divergence: upstream's TrackMAP `combine_classes_det_averaged` is a
 copy-paste of its class-averaged combiner and never actually weights by detections (an

@@ -1,8 +1,5 @@
 name: wheels
 
-# abi3 wheels (CPython 3.10 and later) for the targets users need: Linux x86_64
-# (manylinux) and macOS arm64. Add a target only when a user needs it.
-
 on:
   push:
     branches: [main]
@@ -46,12 +43,8 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          # Keep in step with the rust pin in mise.toml.
-          rust-toolchain: "1.99.1"
           args: --release --locked --out dist
 
-      # The oldest supported interpreter imports the abi3 wheel and runs the Rust CLI.
-      # Run outside the checkout, so `import moteval` finds the wheel, not the sources.
       - name: Smoke test
         shell: bash
         working-directory: ${{ runner.temp }}

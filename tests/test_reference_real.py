@@ -1,14 +1,3 @@
-"""Real-data gate: combined results on all nine benchmarks equal the frozen reference.
-
-``tests/fixtures/reference_benchmarks.json`` holds the combined results of every
-applicable metric on each benchmark split, scored against seeded perturbed predictions by
-``scripts/reference_results.py``. The Rust port is checked against the same file. Each
-case skips loudly when its dataset is absent from the data root; a skipped run does not
-count as the gate passing. Regenerate the fixture with
-``uv run python scripts/reference_results.py --out-dir artifacts/reference --reference-fixture
-tests/fixtures/reference_benchmarks.json``.
-"""
-
 import importlib.util
 import json
 from pathlib import Path

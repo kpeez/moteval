@@ -1,0 +1,20 @@
+[package]
+name = "moteval"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+include = ["/src/**", "/Cargo.toml", "/Cargo.lock", "/rust-toolchain.toml"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+python = ["dep:numpy", "dep:pyo3"]
+
+[dependencies]
+numpy = { version = "0.30.0", optional = true }
+pyo3 = { version = "0.30.1", features = ["abi3-py310"], optional = true }
+
+[dev-dependencies]
+serde_json = "1.0.154"

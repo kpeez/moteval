@@ -1,17 +1,3 @@
-"""moteval: a from-scratch TrackEval rewrite. Public API surface.
-
-Three ways in, all converging on `evaluate(dataset, predictions, metrics)`:
-
-- `load_dataset(name, root=None, split=None)` — a built-in benchmark by name, read from
-  ``$MOTEVAL_DATA_ROOT/<name>`` or ``data/benchmarks/<name>`` unless ``root`` is given.
-- `load_motchallenge(root, split)` / `load_mots(root, split)` — any directory in
-  the standard box/mask layout, no registration needed.
-- Construct a `MOTDataset` yourself from any source format.
-
-Loading, reading, scoring, and the CLI run in the Rust extension `moteval._moteval`
-(``rust/``); this package holds the public data types and thin functions over it.
-"""
-
 from moteval.benchmarks import load_dataset, load_motchallenge, load_mots
 from moteval.data.model import (
     FrameConvention,

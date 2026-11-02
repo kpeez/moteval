@@ -1,11 +1,3 @@
-"""CLI tests: run in-process via `moteval.cli.main(argv)`, which runs the Rust CLI and
-writes its output to `sys.stdout` and `sys.stderr` (a nested `uv run` under `uv run
-pytest` deadlocks on uv's project lock).
-
-The toy dataset is written to disk in the MOTChallenge layout (`write_toy_layout`) and
-read with ``--gt``: the Rust CLI cannot see a dataset registered in Python.
-"""
-
 import csv
 import io
 import json
@@ -28,7 +20,6 @@ from tests.conftest import (
 
 @pytest.fixture
 def toy_gt(tmp_path):
-    """The toy dataset on disk; ``--gt <root> --split val`` loads it as dataset "toy"."""
     root = tmp_path / "toy"
     write_toy_layout(root)
     return root
@@ -80,15 +71,6 @@ def test_toy_run_prints_sequence_and_combined_headlines(tmp_path, toy_gt, capsys
         "Dets",
         "GT_Dets",
     ]
-    # Hand derivation per sequence (10 GT dets, 11 predictions, IoU 1 or 0, so every
-    # HOTA alpha agrees): TP = 9, FN = 1 (GT 2 frame 5), FP = 2 (id 15).
-    # DetA = 9 / (9 + 1 + 2) = 3/4. AssA = sum(TPA * TPA / (gt + pred - TPA)) / TP over
-    # (GT, pred) pairs (1,11) 2/5, (1,12) 3/5, (2,13) 2/5, (2,14) 2/5 = (4+9+4+4)/45 = 7/15.
-    # HOTA = sqrt(3/4 * 7/15) = sqrt(0.35) = 0.59161.
-    # IDSW = 2 (GT 1 and GT 2 change id at frame 3). MOTA = (9 - 2 - 2) / 10 = 1/2.
-    # MOTP = 1 (every match has IoU 1). IDF1: best id pairs (1,12) 3 + (2,13) 2 give
-    # IDTP = 5, so IDF1 = 2 * 5 / (10 + 11) = 10/21 = 0.47619.
-    # Both sequences repeat the pattern, so COMBINED keeps every ratio and doubles counts.
     ratios = ["59.161", "75", "46.667", "50", "100"]
     assert lines[1].split() == ["toy-0001", *ratios, "2", "47.619", "11", "10"]
     assert lines[2].split() == ["toy-0002", *ratios, "2", "47.619", "11", "10"]
@@ -189,10 +171,6 @@ def test_json_export_round_trips_direct_evaluate_values(toy_predictions, toy_gt,
 
 
 def test_single_class_outputs_keep_their_exact_format(toy_predictions, toy_gt, tmp_path, capsys):
-    # Hand-written expected bytes: a single-class run keeps the original table, CSV
-    # and JSON shapes, with no class column and no class-combination keys.
-    # Perfect predictions on both toy sequences: 10 GT dets and 10 predicted dets on
-    # 2 GT ids and 2 predicted ids each; COMBINED doubles every count.
     _dataset, pred_dir = toy_predictions
     out_csv = tmp_path / "result.csv"
     out_json = tmp_path / "result.json"
@@ -237,8 +215,6 @@ def test_single_class_outputs_keep_their_exact_format(toy_predictions, toy_gt, t
 
 
 def test_multi_class_outputs_add_a_class_column_and_both_combinations(tmp_path):
-    # No built-in benchmark has two classes, so the CLI never prints a multi-class run;
-    # this checks the table, CSV and JSON text it would print and write.
     from moteval import HOTA, Count
 
     pred_dir = tmp_path / "predictions"
@@ -252,18 +228,10 @@ def test_multi_class_outputs_add_a_class_column_and_both_combinations(tmp_path):
 
     raw_lines = _moteval.results_table(result).splitlines()
     lines = [line.split() for line in raw_lines]
-    # Both label columns are left-aligned: every seq label starts under "seq".
     seq_start = raw_lines[0].index("seq")
     assert all(
         raw[seq_start:].startswith(row[1]) for raw, row in zip(raw_lines, lines, strict=True)
     )
-    # Hand derivation (tests/conftest.py `write_two_class_predictions`; every IoU is 1
-    # or 0 and each matched pair keeps one id, so AssA = 1 and HOTA = sqrt(DetA)):
-    # class 1: TP 2, FN 0, FP 1 -> DetA 2/3 = 66.667, HOTA sqrt(2/3) = 81.65.
-    # class 2: TP 2, FN 2, FP 0 -> DetA 1/2 = 50, HOTA sqrt(1/2) = 70.711.
-    # class_averaged: means of the class values -> HOTA 76.18, DetA 7/12 = 58.333.
-    # det_averaged: pooled TP 4, FN 2, FP 1 -> DetA 4/7 = 57.143, HOTA sqrt(4/7) = 75.593.
-    # Count sums over classes in both combinations: 5 dets, 6 GT dets.
     seq = "two-class-0001"
     assert lines == [
         ["class", "seq", "HOTA", "DetA", "AssA", "Dets", "GT_Dets"],
@@ -383,9 +351,6 @@ def test_metric_on_the_other_geometry_is_reported_without_traceback(
     assert "Traceback" not in err
 
 
-# ------------------------------------------------------- custom data (no --dataset)
-
-
 def test_run_without_dataset_loads_motchallenge_layout(tmp_path, capsys):
     seq_dir = tmp_path / "gt" / "train" / "SEQ01"
     (seq_dir / "gt").mkdir(parents=True)
@@ -399,7 +364,6 @@ def test_run_without_dataset_loads_motchallenge_layout(tmp_path, capsys):
 
     assert exit_code == 0
     rows = [line.split() for line in capsys.readouterr().out.splitlines()[1:]]
-    # predictions repeat the GT boxes under another id: every ratio is perfect.
     perfect = ["100", "100", "100", "100", "100", "0", "100", "2", "2"]
     assert rows == [["SEQ01", *perfect], ["COMBINED", *perfect]]
 

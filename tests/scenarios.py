@@ -1,31 +1,3 @@
-"""Declarative synthetic scenarios shared by the parity fixture suite.
-
-These scenarios are the union of the fixtures from the old live-oracle parity tests
-(tests/parity/test_oracle_{synthetic,clear,identity,jf,trackmap}.py). They are consumed
-by two callers:
-
-- ``scripts/regen_parity_fixtures.py`` runs official TrackEval (pinned commit) on them
-  and freezes the results as JSON under ``tests/fixtures/``.
-- The parity test suite runs moteval on the same scenarios and asserts exact equality
-  against those frozen fixtures.
-
-Box/MOTS scenarios are written to disk in the SKIP_SPLIT_FOL MOTChallenge layout
-(``gt/{seq}/gt/gt.txt`` + ``trackers/oracle/data/{seq}.txt``) so both sides read the
-identical files. Predictions are numbered independently of GT (disjoint id ranges).
-Every box GT row sets ``zero_marked=1`` and the fixtures are scored with
-``do_preproc=False``, so both sides see the identical, unfiltered detections.
-
-TrackMAP is not wired into the MOTChallenge dataset upstream, so its scenarios stay
-pure Python specs (``{track_id: {frame: box}}`` for GT, ``{track_id: {frame: (box,
-confidence)}}`` for predictions); `build_trackmap_sequence_data` builds moteval's real
-input from a spec, and the regen script builds the upstream-shaped ``data`` dict from
-the same spec.
-
-Real-data cases (DanceTrack val, SportsMOT val, one MOTS20 sequence) generate seeded
-perturbed predictions via `tests.perturb` into a caller-provided tmp dir, mirroring the
-old tests/parity/test_real_data.py setup exactly.
-"""
-
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -47,7 +19,6 @@ from moteval.formats import MaskTrack, read_mot, read_mots, write_mot, write_mot
 from tests.perturb import perturb_box_tracks, perturb_mask_tracks
 from tests.rle import encode_mask
 
-# MOTS20's protocol and its ignore class, as the MOTS20 loader declares them.
 MOTS20_IGNORE_CLASS = 10
 MOTS20_PROTOCOL = Protocol(
     name="mots20",
@@ -59,11 +30,6 @@ MOTS20_PROTOCOL = Protocol(
 
 
 def box_iou(boxes_a: np.ndarray, boxes_b: np.ndarray) -> np.ndarray:
-    """IoU matrix between two sets of xywh boxes, as TrackEval computes it.
-
-    Convert xywh to corners, clamp negative overlaps, derive the areas from the corners
-    (``(x0 + w) - x0`` can differ from ``w`` by an ulp), and guard a zero union to 0.
-    """
     n, m = boxes_a.shape[0], boxes_b.shape[0]
     if n == 0 or m == 0:
         return np.zeros((n, m), dtype=np.float64)
@@ -76,6 +42,7 @@ def box_iou(boxes_a: np.ndarray, boxes_b: np.ndarray) -> np.ndarray:
     ix2 = np.minimum(ax2[:, None], bx2[None, :])
     iy2 = np.minimum(ay2[:, None], by2[None, :])
     inter = np.maximum(ix2 - ix1, 0.0) * np.maximum(iy2 - iy1, 0.0)
+    # TrackEval takes areas from the corners: (x0 + w) - x0 can differ from w by an ulp.
     area_a = (ax2 - ax1) * (ay2 - ay1)
     area_b = (bx2 - bx1) * (by2 - by1)
     union = area_a[:, None] + area_b[None, :] - inter
@@ -94,7 +61,6 @@ BOX_PROTOCOL = Protocol(
 )
 BOX_METRICS = ("HOTA", "CLEAR", "Identity", "Count")
 COMBINE_CLASSES_SCENARIO = "combine_classes"
-# The MOTS scenario that the multi-class mask check reuses (see `class_views`).
 MOTS_MULTI_CLASS_SCENARIO = "jf_perturbed_predictions"
 
 REAL_DATA_SEED = 20260718
@@ -102,18 +68,9 @@ REAL_DATA_SEED = 20260718
 
 @dataclass(frozen=True)
 class Scenario:
-    """One named scenario: sequences of ``(seq_name, num_timesteps, gt_rows, pred_rows)``.
-
-    Box rows are MOT-txt value lists; MOTS rows are `MaskTrack` instances.
-    """
-
     name: str
     sequences: tuple[tuple[str, int, list, list], ...]
 
-
-# ---------------------------------------------------------------------------
-# Box scenarios (HOTA / CLEAR / Identity / Count)
-# ---------------------------------------------------------------------------
 
 _MISS_GT = [
     [1, 1, 10, 10, 20, 40, 1, 1, 1],
@@ -149,12 +106,8 @@ _GAP_GT = [
 ]
 
 BOX_SCENARIOS: tuple[Scenario, ...] = (
-    # gt id 2 is never predicted at all: pure false negatives across every frame.
     Scenario("misses", (("MISS01", 3, _MISS_GT, _MISS_PRED),)),
-    # every gt det matches; extra pred dets have no gt counterpart at all.
     Scenario("false_positives", (("FP01", 2, _FP_GT, _FP_PRED),)),
-    # one continuous gt track, fully detected every frame, but the predicted id
-    # changes partway through: full DetA, degraded AssA, one CLEAR IDSW.
     Scenario(
         "id_switches",
         (
@@ -176,7 +129,6 @@ BOX_SCENARIOS: tuple[Scenario, ...] = (
             ),
         ),
     ),
-    # frame counts vary independently on the gt and pred side per frame.
     Scenario(
         "ragged_frames",
         (
@@ -203,7 +155,6 @@ BOX_SCENARIOS: tuple[Scenario, ...] = (
             ),
         ),
     ),
-    # frames 2 and 4 have no gt and no pred at all.
     Scenario(
         "empty_frames",
         (
@@ -223,8 +174,7 @@ BOX_SCENARIOS: tuple[Scenario, ...] = (
             ),
         ),
     ),
-    # three gt boxes and three pred boxes stacked at identical coordinates: every
-    # gt/pred pair has IoU 1.0, forcing scipy to break ties among equal-cost matches.
+    # Every pair has IoU 1.0, so scipy's linear_sum_assignment tie-breaking picks the matches.
     Scenario(
         "tie_heavy_assignment",
         (
@@ -264,10 +214,6 @@ BOX_SCENARIOS: tuple[Scenario, ...] = (
             ("FP01", 2, _FP_GT, _FP_PRED),
         ),
     ),
-    # Two sequences with deliberately different det/FN counts. The class-combination
-    # checks reuse them as two classes: the original HOTA-only
-    # combine_classes_class_averaged entry, and the multi-class entries built from
-    # `class_views` (see the regen script).
     Scenario(
         COMBINE_CLASSES_SCENARIO,
         (
@@ -299,14 +245,12 @@ BOX_SCENARIOS: tuple[Scenario, ...] = (
     Scenario("empty_gt", (("EMPTYGT01", 1, [], [[1, 1, 10, 10, 20, 40, 1]]),)),
     Scenario("empty_preds", (("EMPTYPRED01", 1, [[1, 1, 10, 10, 20, 40, 1, 1, 1]], []),)),
     Scenario("both_empty", (("EMPTYBOTH01", 1, [], []),)),
-    # a gt track that exists for exactly one frame, matched cleanly.
     Scenario(
         "single_frame_track",
         (("SINGLE01", 1, [[1, 1, 10, 10, 20, 40, 1, 1, 1]], [[1, 701, 10, 10, 20, 40, 1]]),),
     ),
-    # gt id 1 is absent from gt at frame 3 (gt id 2 anchors the frame so it stays
-    # "considered"); the same pred id resumes after the gap -> Frag but no IDSW.
-    # Exercises CLEAR's 1000x same-ID cost bonus keeping the resumed match.
+    # GT 2 and pred 950 keep frame 3 non-empty: TrackEval's CLEAR skips a frame with no GT
+    # or no predictions without resetting its Frag state, so the gap would count no Frag.
     Scenario(
         "gap_then_resume_same_id",
         (
@@ -326,7 +270,6 @@ BOX_SCENARIOS: tuple[Scenario, ...] = (
             ),
         ),
     ),
-    # identical gap, but a different pred id resumes after it -> Frag and IDSW.
     Scenario(
         "gap_then_resume_different_id",
         (
@@ -346,7 +289,7 @@ BOX_SCENARIOS: tuple[Scenario, ...] = (
             ),
         ),
     ),
-    # Identity block-matrix shape asymmetry: 1 gt track, 3 pred tracks (2 pure FPs).
+    # TrackEval's Identity (G+T)x(G+T) block cost matrix with G != T, in both directions.
     Scenario(
         "more_pred_tracks_than_gt_tracks",
         (
@@ -363,7 +306,6 @@ BOX_SCENARIOS: tuple[Scenario, ...] = (
             ),
         ),
     ),
-    # Identity block-matrix shape asymmetry: 3 gt tracks, 1 pred track (2 pure FNs).
     Scenario(
         "more_gt_tracks_than_pred_tracks",
         (
@@ -399,7 +341,6 @@ def predictions_dir(tmp_dir: Path) -> Path:
 
 
 def write_mot_scenario(tmp_dir: Path, scenario: Scenario) -> dict[str, int]:
-    """Write a box scenario in the SKIP_SPLIT_FOL layout; returns ``{seq: length}``."""
     seq_lengths = {}
     for name, num_timesteps, gt_rows, pred_rows in scenario.sequences:
         _write_box_rows(tmp_dir / "gt" / name / "gt" / "gt.txt", gt_rows)
@@ -409,7 +350,6 @@ def write_mot_scenario(tmp_dir: Path, scenario: Scenario) -> dict[str, int]:
 
 
 def build_box_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDataset:
-    """Build the moteval `MOTDataset` from the files `write_mot_scenario` wrote."""
     gt_sequences = tuple(
         GtSequence(
             name=name,
@@ -421,22 +361,6 @@ def build_box_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDataset:
     return MOTDataset(name="synthetic", split="val", sequences=gt_sequences, protocol=BOX_PROTOCOL)
 
 
-# ---------------------------------------------------------------------------
-# Multi-class runs over existing scenarios
-# ---------------------------------------------------------------------------
-#
-# The oracle's MOTChallenge and MOTS datasets score one class only. So a multi-class
-# check takes an existing scenario plus a ``class_of(sequence name, row) -> class id``
-# rule. moteval scores the scenario as one multi-class run, with each row labelled by
-# that rule (`write_multi_class_*` + `build_multi_class_*`). The regen script scores
-# each class through the oracle as one of the `class_views`: the same sequences with
-# every other class's rows removed. That is exactly the per-class view TrackEval's
-# evaluator combines before it combines classes.
-#
-# Boxes use combine_classes with `sequence_classes` (sequence ``i`` is class ``i + 1``).
-# Masks cannot: a sequence without the class gives J&F NaN (upstream too), and the
-# class combinations would then be NaN as well. So masks split one sequence by track id.
-
 MULTI_CLASS_BOX_PROTOCOL = replace(BOX_PROTOCOL, name="parity-multi-class", eval_classes=(1, 2))
 MULTI_CLASS_MOTS_PROTOCOL = replace(
     MOTS20_PROTOCOL, name="parity-mots-multi-class", eval_classes=(1, 2)
@@ -445,7 +369,6 @@ ClassOf = Callable[[str, Any], int]
 
 
 def sequence_classes(scenario: Scenario) -> ClassOf:
-    """Every row of sequence ``i`` is class ``i + 1``."""
     index = {name: i + 1 for i, (name, _, _, _) in enumerate(scenario.sequences)}
     return lambda sequence, _row: index[sequence]
 
@@ -453,7 +376,6 @@ def sequence_classes(scenario: Scenario) -> ClassOf:
 def class_views(
     scenario: Scenario, class_of: ClassOf, classes: tuple[int, ...]
 ) -> tuple[Scenario, ...]:
-    """One single-class scenario per class: only the rows ``class_of`` gives that class."""
     return tuple(
         Scenario(
             f"{scenario.name}-class-{cls}",
@@ -472,11 +394,6 @@ def class_views(
 
 
 def write_multi_class_box_scenario(tmp_dir: Path, scenario: Scenario, class_of: ClassOf) -> None:
-    """Write a box scenario with each row's class from ``class_of`` in column 8.
-
-    GT rows already have a class column (index 7), which is replaced. Prediction rows
-    are ``frame,id,x,y,w,h,conf``, so the class is appended as column 8.
-    """
     for name, _, gt_rows, pred_rows in scenario.sequences:
         _write_box_rows(
             tmp_dir / "gt" / name / "gt" / "gt.txt",
@@ -489,7 +406,6 @@ def write_multi_class_box_scenario(tmp_dir: Path, scenario: Scenario, class_of: 
 
 
 def build_multi_class_box_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDataset:
-    """Build the two-class `MOTDataset` from what `write_multi_class_box_scenario` wrote."""
     gt_sequences = tuple(
         GtSequence(
             name=name,
@@ -506,18 +422,10 @@ def build_multi_class_box_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDatas
     )
 
 
-# ---------------------------------------------------------------------------
-# MOTS scenarios (J&F plus mask HOTA/CLEAR/Identity/Count)
-# ---------------------------------------------------------------------------
-
 MASK_H, MASK_W = 48, 64
 
 
 def _lane_mask(lane: int, col: int, width: int = 10) -> np.ndarray:
-    """A 6-row-tall block in row lane ``lane`` starting at column ``col``.
-
-    Lanes are 8 rows apart so masks in different lanes never overlap.
-    """
     mask = np.zeros((MASK_H, MASK_W), dtype=np.uint8)
     r0 = lane * 8
     c0 = max(0, min(col, MASK_W - width))
@@ -539,14 +447,6 @@ def _mask_row(frame: int, track_id: int, mask: np.ndarray, class_id: int = 2) ->
 
 
 def build_mots_scenarios() -> tuple[Scenario, ...]:
-    """The MOTS scenarios ported from tests/parity/test_oracle_jf.py.
-
-    Masks live in disjoint row lanes so no frame ever contains overlapping masks
-    (the oracle rejects those). Built on demand because rows need RLE encoding.
-    """
-    # Three GT tracks over 8 frames; predictions are independently numbered and
-    # perturbed: 101 covers GT 1 but skips frames 3-4 (padding path), GT 2 is covered
-    # by 102 then 103 (ID switch), GT 3 is entirely missed, 104 is a pure drifting FP.
     frames = 8
     perturbed_gt: list[MaskTrack] = []
     perturbed_pred: list[MaskTrack] = []
@@ -555,15 +455,13 @@ def build_mots_scenarios() -> tuple[Scenario, ...]:
         perturbed_gt.append(_mask_row(f, 2, _lane_mask(1, 30 - 2 * f)))
         perturbed_gt.append(_mask_row(f, 3, _lane_mask(2, 5 + f)))
         if f not in (3, 4):
-            perturbed_pred.append(_mask_row(f, 101, _lane_mask(0, 2 * f + 1)))  # jittered
+            perturbed_pred.append(_mask_row(f, 101, _lane_mask(0, 2 * f + 1)))
         if f <= 4:
             perturbed_pred.append(_mask_row(f, 102, _lane_mask(1, 30 - 2 * f)))
         else:
             perturbed_pred.append(_mask_row(f, 103, _lane_mask(1, 30 - 2 * f)))
         perturbed_pred.append(_mask_row(f, 104, _lane_mask(4, 3 * f)))
 
-    # An ignore-region mask (class 10) fills lane 5; an unmatched prediction inside it
-    # must be dropped identically on both sides before J&F runs.
     ignore_gt: list[MaskTrack] = []
     ignore_pred: list[MaskTrack] = []
     for f in range(1, 5):
@@ -572,22 +470,20 @@ def build_mots_scenarios() -> tuple[Scenario, ...]:
             _mask_row(f, 10, _lane_mask(5, 20, width=20), class_id=MOTS20_IGNORE_CLASS)
         )
         ignore_pred.append(_mask_row(f, 201, _lane_mask(0, 3 * f)))
-        ignore_pred.append(_mask_row(f, 202, _lane_mask(5, 24, width=10)))  # inside ignore
+        ignore_pred.append(_mask_row(f, 202, _lane_mask(5, 24, width=10)))
 
     pred_only = [_mask_row(f, 301, _lane_mask(1, 4 * f)) for f in range(1, 6)]
     gt_only = [_mask_row(f, 1, _lane_mask(0, 4 * f)) for f in range(1, 6)]
 
-    # Different track counts per sequence prove num_gt_tracks-weighted combining.
     seq_a_gt = [_mask_row(f, i, _lane_mask(i - 1, 2 * f)) for f in (1, 2, 3) for i in (1, 2)]
     seq_a_pred = [
         _mask_row(f, 100 + i, _lane_mask(i - 1, 2 * f)) for f in (1, 2, 3) for i in (1, 2)
     ]
     seq_b_gt = [_mask_row(f, 7, _lane_mask(0, 5 * f)) for f in (1, 2, 3, 4)]
-    seq_b_pred = [_mask_row(f, 900, _lane_mask(0, 5 * f + 2)) for f in (1, 2)]  # partial, jittered
+    seq_b_pred = [_mask_row(f, 900, _lane_mask(0, 5 * f + 2)) for f in (1, 2)]
 
-    # Eight sequences with 1-3 tracks each, jittered by a different amount per sequence, so
-    # the combined J&F means add eight unequal float products: a compensated sum and
-    # upstream's plain left-to-right sum round differently.
+    # TrackEval's `_combine_weighted_av` adds these eight unequal np.float64 products with
+    # builtin `sum`, left to right; CPython compensates only exact floats.
     many_sequences = []
     for i in range(8):
         seq_frames = 4 + i
@@ -605,12 +501,8 @@ def build_mots_scenarios() -> tuple[Scenario, ...]:
         ]
         many_sequences.append((f"SEQ-MANY-{i}", seq_frames, many_gt, many_pred))
 
-    # J&F casts its decay-bin edges to uint8 (upstream quirk), so they wrap past 255
-    # frames. At 350 frames the edges (0-based timesteps) [0, 87, 175, 262, 349] wrap to
-    # [0, 87, 175, 6, 93]: the last bin covers timesteps 6-93, not 262-349. (At 257-341
-    # frames the last bin is empty and the decays are NaN; 350 keeps them finite.) The
-    # prediction is exact for the first 50 frames and then shifted by 1-3 columns, so the
-    # first bin, the wrapped last bin and the unwrapped last bin all have different means.
+    # TrackEval's J&F casts its decay-bin edges to uint8, so at 350 frames the edges
+    # [0, 87, 175, 262, 349] wrap to [0, 87, 175, 6, 93].
     long_frames = 350
     long_gt = [_mask_row(f, 1, _lane_mask(0, 20)) for f in range(1, long_frames + 1)]
     long_pred = [
@@ -637,7 +529,6 @@ def build_mots_scenarios() -> tuple[Scenario, ...]:
 
 
 def write_mots_scenario(tmp_dir: Path, scenario: Scenario) -> dict[str, int]:
-    """Write a MOTS scenario in the SKIP_SPLIT_FOL layout; returns ``{seq: length}``."""
     seq_lengths = {}
     for name, num_timesteps, gt_rows, pred_rows in scenario.sequences:
         write_mots(tmp_dir / "gt" / name / "gt" / "gt.txt", gt_rows)
@@ -647,7 +538,6 @@ def write_mots_scenario(tmp_dir: Path, scenario: Scenario) -> dict[str, int]:
 
 
 def build_mots_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDataset:
-    """Build the moteval `MOTDataset` from the files `write_mots_scenario` wrote."""
     gt_sequences = []
     for name, num_timesteps, _, _ in scenario.sequences:
         rows = read_mots(tmp_dir / "gt" / name / "gt" / "gt.txt")
@@ -664,9 +554,6 @@ def build_mots_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDataset:
     )
 
 
-# jf_perturbed_predictions split by track id. Class 1: GT 1 with its jittered,
-# gappy prediction 101 and the drifting false positive 104. Class 2: GT 2 (covered by
-# 102, then 103) and the missed GT 3.
 MOTS_MULTI_CLASS_TRACKS = {1: 1, 101: 1, 104: 1, 2: 2, 3: 2, 102: 2, 103: 2}
 
 
@@ -675,10 +562,6 @@ def mots_track_classes(_sequence: str, row: MaskTrack) -> int:
 
 
 def write_multi_class_mots_scenario(tmp_dir: Path, scenario: Scenario, class_of: ClassOf) -> None:
-    """Write a MOTS scenario with each row relabelled to its class from ``class_of``.
-
-    The scenario must hold no ignore-region rows: relabelling would turn them into tracks.
-    """
     for name, _, gt_rows, pred_rows in scenario.sequences:
         if any(t.class_id == MOTS20_IGNORE_CLASS for t in gt_rows):
             raise ValueError(f"{scenario.name}/{name}: ignore rows cannot be relabelled")
@@ -693,7 +576,6 @@ def write_multi_class_mots_scenario(tmp_dir: Path, scenario: Scenario, class_of:
 
 
 def build_multi_class_mots_dataset(tmp_dir: Path, scenario: Scenario) -> MOTDataset:
-    """Build the two-class mask `MOTDataset` from `write_multi_class_mots_scenario` output."""
     gt_sequences = tuple(
         MaskGtSequence(
             name=name,
@@ -710,20 +592,11 @@ def build_multi_class_mots_dataset(tmp_dir: Path, scenario: Scenario) -> MOTData
     )
 
 
-# ---------------------------------------------------------------------------
-# TrackMAP scenarios (pure Python specs)
-# ---------------------------------------------------------------------------
-
 GtTracks = dict[int, dict[int, Sequence[float]]]
 PredTracks = dict[int, dict[int, tuple[Sequence[float], float]]]
 
 
 def box_rows_to_trackmap_spec(gt_rows: list, pred_rows: list) -> tuple[GtTracks, PredTracks]:
-    """Convert MOT-txt value lists to the TrackMAP spec form (0-based frame keys).
-
-    Frames are 1-indexed in the rows (`BOX_PROTOCOL`); values become floats, as a
-    file reader produces them.
-    """
     gt_tracks: GtTracks = {}
     for row in gt_rows:
         gt_tracks.setdefault(row[1], {})[row[0] - 1] = [float(v) for v in row[2:6]]
@@ -736,10 +609,6 @@ def box_rows_to_trackmap_spec(gt_rows: list, pred_rows: list) -> tuple[GtTracks,
     return gt_tracks, pred_tracks
 
 
-# name -> {seq_name: (num_timesteps, gt_tracks, pred_tracks)}. Ids here are moteval's
-# view; the regen script offsets all ids by +1 on the oracle side so upstream's
-# ``gt_m[thr, gt] > 0`` matched-id check (which misbehaves for a legitimate id of 0,
-# fixed in moteval's TrackMAP) never fires.
 TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
     "perfect_match": {
         "seq": (
@@ -748,10 +617,6 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
             {101: {t: ([10 + t, 10, 20, 20], 0.9) for t in range(3)}},
         )
     },
-    # seq1: gt 1 perfectly matched, gt 2 missed entirely, gt 3 (long, large area)
-    # perfectly matched; a short false-positive pred track with no gt counterpart.
-    # seq2: a partial-IoU match (box shifts out of overlap on the second frame).
-    # Exercises all three area and time subsets simultaneously.
     "misses_false_positives_partial_iou_multi_sequence": {
         "seq1": (
             15,
@@ -772,8 +637,7 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
             {201: {0: ([50, 50, 50, 50], 0.7), 1: ([90, 50, 50, 50], 0.7)}},
         ),
     },
-    # area_s = [0, 32**2], area_m = [32**2, 96**2]: a track with area exactly 32*32
-    # must land in BOTH subsets (upstream's ranges are inclusive on both ends).
+    # TrackEval's area ranges include both ends: area 32**2 is in area_s and area_m.
     "area_boundary_straddle": {
         "seq": (
             2,
@@ -781,7 +645,7 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
             {101: {t: ([0, 0, 32, 32], 0.9) for t in range(2)}},
         )
     },
-    # time_s = [0, 3], time_m = [3, 10]: a track of length exactly 3 lands in both.
+    # TrackEval's time ranges include both ends: length 3 is in time_s and time_m.
     "time_boundary_straddle": {
         "seq": (
             3,
@@ -792,14 +656,14 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
     "empty_gt": {"seq": (2, {}, {201: {0: ([1, 1, 1, 1], 0.5)}})},
     "empty_preds": {"seq": (2, {1: {0: [1, 1, 1, 1]}}, {})},
     "both_empty": {"seq": (2, {}, {})},
-    # moteval's densified ids always start at 0 for both gt and pred; its boolean
-    # matched-state fix must agree with the oracle run on offset (never-0) ids.
+    # TrackEval's `gt_m[thr, gt] > 0` check reads a match to dt id 0 as no match; the regen
+    # script scores the oracle on ids offset by +1.
     "id_zero_hazard": {
         "seq": (
             3,
             {
                 0: {t: [10, 10, 20, 20] for t in range(3)},
-                1: {t: [10, 10, 20, 20] for t in range(3)},  # identical box: ties with id 0
+                1: {t: [10, 10, 20, 20] for t in range(3)},
             },
             {
                 0: {t: ([10, 10, 20, 20], 0.99) for t in range(3)},
@@ -807,25 +671,19 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
             },
         )
     },
-    # One gt track, two dt tracks both perfectly overlapping it (an IoU tie): the LOW
-    # id carries the LOW score, so only a descending-score dt presort wins the match
-    # with the high-score track (AP ~1.0 instead of 0.5).
+    # An IoU tie that TrackEval's TAO loader breaks by sorting dt tracks by descending score.
     "dt_track_order_score_presort": {
         "seq": (
             3,
             {5: {t: [10, 10, 20, 20] for t in range(3)}},
             {
-                1: {t: ([10, 10, 20, 20], 0.5) for t in range(3)},  # low score, low id
-                9: {t: ([10, 10, 20, 20], 0.9) for t in range(3)},  # high score, high id
+                1: {t: ([10, 10, 20, 20], 0.5) for t in range(3)},
+                9: {t: ([10, 10, 20, 20], 0.9) for t in range(3)},
             },
         )
     },
-    # Both pred tracks hold the same twelve confidences in a different order, so their
-    # mean score is mathematically equal. `np.mean` (pairwise from eight values up) gives
-    # 0.7687499999999999 for track 1 and 0.7687500000000002 for track 9, so track 9 sorts
-    # first and claims the gt track at the IoU thresholds its shifted box reaches. A
-    # sequential mean gives both 0.7687499999999999, so track 1 keeps first place and the
-    # match order, and with it the precision curve, changes.
+    # The same twelve scores, reordered: np.mean's pairwise sum gives track 1
+    # 0.7687499999999999 and track 9 0.7687500000000002, so track 9 sorts first.
     "dt_track_score_pairwise_mean": {
         "seq": (
             12,
@@ -848,15 +706,9 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
             },
         )
     },
-    # Track IoU sums each frame's intersection and union in the iteration order of
-    # upstream's `set(gt.keys()) | set(dt.keys())`. For this sparse pair that order is
-    # [23, 5, 7, 9, 12], not ascending, so moteval's vectorized IoU must fall back to the
-    # scalar `_track_iou`. The summation order changes the last bit of the IoU: upstream's
-    # order gives 0.5499999999999998, a match at the 0.55 threshold (`iou < thr - eps` is
-    # false); ascending order and the `set(gt) | set(dt)` order ([7, 5, 23, 9, 12]) give
-    # 0.5499999999999997, a miss. The height of dt frame 12 was searched to sit on that
-    # boundary. Frame keys stay ascending, as upstream's loader inserts them; for this
-    # pair no insertion order changes the set order (`track_iou_insertion_order` does).
+    # TrackEval sums track IoU in CPython's `set(gt.keys()) | set(dt.keys())` order, here
+    # [23, 5, 7, 9, 12]: 0.5499999999999998, a match at 0.55. Ascending order gives
+    # 0.5499999999999997, a miss.
     "track_iou_frame_order": {
         "seq": (
             24,
@@ -872,11 +724,9 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
             },
         )
     },
-    # Frame keys 1 and 17 collide in the union set's hash table, so the set order depends
-    # on insertion order: ascending insertion (upstream's TAO loader sorts by frame) gives
-    # [1, 20, 17], reversed insertion [17, 20, 1]. Frame 1 overlaps, frame 17 is GT only,
-    # and the height of dt frame 20 was searched to sit on the 0.55 boundary: ascending
-    # order gives 0.5499999999999997 (a miss), reversed order 0.5499999999999998 (a match).
+    # Keys 1 and 17 collide in CPython's set hash table, so insertion order sets the order.
+    # TrackEval's TAO loader inserts frames ascending: [1, 20, 17] gives 0.5499999999999997,
+    # a miss at 0.55. Reversed insertion, [17, 20, 1], gives 0.5499999999999998, a match.
     "track_iou_insertion_order": {
         "seq": (
             24,
@@ -895,7 +745,6 @@ TRACKMAP_SCENARIOS: dict[str, dict[str, tuple[int, GtTracks, PredTracks]]] = {
 def build_trackmap_sequence_data(
     num_timesteps: int, gt_tracks: GtTracks, pred_tracks: PredTracks
 ) -> SequenceData:
-    """Build moteval's `SequenceData` from a TrackMAP scenario spec."""
     gt_ids_sorted = sorted(gt_tracks)
     gt_id_map = {tid: i for i, tid in enumerate(gt_ids_sorted)}
     pred_ids_sorted = sorted(pred_tracks)
@@ -939,11 +788,6 @@ def build_trackmap_sequence_data(
     )
 
 
-# ---------------------------------------------------------------------------
-# Real-data cases (seeded perturbed predictions against `default_data_root()`)
-# ---------------------------------------------------------------------------
-
-
 def _write_perturbed_box_predictions(dataset: MOTDataset, tmp_dir: Path) -> dict[str, int]:
     pred_dir = predictions_dir(tmp_dir)
     seq_lengths = {}
@@ -960,25 +804,18 @@ def _write_perturbed_box_predictions(dataset: MOTDataset, tmp_dir: Path) -> dict
 
 
 def prepare_dancetrack_val(tmp_dir: Path) -> tuple[MOTDataset, Path, dict[str, int]]:
-    """Load DanceTrack val, write seeded perturbed predictions into ``tmp_dir``.
-
-    Returns ``(dataset, gt_root, seq_lengths)``; predictions land in
-    ``predictions_dir(tmp_dir)``.
-    """
     root = default_data_root() / "dancetrack"
     dataset = load_dataset("dancetrack", root=root, split="val")
     return dataset, root / "val", _write_perturbed_box_predictions(dataset, tmp_dir)
 
 
 def prepare_sportsmot_val(tmp_dir: Path) -> tuple[MOTDataset, Path, dict[str, int]]:
-    """Same contract as `prepare_dancetrack_val`, for SportsMOT val."""
     root = default_data_root() / "sportsmot"
     dataset = load_dataset("sportsmot", root=root, split="val")
     return dataset, root / "val", _write_perturbed_box_predictions(dataset, tmp_dir)
 
 
 def prepare_mots20_sequence(tmp_dir: Path) -> tuple[MOTDataset, Path, dict[str, int]]:
-    """Load MOTS20 train restricted to its first sequence, with seeded mask predictions."""
     root = default_data_root() / "mots20"
     dataset = cast(MOTDataset[MaskGtSequence], load_dataset("mots20", root=root, split="train"))
     seq = dataset.sequences[0]
